@@ -1,0 +1,28 @@
+! Sample name: {{ sample_name }}
+!  {{ num_scans }} scans
+!  Approximate Duration: {{ total_time }}
+{% for scan in scans %}
+SCAN /SINGLERUN {{ number_of_frames }} &
+ /THETA1={{ theta1 }} /THETA2={{ theta2 }} &
+ /X={{ '%0.3f' | format(scan.x) }} /Y={{ '%0.3f' | format(scan.y) }} /Z=@7 &
+ /AUX=1.000 /AXIS="1-2T (Th2-det)" /WIDTH=15 /SCANTIME={{ scan_time }} /TITLE=? &
+ /SAMPLE="LiMn2O4 Li1 to Li0 to Li0.8" /NUMSAMPLE=1 /NAME={{ scan.filename }} &
+ /RUN=1 /FRAMENO=0 /DISPLAY=15 /REALTIME /CLEAR /MODE=Step &
+ /OSCILLATE=None /AMPLITUDE=2
+{# Load first frame and integrate #}
+LOAD "{{ scan.filename }}_01_000.gfrm"
+ /DISPLAY=31 /SCALE=-n /OFFSET=0.0
+INTEGRATE /CHI 51.400 63.500 -98.600 -81.400 /NORMAL=5 /STEPSIZE=.005
+INTEGRATE /WRITE "LiMn2O4 Li1 to Li0 to Li0.8" /FILENAME={{ scan.filename }}.plt &
+ /FORMAT=PLOTSO /SCALE=1.0
+{# Integrate remaining frames if necessary #}
+{% for frame in range(1, number_of_frames) %}
+LOAD "{{ scan.filename }}_01_{{ '%03d' | format(frame) }}.gfrm"
+ /DISPLAY=31 /SCALE=-n /OFFSET=0.0
+INTEGRATE /CHI 66.200 78.100 -97.000 -83.100 /NORMAL=5 /STEPSIZE=.005
+INTEGRATE /WRITE "LiMn2O4 Li1 to Li0 to Li0.8" &
+ /FILENAME={{ scan.filename }}.plt /FORMAT=PLOTSO /APPEND /SCALE=1.0
+{% endfor %}
+{% endfor %}
+
+menumode
