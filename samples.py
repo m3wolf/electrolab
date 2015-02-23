@@ -164,14 +164,27 @@ class BaseSample():
         """Convert the object to a dictionary for the templating engine."""
         # Estimate the total time
         secs = len(self.scans)*self.scan_time
+        total_time = "{0}s ({1:0.1f}h)".format(secs, secs/3600)
+        # List of frames to integrate
+        frames = []
+        for frame_num in range(0, self.get_number_of_frames()):
+            start = self.two_theta_range[0] + 2.5 + frame_num*self.frame_step
+            end = start + self.frame_step
+            frame = {
+                'start': start,
+                'end': end,
+                'number': frame_num,
+            }
+            frames.append(frame)
         context = {
             'scans': [],
             'num_scans': len(self.scans),
+            'frames': frames,
             'number_of_frames': self.get_number_of_frames(),
             'theta1': self.get_theta1(),
             'theta2': self.get_theta2_start(),
             'scan_time': self.scan_time,
-            'total_time': "{0}s ({1:0.1f}h)".format(secs, secs/3600),
+            'total_time': total_time,
             'sample_name': self.sample_name
         }
         for idx, scan in enumerate(self.scans):
