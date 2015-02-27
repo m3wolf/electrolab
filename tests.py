@@ -5,10 +5,22 @@ import pandas as pd
 from samples import BaseSample, Scan, Cube
 from cycler import GalvanostatRun
 
-class GalvanostatRunTest(unittest.TestCase):
-    # Currently just tests import statement
-    def test_import(self):
-        run = GalvanostatRun()
+# class GalvanostatRunTest(unittest.TestCase):
+#     # Currently just tests import statement
+#     def test_import(self):
+#         run = GalvanostatRun()
+
+class CycleTest(unittest.TestCase):
+    def setUp(self):
+        self.df = pd.read_csv('eclab-test-data.csv')
+        self.run = GalvanostatRun(self.df, mass=0.022563)
+        self.cycle = self.run.cycles[0]
+
+    def test_discharge_capacity(self):
+        self.assertEqual(
+            self.cycle.discharge_capacity(),
+            99.736007822541325
+        )
 
 class SlamFileTest(unittest.TestCase):
 

@@ -2,6 +2,12 @@ from matplotlib import pyplot
 import numpy as np
 import pandas as pd
 
+def read_csv(*args, **kwargs):
+    """Wrapper around pandas read_csv that filters out crappy data"""
+    kwargs['na_values'] = 'XXX'
+    df = pd.read_csv(*args, **kwargs)
+    return df
+
 def axis_label(key):
     axis_labels = {
         'Ewe/V': r'$E\ /V$',
@@ -24,15 +30,20 @@ class GalvanostatRun():
 
     def __init__(self, df, mass=None, *args, **kwargs):
         self._df = df
+        self.cycles = []
         all_cycles = self._df.loc[self._df['mode']!=3]
         # Calculate capacity from charge
         if mass:
             all_cycles.loc[:,'capacity'] = all_cycles.loc[:,'(Q-Qo)/mA.h']/mass
         # Split the data into cycles, except the initial resting phase
         if 'cycle number' in all_cycles.columns:
-            self.cycles = list(all_cycles.groupby('cycle number'))
+            cycles = list(all_cycles.groupby('cycle number'))
         else:
-            self.cycles = [(0, all_cycles)]
+            cycles = [(0, all_cycles)]
+        # Create Cycle objects for each cycle
+        for cycle in cycles:
+            new_cycle = Cycle(cycle[0], cycle[1])
+            self.cycles.append(new_cycle)
         super(GalvanostatRun, self).__init__(*args, **kwargs)
 
     def plot_cycles(self, xcolumn, ycolumn, ax=None):
@@ -41,31 +52,63 @@ class GalvanostatRun():
             ax = new_axes()
         ax.set_xlabel(axis_label(xcolumn))
         ax.set_ylabel(axis_label(ycolumn))
+        legend = []
         for cycle in self.cycles:
-            ax.plot(cycle[1][xcolumn], cycle[1][ycolumn])
-        length = len(self.cycles)
-        ax.legend(range(1, length))
+            ax = cycle.plot_cycle(xcolumn, ycolumn, ax)
+            legend.append(cycle.number)
+        ax.legend(legend)
         return ax
 
-    def plot_dq_dE(self, ax=None):
-        """Plot the first derivative of each of the cycles"""
-        # Prepare defaults
+    def plot_discharge_capacity(self, ax=None, ax2=None):
         if not ax:
             ax = new_axes()
+        if not ax2:
+            ax2 = ax.twinx()
+        cycle_numbers = []
+        capacities = []
+        efficiencies = []
+        # Calculate relevant plotting values
         for cycle in self.cycles:
-            dE = cycle[1].loc[:, 'Ewe/V']
-            q = cycle[1].loc[:, 'capacity']*1000
-            # q = cycle[1].loc[:, 'dq/mA.h']*1000
-            dq_dE = np.gradient(q, dE)
-            df = pd.DataFrame({'dE': dE, 'dq_dE': dq_dE})
-            # df = df[df.dq_dE<0]
-            ax.plot(df['dE'], df['dq_dE'])
-        ax.set_xlabel(axis_labels['Ewe/V'])
-        ax.set_ylabel(r'$\frac{dQ}{dE}\ / Ahg^{-1}V^{-1}$')
-        length = len(self.cycles)
-        ax.legend(range(1, length))
-        return ax
+            cycle_numbers.append(cycle.number)
+            capacities.append(cycle.discharge_capacity())
+            efficiency = 100 * cycle.discharge_capacity() / cycle.charge_capacity()
+            efficiencies.append(efficiency)
+        ax.plot(cycle_numbers, capacities, marker='o', linestyle='--')
+        ax2.plot(cycle_numbers, efficiencies)
+        # Format axes
+        ax.set_xticks(cycle_numbers)
+        ax.set_xlim(0, 1 + max(cycle_numbers))
+        ax.set_ylim(0, 1.1 * max(capacities))
+        ax.set_xlabel('Cycle')
+        ax.set_ylabel('Discharge capacity $/mAhg^{-1}$')
+        ax2.set_ylim(0, 100)
+        ax2.set_ylabel('Discharge efficiency (%)')
+        return ax, ax2
+
 
 class Cycle():
     """Data from one charge-discharge cycle."""
-    pass
+    def __init__(self, number, df):
+        self.number = number
+        self.df = df
+
+    def charge_capacity(self):
+        """Calculate difference between discharged and charged state"""
+        max_capacity = np.max(self.df['capacity'])
+        min_idx = self.df['capacity'].first_valid_index()
+        min_capacity = self.df['capacity'][min_idx]
+        return max_capacity - min_capacity
+
+    def discharge_capacity(self):
+        """Calculate the difference between charged and discharged state"""
+        max_capacity = np.max(self.df['capacity'])
+        min_idx = self.df['capacity'].last_valid_index()
+        min_capacity = self.df['capacity'][min_idx]
+        return max_capacity - min_capacity
+
+    def plot_cycle(self, xcolumn, ycolumn, ax):
+        # Drop missing data
+        df = self.df.dropna(subset=[xcolumn, ycolumn])
+        # Plot remaining values
+        ax.plot(df[xcolumn], df[ycolumn])
+        return ax
