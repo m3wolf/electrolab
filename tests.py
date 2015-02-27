@@ -1,6 +1,14 @@
 import math, unittest
 
+import pandas as pd
+
 from samples import BaseSample, Scan, Cube
+from cycler import GalvanostatRun
+
+class GalvanostatRunTest(unittest.TestCase):
+    # Currently just tests import statement
+    def test_import(self):
+        run = GalvanostatRun()
 
 class SlamFileTest(unittest.TestCase):
 
@@ -89,7 +97,7 @@ class SlamFileTest(unittest.TestCase):
         )
         self.assertEqual(
             context['scans'][3]['filename'],
-            'LiMn2O4-00000003'
+            'LiMn2O4-3'
         )
 
 class ScanTest(unittest.TestCase):

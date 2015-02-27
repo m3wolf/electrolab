@@ -5,40 +5,11 @@ from matplotlib import pylab, pyplot, collections, patches, colors
 import numpy as np
 import pandas as pd
 
-class Experiment():
-    """Electrochemical experiment cycling on one channel."""
-    cycles = []
-
-    def __init__(self, df, mass=None, *args, **kwargs):
-        self._df = df
-        all_cycles = self._df.loc[self._df['mode']!=3]
-        # Calculate capacity from charge
-        if mass:
-            # all_cycles['capacity'] = all_cycles.loc('(Q-Qo)/mA.h')/mass
-            all_cycles.loc[:,'capacity'] = all_cycles.loc[:,'(Q-Qo)/mA.h']/mass
-        # Split the data into cycles, except the initial resting phase
-        self.cycles = list(all_cycles.groupby('cycle number'))
-        super(Experiment, self).__init__(*args, **kwargs)
-
-    def plot_cycles(self, xcolumn, ycolumn):
-        """Plot each electrochemical cycle"""
-        pylab.xlabel(xcolumn)
-        pylab.ylabel(ycolumn)
-        for cycle in self.cycles:
-            pylab.plot(cycle[1][xcolumn], cycle[1][ycolumn])
-
-    def plot_cycles_derivative(self, xcolumn, ycolumn):
-        """Plot the first derivative of each of the cycles"""
-        pylab.xlabel(xcolumn)
-        pylab.ylabel(ycolumn)
-        for cycle in self.cycles:
-            yder = np.gradient(cycle[1].loc[:, ycolumn])
-            pylab.plot(cycle[1][xcolumn], yder)
-
-class Cycle():
-    """Data from one charge-discharge cycle."""
-    pass
-
+def new_axes():
+    """Create a new set of matplotlib axes for plotting"""
+    fig = pyplot.figure(figsize=(5, 5))
+    ax = pyplot.gca()
+    return ax
 
 class Cube():
     """Cubic coordinates of a hexagon"""
@@ -250,8 +221,7 @@ class BaseSample():
         # Build and show the hexagons
         if not ax:
             # New axes unless one was already created
-            fig = pyplot.figure(figsize=(5, 5))
-            ax = pyplot.gca()
+            ax = new_axes()
         xy_lim = self.diameter/2*1.25
         ax.set_xlim([-xy_lim, xy_lim])
         ax.set_ylim([-xy_lim, xy_lim])
