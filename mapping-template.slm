@@ -1,13 +1,18 @@
 ! Sample name: {{ sample_name }}
-!  Frames: {{ frames }}
-!  {{ num_scans }} scans
-!  Approximate Duration: {{ total_time }}
+! Frames: {{ frames }}
+!   {{ num_scans }} scans
+!   Approximate Duration: {{ total_time }}
+!------------------------------------------------------------------------------
+! Set sample-wide values
+#LET %T="{{ scan_time }}":
+
+! Scanning
 {% for scan in scans %}
 SCAN /SINGLERUN {{ number_of_frames }} &
- /THETA1={{ theta1 }} /THETA2={{ theta2 }} &
- /X={{ '%0.3f' | format(scan.x) }} /Y={{ '%0.3f' | format(scan.y) }} /Z=@7 &
+/THETA1={{ theta1 }} /THETA2={{ theta2 }} &
+ /X={{ '%0.3f' | format(scan.x+xoffset) }} /Y={{ '%0.3f' | format(scan.y+yoffset) }} /Z=@7 &
  /AUX=1.000 /AXIS="1-2T (Th2-det)" /WIDTH=15 /SCANTIME={{ scan_time }} /TITLE=? &
- /SAMPLE="LiMn2O4 Li1 to Li0 to Li0.8" /NUMSAMPLE=1 /NAME={{ scan.filename }} &
+ /SAMPLE="{{ scan.filename }}" /NUMSAMPLE=1 /NAME={{ scan.filename }} &
  /RUN=1 /FRAMENO=0 /DISPLAY=15 /REALTIME /CLEAR /MODE=Step &
  /OSCILLATE=None /AMPLITUDE=2
 {% endfor %}

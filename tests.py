@@ -42,6 +42,14 @@ class SlamFileTest(unittest.TestCase):
             self.sample.get_number_of_frames
         )
 
+    def test_collimator(self):
+        # Does passing a collimator diameter set the appropriate number of rows
+        self.sample = BaseSample(center=(0, 0), diameter=12.7, collimator=0.5)
+        self.assertEqual(
+            self.sample.rows,
+            13
+        )
+
     def test_theta2_start(self):
         self.assertEqual(
             self.sample.get_theta2_start(),
@@ -64,6 +72,21 @@ class SlamFileTest(unittest.TestCase):
         self.assertEqual(
             self.sample.get_theta1(),
             50
+        )
+
+    def test_small_angles(self):
+        """
+        See what happens when the 2theta angle is close to the max X-ray
+        source angle.
+        """
+        self.sample.two_theta_range = (47.5, 62.5)
+        self.assertEqual(
+            self.sample.get_theta1(),
+            47.5
+        )
+        self.assertEqual(
+            self.sample.get_theta2_start(),
+            7.5
         )
 
     def test_path(self):
@@ -91,7 +114,7 @@ class SlamFileTest(unittest.TestCase):
         self.assertEqual(sample.unit_size, 4/math.sqrt(3))
 
     def test_jinja_context(self):
-        sample = BaseSample(center=(0, 0), diameter=10, rows=4,
+        sample = BaseSample(center=(-10.5, 20.338), diameter=10, rows=4,
                             sample_name='LiMn2O4')
         sample.create_scans()
         context = sample.get_context()
@@ -110,6 +133,14 @@ class SlamFileTest(unittest.TestCase):
         self.assertEqual(
             context['scans'][3]['filename'],
             'LiMn2O4-3'
+        )
+        self.assertEqual(
+            context['xoffset'],
+            -10.5
+        )
+        self.assertEqual(
+            context['yoffset'],
+            20.338
         )
 
 class ScanTest(unittest.TestCase):

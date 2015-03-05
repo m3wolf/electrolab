@@ -48,7 +48,7 @@ class Cube():
 class BaseSample():
     """
     A physical sample that gets mapped by XRD, presumed to be circular
-    with center and diameter in millimeters.
+    with center and diameter in millimeters. Collimator size given in mm.
     """
     cmap_name = 'autumn'
     two_theta_range = (50, 90) # Detector angle range in degrees
@@ -56,15 +56,19 @@ class BaseSample():
     THETA1_MAX=50
     THETA2_MIN=0 # Detector limits based on geometry
     THETA2_MAX=55
-    scan_time = 15 # Seconds at each detector angle
+    scan_time = 3 # Seconds at each detector angle
     frame_step = 15 # How much to move detector by in degrees
     frame_width = 20 # 2-theta coverage of detector face
     scans = []
-    def __init__(self, center, diameter, rows,
+    def __init__(self, center, diameter, collimator=0.5, rows=None,
                  sample_name='unknown', *args, **kwargs):
         self.center = center
         self.diameter = diameter
-        self.rows = rows
+        # Determine number of rows from collimator size
+        if rows is None:
+            self.rows = math.ceil(diameter/collimator/2)
+        else:
+            self.rows = rows
         self.sample_name = sample_name
         return super(BaseSample, self).__init__(*args, **kwargs)
 
@@ -152,6 +156,8 @@ class BaseSample():
             'num_scans': len(self.scans),
             'frames': frames,
             'number_of_frames': self.get_number_of_frames(),
+            'xoffset': self.center[0],
+            'yoffset': self.center[1],
             'theta1': self.get_theta1(),
             'theta2': self.get_theta2_start(),
             'scan_time': self.scan_time,
@@ -184,7 +190,7 @@ class BaseSample():
         # Assuming that theta1 starts at highest possible range
         theta1 = self.get_theta1()
         theta2_bottom = self.two_theta_range[0] - theta1
-        theta2_start = theta2_bottom + self.frame_step/2
+        theta2_start = theta2_bottom - self.frame_width/8 + self.frame_width/2
         return theta2_start
 
     def get_theta1(self):
@@ -196,6 +202,7 @@ class BaseSample():
                 limits=(self.THETA1_MIN, self.THETA1_MAX))
             raise ValueError(msg)
         elif theta1 > self.THETA1_MAX:
+            # Cap the theta1 value at a safety limited maximum
             theta1 = self.THETA1_MAX
         return theta1
 
