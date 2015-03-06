@@ -57,8 +57,8 @@ class BaseSample():
     THETA2_MIN=0 # Detector limits based on geometry
     THETA2_MAX=55
     scan_time = 3 # Seconds at each detector angle
-    frame_step = 15 # How much to move detector by in degrees
-    frame_width = 20 # 2-theta coverage of detector face
+    frame_step = 20 # How much to move detector by in degrees
+    frame_width = 30 # 2-theta coverage of detector face
     scans = []
     def __init__(self, center, diameter, collimator=0.5, rows=None,
                  sample_name='unknown', *args, **kwargs):
@@ -86,6 +86,15 @@ class BaseSample():
             )
             new_scan = Scan(coords, filename)
             self.scans.append(new_scan)
+
+    def scan(self, cube):
+        """Find a scan in the array give a set of cubic coordinates"""
+        result = None
+        for scan in self.scans:
+            if scan.cube_coords == cube:
+                result = scan
+                break
+        return result
 
     def path(self, rows):
         """Generator gives coordinates for a spiral path around the sample."""
@@ -116,11 +125,12 @@ class BaseSample():
                     curr_coords += vector
                     yield curr_coords
 
-    def get_metric(self, scan):
+    def metric(self, scan):
         """
         Accepts a scan-like object and returns the calculated
         metric. Intended to be overwritten by subclasses for specific
-        sample materials.
+        sample materials. This method would ideally go in a Scan
+        object but is included here so it can be easily subclassed.
         """
         # Just return the distance from bottom left to top right
         r = (scan.cube_coords[0] + self.rows)/2
@@ -221,7 +231,7 @@ class BaseSample():
             coord = scan.xy_coords(self.unit_size)
             x.append(coord[0])
             y.append(coord[1])
-            values.append(self.get_metric(scan)/self.rows)
+            values.append(self.metric(scan)/self.rows)
         xy = list(zip(x, y))
         # Convert values to colors
         colors = [cmap(val) for val in values]
@@ -246,6 +256,48 @@ class BaseSample():
         ax.add_patch(circle)
         return ax
 
+
+class LMOSample(BaseSample):
+    """
+    Sample for mapping LiMn2O4 cathodes.
+    """
+    two_theta_range = (30, 50)
+    scan_time = 600 # 10 minutes per frame
+
+    def metric(self, scan):
+        """
+        Compare the 2θ positions of two peaks. Using two peaks may correct
+        for differences is sample height on the instrument.
+        """
+        result = 0
+        df = scan.load_spectrum()
+        # Decide on two peaks to use for comparison
+        # List of possible peaks to look for
+        normal_range = (7.80, 7.98)
+        peaks = {
+            'a': (10, 20),
+            'b': (55, 62),
+            'c': (47, 53),
+            'd': (62, 67),
+            'e': (35, 40),
+            'f': (42, 47)
+        }
+        peak1 = peaks['e']
+        peak2 = peaks['f']
+        # Get the 2θ value of peak 1
+        range1 = df.loc[peak1[0]:peak1[1], 'counts']
+        theta1 = range1.argmax()
+        # Get the 2θ value of peak 2
+        range2 = df.loc[peak2[0]:peak2[1], 'counts']
+        theta2 = range2.argmax()
+        # Subtract the 2theta values of the two peaks
+        result = theta2 - theta1
+        # Normalize to result to the range 0 to 1
+        result = (result - normal_range[0])/(normal_range[1]-normal_range[0])
+        # Return the result
+        return result
+
+
 class Scan():
     """
     An XRD scan at one X,Y location. Several Scan objects make up a
@@ -266,7 +318,7 @@ class Scan():
     def load_spectrum(self):
         filename = "{0}.plt".format(self.filename)
         df = pd.read_csv(filename, names=['2theta', 'counts'],
-                         sep=' ', comment='!')
+                         sep=' ', comment='!', index_col=0)
         return df
 
     def plot_spectrum(self, ax=None):
@@ -274,7 +326,7 @@ class Scan():
         if not ax:
             fig = pyplot.figure()
             ax = pyplot.gca()
-        ax.plot(df.loc[:, '2theta'], df.loc[:, 'counts'])
+        ax.plot(df.index, df.loc[:, 'counts'])
         ax.set_xlabel('2θ')
         ax.set_ylabel('Counts')
         title = 'XRD Spectrum at ({i}, {j}, {k})'.format(i=self.cube_coords[0],

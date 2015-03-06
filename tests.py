@@ -2,13 +2,30 @@ import math, unittest
 
 import pandas as pd
 
-from samples import BaseSample, Scan, Cube
+from samples import BaseSample, LMOSample, Scan, Cube
 from cycler import GalvanostatRun
 
 # class GalvanostatRunTest(unittest.TestCase):
 #     # Currently just tests import statement
 #     def test_import(self):
 #         run = GalvanostatRun()
+
+class LMOSampleTest(unittest.TestCase):
+    def setUp(self):
+        self.sample = LMOSample(center=(0.078,-30.688),
+                                diameter=15,
+                                collimator=0.5,
+                                sample_name='test-spectrum')
+        self.sample.create_scans()
+
+    def test_metric(self):
+        scan = self.sample.scans[0]
+        df = scan.load_spectrum()
+        metric = self.sample.metric(scan)
+        self.assertEqual(
+            metric,
+            0.64000000000001478
+        )
 
 class CycleTest(unittest.TestCase):
     def setUp(self):
