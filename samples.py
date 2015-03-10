@@ -224,6 +224,7 @@ class BaseSample():
         x = []
         y = []
         values = []
+        colors = []
         i = 0
         cmap = self.get_cmap()
         for scan in self.scans:
@@ -231,10 +232,16 @@ class BaseSample():
             coord = scan.xy_coords(self.unit_size)
             x.append(coord[0])
             y.append(coord[1])
-            values.append(self.metric(scan)/self.rows)
+            metric = self.metric(scan)
+            values.append(self.metric(scan))
+            if metric is None:
+                # Invalid scan
+                colors.append('white')
+            else:
+                colors.append(cmap(metric))
         xy = list(zip(x, y))
         # Convert values to colors
-        colors = [cmap(val) for val in values]
+        # colors = [cmap(val) for val in values]
         # Build and show the hexagons
         if not ax:
             # New axes unless one was already created
@@ -269,17 +276,20 @@ class LMOSample(BaseSample):
         Compare the 2θ positions of two peaks. Using two peaks may correct
         for differences is sample height on the instrument.
         """
+        # Linear regression values determined by experiment
+        slope = -0.155793726541
+        yIntercept = 7.98271660389
         result = 0
         df = scan.load_spectrum()
         # Decide on two peaks to use for comparison
         # List of possible peaks to look for
-        normal_range = (7.80, 7.98)
+        normal_range = (0.2, 1)
         peaks = {
             'a': (10, 20),
             'b': (55, 62),
             'c': (47, 53),
             'd': (62, 67),
-            'e': (35, 40),
+            'e': (35, 37),
             'f': (42, 47)
         }
         peak1 = peaks['e']
@@ -290,10 +300,17 @@ class LMOSample(BaseSample):
         # Get the 2θ value of peak 2
         range2 = df.loc[peak2[0]:peak2[1], 'counts']
         theta2 = range2.argmax()
-        # Subtract the 2theta values of the two peaks
-        result = theta2 - theta1
-        # Normalize to result to the range 0 to 1
-        result = (result - normal_range[0])/(normal_range[1]-normal_range[0])
+        # Check for non-sample scans (background tape, etc)
+        if df.loc[theta2, 'counts'] > 600 and df.loc[theta1, 'counts'] > 400:
+            # Subtract the 2theta values of the two peaks
+            diff = theta2 - theta1
+            # Apply calibration curve
+            result = (diff-yIntercept)/slope
+            # Normalize to result to the range 0 to 1
+            result = (result - normal_range[0])/(normal_range[1]-normal_range[0])
+        else:
+            # Some other background-type scan was collected
+            result = None
         # Return the result
         return result
 
