@@ -4,6 +4,7 @@ import jinja2, math
 from matplotlib import pylab, pyplot, collections, patches, colors
 import numpy as np
 import pandas as pd
+import os
 
 def new_axes():
     """Create a new set of matplotlib axes for plotting"""
@@ -136,14 +137,30 @@ class BaseSample():
         r = (scan.cube_coords[0] + self.rows)/2
         return r
 
-    def to_slam(self):
-        """Format the sample into a slam file that GADDS can process."""
+    def write_slamfile(self, f=None):
+        """
+        Format the sample into a slam file that GADDS can process.
+        """
         # Import template
         env = jinja2.Environment(loader=jinja2.PackageLoader('electrolab', ''))
         template = env.get_template('mapping-template.slm')
         self.create_scans()
         context = self.get_context()
-        return template.render(**context)
+        # Create file and directory if necessary
+        if f is None:
+            directory = '{samplename}-frames'.format(
+                samplename=self.sample_name
+            )
+            if not os.path.exists(directory):
+                os.makedirs(directory)
+            filename = '{dir}/{samplename}.slm'.format(
+                dir=directory, samplename=self.sample_name
+            )
+            with open(filename, 'w') as f:
+                f.write(template.render(**context))
+        else:
+            f.write(template.render(**context))
+        return f
 
     def get_context(self):
         """Convert the object to a dictionary for the templating engine."""
@@ -240,8 +257,6 @@ class BaseSample():
             else:
                 colors.append(cmap(metric))
         xy = list(zip(x, y))
-        # Convert values to colors
-        # colors = [cmap(val) for val in values]
         # Build and show the hexagons
         if not ax:
             # New axes unless one was already created
@@ -263,6 +278,8 @@ class BaseSample():
         ax.add_patch(circle)
         return ax
 
+    def __repr__(self):
+        return '<Sample: {name}>'.format(name=self.sample_name)
 
 class LMOSample(BaseSample):
     """

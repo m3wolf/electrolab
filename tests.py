@@ -1,8 +1,10 @@
 import math, unittest
+from io import StringIO
+import os.path
 
 import pandas as pd
 
-from samples import BaseSample, LMOSample, Scan, Cube
+from mapping import BaseSample, LMOSample, Scan, Cube
 from cycler import GalvanostatRun
 
 # class GalvanostatRunTest(unittest.TestCase):
@@ -24,7 +26,7 @@ class LMOSampleTest(unittest.TestCase):
         metric = self.sample.metric(scan)
         self.assertEqual(
             metric,
-            0.64000000000001478
+            0.33343655345181483
         )
 
 class CycleTest(unittest.TestCase):
@@ -39,18 +41,24 @@ class CycleTest(unittest.TestCase):
             99.736007822541325
         )
 
+class GalvanostatRunTest(unittest.TestCase):
+    # Currently just tests import statement
+    def test_import(self):
+        df = pd.read_csv('eclab-test-data.csv')
+        run = GalvanostatRun(df)
+
+
 class SlamFileTest(unittest.TestCase):
 
     def setUp(self):
-        self.sample = BaseSample(center=(0, 0), diameter=12.7, rows=2)
+        self.sample = BaseSample(center=(0, 0), diameter=12.7, rows=2,
+                                 sample_name='test-sample')
         self.sample.two_theta_range = (50, 90)
-        self.frame_step = 15
-        self.frame_width = 20
 
     def test_number_of_frames(self):
         self.assertEqual(
             self.sample.get_number_of_frames(),
-            3
+            2
         )
         # Check for values outside of limits
         self.sample.two_theta_range = (50, 200)
@@ -70,7 +78,7 @@ class SlamFileTest(unittest.TestCase):
     def test_theta2_start(self):
         self.assertEqual(
             self.sample.get_theta2_start(),
-            7.5
+            11.25
         )
 
     def test_theta1(self):
@@ -103,7 +111,7 @@ class SlamFileTest(unittest.TestCase):
         )
         self.assertEqual(
             self.sample.get_theta2_start(),
-            7.5
+            11.25
         )
 
     def test_path(self):
@@ -159,6 +167,14 @@ class SlamFileTest(unittest.TestCase):
             context['yoffset'],
             20.338
         )
+
+    def test_write_slamfile(self):
+        self.assertFalse(os.path.exists('test-sample-frames'))
+        result = self.sample.write_slamfile()
+        self.assertTrue(os.path.exists('test-sample-frames'))
+        os.remove('test-sample-frames/test-sample.slm')
+        os.rmdir('test-sample-frames')
+
 
 class ScanTest(unittest.TestCase):
     def setUp(self):
