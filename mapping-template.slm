@@ -3,15 +3,16 @@
 !   {{ num_scans }} scans
 !   Approximate Duration: {{ total_time }}
 !------------------------------------------------------------------------------
-! Set sample-wide values
-#LET %T="{{ scan_time }}":
+
+! Turn on logging
+LOGFILE /NEW logfile._lg
 
 ! Scanning
 {% for scan in scans %}
 SCAN /SINGLERUN {{ number_of_frames }} &
 /THETA1={{ theta1 }} /THETA2={{ theta2 }} &
  /X={{ '%0.3f' | format(scan.x+xoffset) }} /Y={{ '%0.3f' | format(scan.y+yoffset) }} /Z=@7 &
- /AUX=1.000 /AXIS="1-2T (Th2-det)" /WIDTH=15 /SCANTIME={{ scan_time }} /TITLE=? &
+ /AUX=1.000 /AXIS="1-2T (Th2-det)" /WIDTH={{ frame_step}} /SCANTIME={{ scan_time }} /TITLE=? &
  /SAMPLE="{{ scan.filename }}" /NUMSAMPLE=1 /NAME={{ scan.filename }} &
  /RUN=1 /FRAMENO=0 /DISPLAY=15 /REALTIME /CLEAR /MODE=Step &
  /OSCILLATE=None /AMPLITUDE=2
@@ -23,7 +24,7 @@ SCAN /SINGLERUN {{ number_of_frames }} &
 {% for frame in frames %}
 LOAD "{{ scan.filename }}_01_{{ '%03d' | format(frame.number) }}.gfrm" &
  /DISPLAY=31 /SCALE=-n /OFFSET=0.0
-INTEGRATE /CHI {{ frame.start }} {{ frame.end }} -97.000 -83.100 &
+INTEGRATE /CHI {{ frame.start }} {{ frame.end }} -105 -75 &
  /NORMAL=5 /STEPSIZE=.005
 INTEGRATE /WRITE "LiMn2O4 Li1 to Li0 to Li0.8" &
  /FILENAME={{ scan.filename }}.plt /FORMAT=PLOTSO &

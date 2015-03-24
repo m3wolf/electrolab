@@ -71,6 +71,7 @@ class BaseSample():
         else:
             self.rows = rows
         self.sample_name = sample_name
+        self.create_scans()
         return super(BaseSample, self).__init__(*args, **kwargs)
 
     @property
@@ -81,11 +82,11 @@ class BaseSample():
         """Populate the scans array with new scans in a hexagonal array."""
         self.scans = []
         for idx, coords in enumerate(self.path(self.rows)):
-            filename = '{sample}-{n:x}'.format(
+            filename = 'map-{n:x}'.format(
                 sample=self.sample_name,
                 n=idx
             )
-            new_scan = Scan(coords, filename)
+            new_scan = self.XRDScan(coords, filename, sample=self)
             self.scans.append(new_scan)
 
     def scan(self, cube):
@@ -125,17 +126,6 @@ class BaseSample():
                 for i in range(0, row):
                     curr_coords += vector
                     yield curr_coords
-
-    def metric(self, scan):
-        """
-        Accepts a scan-like object and returns the calculated
-        metric. Intended to be overwritten by subclasses for specific
-        sample materials. This method would ideally go in a Scan
-        object but is included here so it can be easily subclassed.
-        """
-        # Just return the distance from bottom left to top right
-        r = (scan.cube_coords[0] + self.rows)/2
-        return r
 
     def write_slamfile(self, f=None):
         """
@@ -182,6 +172,7 @@ class BaseSample():
             'scans': [],
             'num_scans': len(self.scans),
             'frames': frames,
+            'frame_step': self.frame_step,
             'number_of_frames': self.get_number_of_frames(),
             'xoffset': self.center[0],
             'yoffset': self.center[1],
@@ -194,8 +185,8 @@ class BaseSample():
         for idx, scan in enumerate(self.scans):
             # Prepare scan-specific details
             x, y = scan.xy_coords(unit_size=self.unit_size)
-            d = {'x': x, 'y': y, 'filename': scan.filename}
-            context['scans'].append(d)
+            scan_metadata = {'x': x, 'y': y, 'filename': scan.filename}
+            context['scans'].append(scan_metadata)
         return context
 
     def get_number_of_frames(self):
@@ -249,8 +240,8 @@ class BaseSample():
             coord = scan.xy_coords(self.unit_size)
             x.append(coord[0])
             y.append(coord[1])
-            metric = self.metric(scan)
-            values.append(self.metric(scan))
+            metric = scan.metric()
+            values.append(metric)
             if metric is None:
                 # Invalid scan
                 colors.append('white')
@@ -281,90 +272,108 @@ class BaseSample():
     def __repr__(self):
         return '<Sample: {name}>'.format(name=self.sample_name)
 
+    class XRDScan():
+        """
+        An XRD scan at one X,Y location. Several Scan objects make up a
+        Sample object.
+        """
+        def __init__(self, location, filename, sample=None, *args, **kwargs):
+            self.cube_coords = location
+            self.filename = filename
+            self.sample = sample
+            return super(BaseSample.XRDScan, self).__init__(*args, **kwargs)
+
+        def xy_coords(self, unit_size=1):
+            # Convert internal coordinates to conventional cartesian coords
+            cube = self.cube_coords
+            x = unit_size * 1/2 * (cube.i - cube.j)
+            y = unit_size * math.sqrt(3)/2 * (cube.i + cube.j)
+            return (x, y)
+
+        def load_spectrum(self):
+            filename = "{0}.plt".format(self.filename)
+            df = pd.read_csv(filename, names=['2theta', 'counts'],
+                             sep=' ', comment='!', index_col=0)
+            return df
+
+        def metric(self):
+            """
+            Returns the calculated metric. Ex: ratio of two different phases.
+            Intended to be overwritten by subclasses for specific
+            sample materials.
+            """
+            # Just return the distance from bottom left to top right
+            p = self.cube_coords[0]
+            rows = self.sample.rows
+            r = p/2/rows + 0.5
+            return r
+
+        def plot_spectrum(self, ax=None):
+            df = self.load_spectrum()
+            if not ax:
+                fig = pyplot.figure()
+                ax = pyplot.gca()
+            ax.plot(df.index, df.loc[:, 'counts'])
+            ax.set_xlabel('2θ')
+            ax.set_ylabel('Counts')
+            title = 'XRD Spectrum at ({i}, {j}, {k})'.format(
+                i=self.cube_coords[0],
+                j=self.cube_coords[1],
+                k=self.cube_coords[2]
+            )
+            ax.set_title(title)
+            return ax
+
 class LMOSample(BaseSample):
     """
     Sample for mapping LiMn2O4 cathodes.
     """
     two_theta_range = (30, 50)
     scan_time = 600 # 10 minutes per frame
-
-    def metric(self, scan):
-        """
-        Compare the 2θ positions of two peaks. Using two peaks may correct
-        for differences is sample height on the instrument.
-        """
-        # Linear regression values determined by experiment
-        slope = -0.155793726541
-        yIntercept = 7.98271660389
-        result = 0
-        df = scan.load_spectrum()
-        # Decide on two peaks to use for comparison
-        # List of possible peaks to look for
-        normal_range = (0.2, 1)
-        peaks = {
-            'a': (10, 20),
-            'b': (55, 62),
-            'c': (47, 53),
-            'd': (62, 67),
-            'e': (35, 37),
-            'f': (42, 47)
-        }
-        peak1 = peaks['e']
-        peak2 = peaks['f']
-        # Get the 2θ value of peak 1
-        range1 = df.loc[peak1[0]:peak1[1], 'counts']
-        theta1 = range1.argmax()
-        # Get the 2θ value of peak 2
-        range2 = df.loc[peak2[0]:peak2[1], 'counts']
-        theta2 = range2.argmax()
-        # Check for non-sample scans (background tape, etc)
-        if df.loc[theta2, 'counts'] > 600 and df.loc[theta1, 'counts'] > 400:
-            # Subtract the 2theta values of the two peaks
-            diff = theta2 - theta1
-            # Apply calibration curve
-            result = (diff-yIntercept)/slope
-            # Normalize to result to the range 0 to 1
-            result = (result - normal_range[0])/(normal_range[1]-normal_range[0])
-        else:
-            # Some other background-type scan was collected
-            result = None
-        # Return the result
-        return result
-
-
-class Scan():
-    """
-    An XRD scan at one X,Y location. Several Scan objects make up a
-    Sample object.
-    """
-    def __init__(self, location, filename, *args, **kwargs):
-        self.cube_coords = location
-        self.filename = filename
-        return super(Scan, self).__init__(*args, **kwargs)
-
-    def xy_coords(self, unit_size=1):
-        # Convert internal coordinates to conventional cartesian coords
-        cube = self.cube_coords
-        x = unit_size * 1/2 * (cube.i - cube.j)
-        y = unit_size * math.sqrt(3)/2 * (cube.i + cube.j)
-        return (x, y)
-
-    def load_spectrum(self):
-        filename = "{0}.plt".format(self.filename)
-        df = pd.read_csv(filename, names=['2theta', 'counts'],
-                         sep=' ', comment='!', index_col=0)
-        return df
-
-    def plot_spectrum(self, ax=None):
-        df = self.load_spectrum()
-        if not ax:
-            fig = pyplot.figure()
-            ax = pyplot.gca()
-        ax.plot(df.index, df.loc[:, 'counts'])
-        ax.set_xlabel('2θ')
-        ax.set_ylabel('Counts')
-        title = 'XRD Spectrum at ({i}, {j}, {k})'.format(i=self.cube_coords[0],
-                                                         j=self.cube_coords[1],
-                                                         k=self.cube_coords[2])
-        ax.set_title(title)
-        return ax
+    peaks_by_hkl = {
+        '111': (18, 20),
+        '311': (35, 38),
+        '222': (37.5, 39),
+        '400': (42, 47),
+        '331': (47, 50),
+        '333': (55, 62),
+        '511': (55, 62),
+        '440': (62, 67),
+        '531': (67, 70),
+    }
+    class XRDScan(BaseSample.XRDScan):
+        def metric(self):
+            """
+            Compare the 2θ positions of two peaks. Using two peaks may correct
+            for differences is sample height on the instrument.
+            """
+            # Linear regression values determined by experiment
+            slope = -0.161144716842
+            yIntercept = 7.99106396434
+            result = 0
+            df = self.load_spectrum()
+            # Decide on two peaks to use for comparison
+            # List of possible peaks to look for
+            normal_range = (0.2, 1)
+            # Get the 2θ value of peak 1
+            peak1 = LMOSample.peaks_by_hkl['311']
+            range1 = df.loc[peak1[0]:peak1[1], 'counts']
+            theta1 = range1.argmax()
+            # Get the 2θ value of peak 2
+            peak2 = LMOSample.peaks_by_hkl['400']
+            range2 = df.loc[peak2[0]:peak2[1], 'counts']
+            theta2 = range2.argmax()
+            print(theta1, theta2)
+            # Check for non-sample scans (background tape, etc)
+            if df.loc[theta2, 'counts'] > 600 and df.loc[theta1, 'counts'] > 400:
+                # Subtract the 2theta values of the two peaks
+                diff = theta2 - theta1
+                # Apply calibration curve
+                result = (diff-yIntercept)/slope
+                # Normalize to result to the range 0 to 1
+                result = (result - normal_range[0])/(normal_range[1]-normal_range[0])
+            else:
+                # Some other background-type scan was collected
+                result = None
+            # Return the result
+            return result

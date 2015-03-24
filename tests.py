@@ -4,7 +4,7 @@ import os.path
 
 import pandas as pd
 
-from mapping import BaseSample, LMOSample, Scan, Cube
+from mapping import BaseSample, LMOSample, Cube
 from cycler import GalvanostatRun
 
 # class GalvanostatRunTest(unittest.TestCase):
@@ -23,10 +23,10 @@ class LMOSampleTest(unittest.TestCase):
     def test_metric(self):
         scan = self.sample.scans[0]
         df = scan.load_spectrum()
-        metric = self.sample.metric(scan)
+        metric = scan.metric()
         self.assertEqual(
             metric,
-            0.33343655345181483
+            0.37881338842990614
         )
 
 class CycleTest(unittest.TestCase):
@@ -176,9 +176,9 @@ class SlamFileTest(unittest.TestCase):
         os.rmdir('test-sample-frames')
 
 
-class ScanTest(unittest.TestCase):
+class XRDScanTest(unittest.TestCase):
     def setUp(self):
-        self.scan = Scan(Cube(1, 0, -1), 'sample')
+        self.scan = BaseSample.XRDScan(Cube(1, 0, -1), 'sample')
 
     def test_xy_coords(self):
         self.scan.cube_coords = Cube(1, -1, 0)
