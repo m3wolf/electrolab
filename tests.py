@@ -157,7 +157,7 @@ class SlamFileTest(unittest.TestCase):
         )
         self.assertEqual(
             context['scans'][3]['filename'],
-            'LiMn2O4-3'
+            'map-3'
         )
         self.assertEqual(
             context['xoffset'],

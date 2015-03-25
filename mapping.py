@@ -1,14 +1,17 @@
 # -*- coding: utf-8 -*-
 
 import jinja2, math
-from matplotlib import pylab, pyplot, collections, patches, colors
+from matplotlib import pylab, pyplot, collections, patches, colors, cm
 import numpy as np
 import pandas as pd
 import os
 
 def new_axes():
     """Create a new set of matplotlib axes for plotting"""
-    fig = pyplot.figure(figsize=(5, 5))
+    height = 5 # in inches
+    # Adjust width to accomodate colorbar
+    width = height/0.8
+    fig = pyplot.figure(figsize=(width, height))
     ax = pyplot.gca()
     return ax
 
@@ -267,6 +270,10 @@ class BaseSample():
         circle = patches.Circle((0, 0), radius=self.diameter/2,
                                 edgecolor='blue', fill=False, linestyle='dashed')
         ax.add_patch(circle)
+        # Add colormap to the side of the axes
+        mappable = cm.ScalarMappable(cmap=cmap)
+        mappable.set_array(np.arange(0, 2))
+        pyplot.colorbar(mappable, ax=ax)
         return ax
 
     def __repr__(self):
