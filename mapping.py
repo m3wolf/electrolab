@@ -64,6 +64,8 @@ class BaseSample():
     frame_step = 20 # How much to move detector by in degrees
     frame_width = 30 # 2-theta coverage of detector face
     scans = []
+    # Range to use for normalizing the metric into 0.0 to 0.1
+    normalize = colors.Normalize(0, 1)
     def __init__(self, center, diameter, collimator=0.5, rows=None,
                  sample_name='unknown', *args, **kwargs):
         self.center = center
@@ -236,6 +238,7 @@ class BaseSample():
         y = []
         values = []
         colors = []
+        alphas = []
         i = 0
         cmap = self.get_cmap()
         for scan in self.scans:
@@ -243,13 +246,8 @@ class BaseSample():
             coord = scan.xy_coords(self.unit_size)
             x.append(coord[0])
             y.append(coord[1])
-            metric = scan.metric()
-            values.append(metric)
-            if metric is None:
-                # Invalid scan
-                colors.append('white')
-            else:
-                colors.append(cmap(metric))
+            colors.append(scan.color())
+            alphas.append(scan.alpha())
         xy = list(zip(x, y))
         # Build and show the hexagons
         if not ax:
@@ -263,7 +261,9 @@ class BaseSample():
         for key, loc in enumerate(xy):
             hexagon = patches.RegularPolygon(xy=loc,
                                              numVertices=6,
-                                             radius=0.57*self.unit_size,
+                                             radius=0.595*self.unit_size,
+                                             linewidth=0,
+                                             alpha=alphas[key],
                                              color=colors[key])
             ax.add_patch(hexagon)
         # Add circle for theoretical edge
@@ -271,7 +271,7 @@ class BaseSample():
                                 edgecolor='blue', fill=False, linestyle='dashed')
         ax.add_patch(circle)
         # Add colormap to the side of the axes
-        mappable = cm.ScalarMappable(cmap=cmap)
+        mappable = cm.ScalarMappable(norm=self.normalize, cmap=cmap)
         mappable.set_array(np.arange(0, 2))
         pyplot.colorbar(mappable, ax=ax)
         return ax
@@ -284,6 +284,7 @@ class BaseSample():
         An XRD scan at one X,Y location. Several Scan objects make up a
         Sample object.
         """
+
         def __init__(self, location, filename, sample=None, *args, **kwargs):
             self.cube_coords = location
             self.filename = filename
@@ -298,7 +299,10 @@ class BaseSample():
             return (x, y)
 
         def load_spectrum(self):
-            filename = "{0}.plt".format(self.filename)
+            filename = "{samplename}-frames/{filename}.plt".format(
+                samplename=self.sample.sample_name,
+                filename=self.filename
+            )
             df = pd.read_csv(filename, names=['2theta', 'counts'],
                              sep=' ', comment='!', index_col=0)
             return df
@@ -314,6 +318,23 @@ class BaseSample():
             rows = self.sample.rows
             r = p/2/rows + 0.5
             return r
+
+        def color(self):
+            """
+            Use the metric for this material to determine what color this scan
+            should be on the resulting map.
+            """
+            cmap = self.sample.get_cmap()
+            metric = self.metric()
+            color = cmap(self.sample.normalize(metric))
+            return color
+
+        def alpha(self):
+            """
+            How opaque should this point be depending on the
+            reliability of the spectrum.
+            """
+            return 1
 
         def plot_spectrum(self, ax=None):
             df = self.load_spectrum()
@@ -348,6 +369,8 @@ class LMOSample(BaseSample):
         '440': (62, 67),
         '531': (67, 70),
     }
+    normalize = colors.Normalize(44, 45)
+
     class XRDScan(BaseSample.XRDScan):
         def metric(self):
             """
@@ -355,13 +378,7 @@ class LMOSample(BaseSample):
             for differences is sample height on the instrument.
             """
             # Linear regression values determined by experiment
-            slope = -0.161144716842
-            yIntercept = 7.99106396434
-            result = 0
             df = self.load_spectrum()
-            # Decide on two peaks to use for comparison
-            # List of possible peaks to look for
-            normal_range = (0.2, 1)
             # Get the 2θ value of peak 1
             peak1 = LMOSample.peaks_by_hkl['311']
             range1 = df.loc[peak1[0]:peak1[1], 'counts']
@@ -370,17 +387,16 @@ class LMOSample(BaseSample):
             peak2 = LMOSample.peaks_by_hkl['400']
             range2 = df.loc[peak2[0]:peak2[1], 'counts']
             theta2 = range2.argmax()
-            print(theta1, theta2)
-            # Check for non-sample scans (background tape, etc)
-            if df.loc[theta2, 'counts'] > 600 and df.loc[theta1, 'counts'] > 400:
-                # Subtract the 2theta values of the two peaks
-                diff = theta2 - theta1
-                # Apply calibration curve
-                result = (diff-yIntercept)/slope
-                # Normalize to result to the range 0 to 1
-                result = (result - normal_range[0])/(normal_range[1]-normal_range[0])
-            else:
-                # Some other background-type scan was collected
-                result = None
             # Return the result
-            return result
+            result = theta2-44
+            return theta2
+
+        def alpha(self):
+            """
+            Measure background fluorescence to detect tape.
+            """
+            spectrum = self.load_spectrum()
+            background = spectrum.loc[42, 'counts']
+            normalize = colors.Normalize(50, 200, clip=True)
+            alpha = normalize(background)
+            return alpha
