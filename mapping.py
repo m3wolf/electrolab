@@ -233,6 +233,28 @@ class BaseSample():
         """Return a function that converts values in range 0 to 1 to colors."""
         return pyplot.get_cmap(self.cmap_name)
 
+    def plot_map_with_spectrum(self):
+        fig, (map_axes, spectrum_axes) = pyplot.subplots(1, 2)
+        fig.set_figwidth(13.8)
+        fig.set_figheight(5)
+        self.plot_map(ax=map_axes)
+        self.plot_bulk_spectrum(ax=spectrum_axes)
+
+        return fig
+
+    def plot_bulk_spectrum(self, ax=None):
+        bulk_spectrum = pd.Series()
+        # Add a contribution from each map location
+        for scan in self.scans:
+            scan_spectrum = scan.load_spectrum()['counts']
+            corrected_spectrum = scan_spectrum * scan.reliability()
+            bulk_spectrum = bulk_spectrum.add(corrected_spectrum, fill_value=0)
+        bulk_spectrum = bulk_spectrum/len(self.scans)
+        bulk_spectrum.plot(ax=ax)
+        ax.set_ylabel('counts')
+        ax.set_title('Bulk spectrum')
+        return ax
+
     def plot_map(self, ax=None):
         x = []
         y = []
@@ -247,7 +269,7 @@ class BaseSample():
             x.append(coord[0])
             y.append(coord[1])
             colors.append(scan.color())
-            alphas.append(scan.alpha())
+            alphas.append(scan.reliability())
         xy = list(zip(x, y))
         # Build and show the hexagons
         if not ax:
@@ -329,10 +351,9 @@ class BaseSample():
             color = cmap(self.sample.normalize(metric))
             return color
 
-        def alpha(self):
+        def reliability(self):
             """
-            How opaque should this point be depending on the
-            reliability of the spectrum.
+            How reliable is the metric() returned for this scan.
             """
             return 1
 
@@ -391,12 +412,12 @@ class LMOSample(BaseSample):
             result = theta2-44
             return theta2
 
-        def alpha(self):
+        def reliability(self):
             """
             Measure background fluorescence to detect tape.
             """
             spectrum = self.load_spectrum()
             background = spectrum.loc[42, 'counts']
-            normalize = colors.Normalize(50, 200, clip=True)
-            alpha = normalize(background)
-            return alpha
+            normalize = colors.Normalize(75, 200, clip=True)
+            reliability = normalize(background)
+            return reliability
