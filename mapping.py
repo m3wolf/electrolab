@@ -35,7 +35,6 @@ class Cube():
         )
         return new
 
-
     def __eq__(self, other):
         result = False
         if self.i == other.i and self.j == other.j and self.k == other.k:
@@ -54,7 +53,7 @@ class BaseSample():
     A physical sample that gets mapped by XRD, presumed to be circular
     with center and diameter in millimeters. Collimator size given in mm.
     """
-    cmap_name = 'autumn'
+    cmap_name = 'summer'
     two_theta_range = (50, 90) # Detector angle range in degrees
     THETA1_MIN=0 # Source limits based on geometry
     THETA1_MAX=50
@@ -70,6 +69,7 @@ class BaseSample():
                  sample_name='unknown', *args, **kwargs):
         self.center = center
         self.diameter = diameter
+        self.collimator = collimator
         # Determine number of rows from collimator size
         if rows is None:
             self.rows = math.ceil(diameter/collimator/2)
@@ -233,29 +233,50 @@ class BaseSample():
         """Return a function that converts values in range 0 to 1 to colors."""
         return pyplot.get_cmap(self.cmap_name)
 
-    def plot_map_with_spectrum(self):
+    def plot_map_with_spectrum(self, scan=None):
         fig, (map_axes, spectrum_axes) = pyplot.subplots(1, 2)
         fig.set_figwidth(13.8)
         fig.set_figheight(5)
-        self.plot_map(ax=map_axes)
-        self.plot_bulk_spectrum(ax=spectrum_axes)
-
+        self.plot_map(ax=map_axes, highlightedScan=scan)
+        # Plot either the bulk spectrum or the specific spectrum requested
+        if scan is None:
+            self.plot_bulk_spectrum(ax=spectrum_axes)
+        else:
+            scan.plot_spectrum(ax=spectrum_axes)
         return fig
 
     def plot_bulk_spectrum(self, ax=None):
         bulk_spectrum = pd.Series()
+        scanCount = 0
         # Add a contribution from each map location
         for scan in self.scans:
-            scan_spectrum = scan.load_spectrum()['counts']
-            corrected_spectrum = scan_spectrum * scan.reliability()
-            bulk_spectrum = bulk_spectrum.add(corrected_spectrum, fill_value=0)
-        bulk_spectrum = bulk_spectrum/len(self.scans)
+            try:
+                scan_spectrum = scan.load_spectrum()['counts']
+            except OSError:
+                errorMsg = 'could not load "{filename}" for scan at {coords}'
+                errorMsg = errorMsg.format(
+                    filename = scan.filename,
+                    coords = scan.cube_coords,
+                )
+                print(errorMsg)
+            else:
+                corrected_spectrum = scan_spectrum * scan.reliability()
+                scanCount = scanCount + 1
+                bulk_spectrum = bulk_spectrum.add(corrected_spectrum, fill_value=0)
+        bulk_spectrum = bulk_spectrum/scanCount
         bulk_spectrum.plot(ax=ax)
         ax.set_ylabel('counts')
         ax.set_title('Bulk spectrum')
         return ax
 
-    def plot_map(self, ax=None):
+    def plot_map(self, ax=None, highlightedScan=None):
+        """
+        Generate a two-dimensional map of the electrode surface. Color is
+        determined by each scans metric() method. If no axes are given
+        via the `ax` argument, a new set will be used. Optionally, a
+        highlightedScan can be given which will show up as a different
+        color.
+        """
         x = []
         y = []
         values = []
@@ -268,8 +289,15 @@ class BaseSample():
             coord = scan.xy_coords(self.unit_size)
             x.append(coord[0])
             y.append(coord[1])
-            colors.append(scan.color())
-            alphas.append(scan.reliability())
+            try:
+                color = scan.color()
+            except OSError:
+                # Spectrum cannot be loaded for some reason
+                colors.append('black')
+                alphas.append(1)
+            else:
+                colors.append(color)
+                alphas.append(scan.reliability())
         xy = list(zip(x, y))
         # Build and show the hexagons
         if not ax:
@@ -287,6 +315,16 @@ class BaseSample():
                                              linewidth=0,
                                              alpha=alphas[key],
                                              color=colors[key])
+            ax.add_patch(hexagon)
+        # If a highlighted scan was given, show it in a different color
+        if highlightedScan is not None:
+            coords = highlightedScan.xy_coords(self.unit_size)
+            hexagon = patches.RegularPolygon(xy=coords,
+                                             numVertices=6,
+                                             radius=0.595*self.unit_size,
+                                             linewidth=0,
+                                             alpha=1,
+                                             color='red')
             ax.add_patch(hexagon)
         # Add circle for theoretical edge
         circle = patches.Circle((0, 0), radius=self.diameter/2,
@@ -314,10 +352,20 @@ class BaseSample():
             return super(BaseSample.XRDScan, self).__init__(*args, **kwargs)
 
         def xy_coords(self, unit_size=1):
-            # Convert internal coordinates to conventional cartesian coords
+            """Convert internal coordinates to conventional cartesian coords"""
             cube = self.cube_coords
             x = unit_size * 1/2 * (cube.i - cube.j)
             y = unit_size * math.sqrt(3)/2 * (cube.i + cube.j)
+            return (x, y)
+
+        def instrument_coords(self, unit_size=1):
+            """
+            Convert internal coordinates to cartesian coordinates relative to
+            the sample stage of the instrument.
+            """
+            xy = self.xy_coords(self.sample.unit_size)
+            x = xy[0] + self.sample.center[0]
+            y = xy[1] + self.sample.center[1]
             return (x, y)
 
         def load_spectrum(self):
@@ -330,6 +378,7 @@ class BaseSample():
             return df
 
         def metric(self):
+
             """
             Returns the calculated metric. Ex: ratio of two different phases.
             Intended to be overwritten by subclasses for specific
@@ -358,6 +407,10 @@ class BaseSample():
             return 1
 
         def plot_spectrum(self, ax=None):
+            """
+            Plot the XRD spectrum for this scan. Generates a new set of axes
+            unless supplied by the `ax` keyword.
+            """
             df = self.load_spectrum()
             if not ax:
                 fig = pyplot.figure()
@@ -416,8 +469,16 @@ class LMOSample(BaseSample):
             """
             Measure background fluorescence to detect tape.
             """
+            # Adjust the normalization range based on the scanning parameters
+            normalizeMin = 75 # Starting value
+            normalizeMin = normalizeMin * self.sample.scan_time/400
+            normalizeMin = normalizeMin *self.sample.collimator**2 / 0.5**2
+            normalizeMax = 150 # Starting value
+            normalizeMax = normalizeMax * self.sample.scan_time/400
+            normalizeMax = normalizeMax *self.sample.collimator**2 / 0.5**2
+            normalize = colors.Normalize(normalizeMin, normalizeMax, clip=True)
+            # Calculate reliability from background
             spectrum = self.load_spectrum()
-            background = spectrum.loc[42, 'counts']
-            normalize = colors.Normalize(75, 200, clip=True)
+            background = spectrum.loc[41:44, 'counts'].mean()
             reliability = normalize(background)
             return reliability
