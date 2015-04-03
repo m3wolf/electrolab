@@ -233,25 +233,29 @@ class BaseSample():
         """Return a function that converts values in range 0 to 1 to colors."""
         return pyplot.get_cmap(self.cmap_name)
 
-    def plot_map_with_spectrum(self, scan=None):
-        fig, (map_axes, spectrum_axes) = pyplot.subplots(1, 2)
+    def plot_map_with_diffractogram(self, scan=None):
+        fig, (map_axes, diffractogram_axes) = pyplot.subplots(1, 2)
         fig.set_figwidth(13.8)
         fig.set_figheight(5)
         self.plot_map(ax=map_axes, highlightedScan=scan)
-        # Plot either the bulk spectrum or the specific spectrum requested
+        # Plot either the bulk diffractogram or the specific scan requested
         if scan is None:
-            self.plot_bulk_spectrum(ax=spectrum_axes)
+            self.plot_bulk_diffractogram(ax=diffractogram_axes)
         else:
-            scan.plot_spectrum(ax=spectrum_axes)
+            scan.plot_diffractogram(ax=diffractogram_axes)
         return fig
 
-    def plot_bulk_spectrum(self, ax=None):
-        bulk_spectrum = pd.Series()
+    def bulk_diffractogram(self):
+        """
+        Calculate the bulk diffractogram by averaging each scan weighted
+        by reliability.
+        """
+        bulk_diffractogram = pd.Series()
         scanCount = 0
         # Add a contribution from each map location
         for scan in self.scans:
             try:
-                scan_spectrum = scan.load_spectrum()['counts']
+                scan_diffractogram = scan.load_diffractogram()['counts']
             except OSError:
                 errorMsg = 'could not load "{filename}" for scan at {coords}'
                 errorMsg = errorMsg.format(
@@ -260,16 +264,22 @@ class BaseSample():
                 )
                 print(errorMsg)
             else:
-                corrected_spectrum = scan_spectrum * scan.reliability()
+                corrected_diffractogram = scan_diffractogram * scan.reliability()
                 scanCount = scanCount + 1
-                bulk_spectrum = bulk_spectrum.add(corrected_spectrum, fill_value=0)
-        bulk_spectrum = bulk_spectrum/scanCount
-        bulk_spectrum.plot(ax=ax)
+                bulk_diffractogram = bulk_diffractogram.add(corrected_diffractogram, fill_value=0)
+        # Divide by the total number of scans included
+        bulk_diffractogram = bulk_diffractogram/scanCount
+        return bulk_diffractogram
+
+    def plot_bulk_diffractogram(self, ax=None):
+        bulk_diffractogram = self.bulk_diffractogram()
+        bulk_diffractogram.plot(ax=ax)
         ax.set_ylabel('counts')
-        ax.set_title('Bulk spectrum')
+        ax.set_title('Bulk diffractogram')
         return ax
 
     def plot_map(self, ax=None, highlightedScan=None):
+
         """
         Generate a two-dimensional map of the electrode surface. Color is
         determined by each scans metric() method. If no axes are given
@@ -292,7 +302,7 @@ class BaseSample():
             try:
                 color = scan.color()
             except OSError:
-                # Spectrum cannot be loaded for some reason
+                # Diffractogram cannot be loaded for some reason
                 colors.append('black')
                 alphas.append(1)
             else:
@@ -368,7 +378,7 @@ class BaseSample():
             y = xy[1] + self.sample.center[1]
             return (x, y)
 
-        def load_spectrum(self):
+        def load_diffractogram(self):
             filename = "{samplename}-frames/{filename}.plt".format(
                 samplename=self.sample.sample_name,
                 filename=self.filename
@@ -406,19 +416,19 @@ class BaseSample():
             """
             return 1
 
-        def plot_spectrum(self, ax=None):
+        def plot_diffractogram(self, ax=None):
             """
-            Plot the XRD spectrum for this scan. Generates a new set of axes
+            Plot the XRD diffractogram for this scan. Generates a new set of axes
             unless supplied by the `ax` keyword.
             """
-            df = self.load_spectrum()
+            df = self.load_diffractogram()
             if not ax:
                 fig = pyplot.figure()
                 ax = pyplot.gca()
             ax.plot(df.index, df.loc[:, 'counts'])
             ax.set_xlabel('2θ')
             ax.set_ylabel('Counts')
-            title = 'XRD Spectrum at ({i}, {j}, {k})'.format(
+            title = 'XRD Diffractogram at ({i}, {j}, {k})'.format(
                 i=self.cube_coords[0],
                 j=self.cube_coords[1],
                 k=self.cube_coords[2]
@@ -452,7 +462,7 @@ class LMOSample(BaseSample):
             for differences is sample height on the instrument.
             """
             # Linear regression values determined by experiment
-            df = self.load_spectrum()
+            df = self.load_diffractogram()
             # Get the 2θ value of peak 1
             peak1 = LMOSample.peaks_by_hkl['311']
             range1 = df.loc[peak1[0]:peak1[1], 'counts']
@@ -478,7 +488,7 @@ class LMOSample(BaseSample):
             normalizeMax = normalizeMax *self.sample.collimator**2 / 0.5**2
             normalize = colors.Normalize(normalizeMin, normalizeMax, clip=True)
             # Calculate reliability from background
-            spectrum = self.load_spectrum()
-            background = spectrum.loc[41:44, 'counts'].mean()
+            diffractogram = self.load_diffractogram()
+            background = diffractogram.loc[41:44, 'counts'].mean()
             reliability = normalize(background)
             return reliability
