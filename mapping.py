@@ -5,6 +5,7 @@ from matplotlib import pylab, pyplot, collections, patches, colors, cm
 import numpy as np
 import pandas as pd
 import os
+from sklearn import svm
 
 def new_axes():
     """Create a new set of matplotlib axes for plotting"""
@@ -21,7 +22,7 @@ class Cube():
         self.i = i
         self.j = j
         self.k = k
-        super(Cube, self).__init__(*args, **kwargs)
+        # super(Cube, self).__init__(*args, **kwargs)
 
     def __getitem__(self, key):
         coord_list = [self.i, self.j, self.k]
@@ -52,6 +53,7 @@ class BaseSample():
     """
     A physical sample that gets mapped by XRD, presumed to be circular
     with center and diameter in millimeters. Collimator size given in mm.
+    scan_time determines seconds spent at each detector position.
     """
     cmap_name = 'summer'
     two_theta_range = (50, 90) # Detector angle range in degrees
@@ -59,17 +61,17 @@ class BaseSample():
     THETA1_MAX=50
     THETA2_MIN=0 # Detector limits based on geometry
     THETA2_MAX=55
-    scan_time = 3 # Seconds at each detector angle
     frame_step = 20 # How much to move detector by in degrees
     frame_width = 30 # 2-theta coverage of detector face
     scans = []
     # Range to use for normalizing the metric into 0.0 to 0.1
-    normalize = colors.Normalize(0, 1)
-    def __init__(self, center, diameter, collimator=0.5, rows=None,
-                 sample_name='unknown', *args, **kwargs):
+    normalizer = colors.Normalize(0, 1)
+    def __init__(self, center, diameter, collimator=0.5, scan_time=3,
+                 rows=None, sample_name='unknown', *args, **kwargs):
         self.center = center
         self.diameter = diameter
         self.collimator = collimator
+        self.scan_time = scan_time # Seconds at each detector angle
         # Determine number of rows from collimator size
         if rows is None:
             self.rows = math.ceil(diameter/collimator/2)
@@ -77,7 +79,7 @@ class BaseSample():
             self.rows = rows
         self.sample_name = sample_name
         self.create_scans()
-        return super(BaseSample, self).__init__(*args, **kwargs)
+        # return super(BaseSample, self).__init__(*args, **kwargs)
 
     @property
     def unit_size(self):
@@ -255,7 +257,7 @@ class BaseSample():
         # Add a contribution from each map location
         for scan in self.scans:
             try:
-                scan_diffractogram = scan.load_diffractogram()['counts']
+                scan_diffractogram = scan.diffractogram()['counts']
             except OSError:
                 errorMsg = 'could not load "{filename}" for scan at {coords}'
                 errorMsg = errorMsg.format(
@@ -264,6 +266,7 @@ class BaseSample():
                 )
                 print(errorMsg)
             else:
+                # print(scan.reliability())
                 corrected_diffractogram = scan_diffractogram * scan.reliability()
                 scanCount = scanCount + 1
                 bulk_diffractogram = bulk_diffractogram.add(corrected_diffractogram, fill_value=0)
@@ -279,7 +282,6 @@ class BaseSample():
         return ax
 
     def plot_map(self, ax=None, highlightedScan=None):
-
         """
         Generate a two-dimensional map of the electrode surface. Color is
         determined by each scans metric() method. If no axes are given
@@ -341,7 +343,7 @@ class BaseSample():
                                 edgecolor='blue', fill=False, linestyle='dashed')
         ax.add_patch(circle)
         # Add colormap to the side of the axes
-        mappable = cm.ScalarMappable(norm=self.normalize, cmap=cmap)
+        mappable = cm.ScalarMappable(norm=self.normalizer, cmap=cmap)
         mappable.set_array(np.arange(0, 2))
         pyplot.colorbar(mappable, ax=ax)
         return ax
@@ -354,18 +356,24 @@ class BaseSample():
         An XRD scan at one X,Y location. Several Scan objects make up a
         Sample object.
         """
-
+        _df = None # Replaced by load_diffractogram() method
         def __init__(self, location, filename, sample=None, *args, **kwargs):
             self.cube_coords = location
             self.filename = filename
             self.sample = sample
-            return super(BaseSample.XRDScan, self).__init__(*args, **kwargs)
+            # return super(BaseSample.XRDScan, self).__init__(*args, **kwargs)
 
-        def xy_coords(self, unit_size=1):
+        def xy_coords(self, unit_size=None):
             """Convert internal coordinates to conventional cartesian coords"""
+            # Get default unit vector magnitude if not given
+            if unit_size is None:
+                unit = self.sample.unit_size
+            else:
+                unit = unit_size
+            # Calculate x and y positions
             cube = self.cube_coords
-            x = unit_size * 1/2 * (cube.i - cube.j)
-            y = unit_size * math.sqrt(3)/2 * (cube.i + cube.j)
+            x = unit * 1/2 * (cube.i - cube.j)
+            y = unit * math.sqrt(3)/2 * (cube.i + cube.j)
             return (x, y)
 
         def instrument_coords(self, unit_size=1):
@@ -378,22 +386,45 @@ class BaseSample():
             y = xy[1] + self.sample.center[1]
             return (x, y)
 
+        def diffractogram(self):
+            """Return a pandas dataframe with the X-ray diffractogram for this
+            scan.
+            """
+            if self._df is None:
+                df = self.load_diffractogram()
+            else:
+                df = self._df
+            return df
+
         def load_diffractogram(self):
             filename = "{samplename}-frames/{filename}.plt".format(
                 samplename=self.sample.sample_name,
                 filename=self.filename
             )
-            df = pd.read_csv(filename, names=['2theta', 'counts'],
+            self._df = pd.read_csv(filename, names=['2theta', 'counts'],
                              sep=' ', comment='!', index_col=0)
-            return df
+            self.subtract_background()
+            return self._df
+
+        def subtract_background(self):
+
+            """
+            Calculate the baseline for the diffractogram and generate a
+            background correction.
+            """
+            # Determine a background line from the noise on either side of our peak of interest
+            noiseLeft = self._df[42.25:43.75]
+            noiseRight = self._df[45.25:46.75]
+            linearRegion = pd.concat([noiseLeft, noiseRight])
+            background = svm.LinearSVR()
+            linearX = list(zip(linearRegion.index))
+            background.fit(X=linearX, y=linearRegion.counts)
+            # Extrapolate the background for the whole spectrum
+            self._df['background'] = background.predict(list(zip(self._df.index)))
+            self._df['subtracted'] = self._df.counts-self._df.background
+            return self._df
 
         def metric(self):
-
-            """
-            Returns the calculated metric. Ex: ratio of two different phases.
-            Intended to be overwritten by subclasses for specific
-            sample materials.
-            """
             # Just return the distance from bottom left to top right
             p = self.cube_coords[0]
             rows = self.sample.rows
@@ -407,7 +438,7 @@ class BaseSample():
             """
             cmap = self.sample.get_cmap()
             metric = self.metric()
-            color = cmap(self.sample.normalize(metric))
+            color = cmap(self.sample.normalizer(metric))
             return color
 
         def reliability(self):
@@ -421,7 +452,7 @@ class BaseSample():
             Plot the XRD diffractogram for this scan. Generates a new set of axes
             unless supplied by the `ax` keyword.
             """
-            df = self.load_diffractogram()
+            df = self.diffractogram()
             if not ax:
                 fig = pyplot.figure()
                 ax = pyplot.gca()
@@ -435,60 +466,3 @@ class BaseSample():
             )
             ax.set_title(title)
             return ax
-
-class LMOSample(BaseSample):
-    """
-    Sample for mapping LiMn2O4 cathodes.
-    """
-    two_theta_range = (30, 50)
-    scan_time = 600 # 10 minutes per frame
-    peaks_by_hkl = {
-        '111': (18, 20),
-        '311': (35, 38),
-        '222': (37.5, 39),
-        '400': (42, 47),
-        '331': (47, 50),
-        '333': (55, 62),
-        '511': (55, 62),
-        '440': (62, 67),
-        '531': (67, 70),
-    }
-    normalize = colors.Normalize(44, 45)
-
-    class XRDScan(BaseSample.XRDScan):
-        def metric(self):
-            """
-            Compare the 2θ positions of two peaks. Using two peaks may correct
-            for differences is sample height on the instrument.
-            """
-            # Linear regression values determined by experiment
-            df = self.load_diffractogram()
-            # Get the 2θ value of peak 1
-            peak1 = LMOSample.peaks_by_hkl['311']
-            range1 = df.loc[peak1[0]:peak1[1], 'counts']
-            theta1 = range1.argmax()
-            # Get the 2θ value of peak 2
-            peak2 = LMOSample.peaks_by_hkl['400']
-            range2 = df.loc[peak2[0]:peak2[1], 'counts']
-            theta2 = range2.argmax()
-            # Return the result
-            result = theta2-44
-            return theta2
-
-        def reliability(self):
-            """
-            Measure background fluorescence to detect tape.
-            """
-            # Adjust the normalization range based on the scanning parameters
-            normalizeMin = 75 # Starting value
-            normalizeMin = normalizeMin * self.sample.scan_time/400
-            normalizeMin = normalizeMin *self.sample.collimator**2 / 0.5**2
-            normalizeMax = 150 # Starting value
-            normalizeMax = normalizeMax * self.sample.scan_time/400
-            normalizeMax = normalizeMax *self.sample.collimator**2 / 0.5**2
-            normalize = colors.Normalize(normalizeMin, normalizeMax, clip=True)
-            # Calculate reliability from background
-            diffractogram = self.load_diffractogram()
-            background = diffractogram.loc[41:44, 'counts'].mean()
-            reliability = normalize(background)
-            return reliability
