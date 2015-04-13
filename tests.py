@@ -4,29 +4,44 @@ import os.path
 
 import pandas as pd
 
-from mapping import BaseSample, LMOSample, Cube
+from mapping import BaseSample, Cube
+from samples import LMOSolidSolutionSample
 from cycler import GalvanostatRun
 
-# class GalvanostatRunTest(unittest.TestCase):
-#     # Currently just tests import statement
-#     def test_import(self):
-#         run = GalvanostatRun()
 
-class LMOSampleTest(unittest.TestCase):
+class LMOSolidSolutionTest(unittest.TestCase):
     def setUp(self):
-        self.sample = LMOSample(center=(0.078,-30.688),
+        self.sample = LMOSolidSolutionSample(center=(0.078,-30.688),
                                 diameter=15,
                                 collimator=0.5,
-                                sample_name='test-spectrum')
+                                sample_name='test-sample')
         self.sample.create_scans()
 
     def test_metric(self):
         scan = self.sample.scans[0]
-        df = scan.load_spectrum()
+        df = scan.load_diffractogram()
         metric = scan.metric()
         self.assertEqual(
             metric,
-            0.37881338842990614
+            44.185
+        )
+
+    def test_reliability_sample(self):
+        scan = self.sample.scans[0]
+        scan.filename = 'LMO-sample'
+        reliability = scan.reliability()
+        self.assertTrue(
+            reliability > 0.9,
+            'Reliability {} is not > 0.9'.format(reliability)
+       )
+
+    def test_reliability_background(self):
+        scan = self.sample.scans[0]
+        scan.filename = 'LMO-background'
+        reliability = scan.reliability()
+        self.assertTrue(
+            reliability < 0.1,
+            'Reliability {} is not < 0.1'.format(reliability)
         )
 
 class CycleTest(unittest.TestCase):
@@ -52,7 +67,7 @@ class SlamFileTest(unittest.TestCase):
 
     def setUp(self):
         self.sample = BaseSample(center=(0, 0), diameter=12.7, rows=2,
-                                 sample_name='test-sample')
+                                 sample_name='slamfile-test')
         self.sample.two_theta_range = (50, 90)
 
     def test_number_of_frames(self):
@@ -169,11 +184,22 @@ class SlamFileTest(unittest.TestCase):
         )
 
     def test_write_slamfile(self):
-        self.assertFalse(os.path.exists('test-sample-frames'))
+        directory = '{}-frames'.format(self.sample.sample_name)
+        # Check that the directory does not already exist
+        self.assertFalse(
+            os.path.exists(directory),
+            'Directory {} already exists, cannot test'.format(directory)
+        )
+        # Write the slamfile
         result = self.sample.write_slamfile()
-        self.assertTrue(os.path.exists('test-sample-frames'))
-        os.remove('test-sample-frames/test-sample.slm')
-        os.rmdir('test-sample-frames')
+        # Test if the correct things were created
+        self.assertTrue(os.path.exists(directory))
+        # Clean up
+        os.remove('{directory}/{filename}.slm'.format(
+            directory=directory,
+            filename=self.sample.sample_name)
+        )
+        os.rmdir(directory)
 
 
 class XRDScanTest(unittest.TestCase):

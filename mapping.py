@@ -5,6 +5,7 @@ from matplotlib import pylab, pyplot, collections, patches, colors, cm
 import numpy as np
 import pandas as pd
 import os
+from scipy.stats import linregress
 from sklearn import svm
 
 def new_axes():
@@ -63,15 +64,17 @@ class BaseSample():
     THETA2_MAX=55
     frame_step = 20 # How much to move detector by in degrees
     frame_width = 30 # 2-theta coverage of detector face
+    scan_time = 300 # 5 minutes per scan
     scans = []
     # Range to use for normalizing the metric into 0.0 to 0.1
     normalizer = colors.Normalize(0, 1)
-    def __init__(self, center, diameter, collimator=0.5, scan_time=3,
+    def __init__(self, center, diameter, collimator=0.5, scan_time=None,
                  rows=None, sample_name='unknown', *args, **kwargs):
         self.center = center
         self.diameter = diameter
         self.collimator = collimator
-        self.scan_time = scan_time # Seconds at each detector angle
+        if scan_time is not None:
+            self.scan_time = scan_time # Seconds at each detector angle
         # Determine number of rows from collimator size
         if rows is None:
             self.rows = math.ceil(diameter/collimator/2)
@@ -235,11 +238,11 @@ class BaseSample():
         """Return a function that converts values in range 0 to 1 to colors."""
         return pyplot.get_cmap(self.cmap_name)
 
-    def plot_map_with_diffractogram(self, scan=None):
+    def plot_map_with_diffractogram(self, scan=None, alpha=None):
         fig, (map_axes, diffractogram_axes) = pyplot.subplots(1, 2)
         fig.set_figwidth(13.8)
         fig.set_figheight(5)
-        self.plot_map(ax=map_axes, highlightedScan=scan)
+        self.plot_map(ax=map_axes, highlightedScan=scan, alpha=alpha)
         # Plot either the bulk diffractogram or the specific scan requested
         if scan is None:
             self.plot_bulk_diffractogram(ax=diffractogram_axes)
@@ -281,7 +284,7 @@ class BaseSample():
         ax.set_title('Bulk diffractogram')
         return ax
 
-    def plot_map(self, ax=None, highlightedScan=None):
+    def plot_map(self, ax=None, highlightedScan=None, alpha=None):
         """
         Generate a two-dimensional map of the electrode surface. Color is
         determined by each scans metric() method. If no axes are given
@@ -309,7 +312,11 @@ class BaseSample():
                 alphas.append(1)
             else:
                 colors.append(color)
-                alphas.append(scan.reliability())
+                # User can specify an alpha value, otherwise use reliability
+                if alpha is not None:
+                    alphas.append(alpha)
+                else:
+                    alphas.append(scan.reliability())
         xy = list(zip(x, y))
         # Build and show the hexagons
         if not ax:
@@ -386,41 +393,47 @@ class BaseSample():
             y = xy[1] + self.sample.center[1]
             return (x, y)
 
-        def diffractogram(self):
+        def diffractogram(self, filename=None):
             """Return a pandas dataframe with the X-ray diffractogram for this
             scan.
             """
             if self._df is None:
-                df = self.load_diffractogram()
+                df = self.load_diffractogram(filename)
             else:
                 df = self._df
             return df
 
-        def load_diffractogram(self):
-            filename = "{samplename}-frames/{filename}.plt".format(
-                samplename=self.sample.sample_name,
-                filename=self.filename
-            )
+        def load_diffractogram(self, filename=None):
+            if filename is None:
+                # Try and determine filename from the sample
+                filename = "{samplename}-frames/{filename}.plt".format(
+                    samplename=self.sample.sample_name,
+                    filename=self.filename
+                )
             self._df = pd.read_csv(filename, names=['2theta', 'counts'],
                              sep=' ', comment='!', index_col=0)
             self.subtract_background()
             return self._df
 
         def subtract_background(self):
-
             """
             Calculate the baseline for the diffractogram and generate a
             background correction.
             """
+            background = self._df.copy()
+            # Remove registered peaks
+            for key, peak in self.peaks_by_hkl.items():
+                background.drop(background[peak[0]:peak[1]].index, inplace=True)
             # Determine a background line from the noise on either side of our peak of interest
             noiseLeft = self._df[42.25:43.75]
             noiseRight = self._df[45.25:46.75]
             linearRegion = pd.concat([noiseLeft, noiseRight])
-            background = svm.LinearSVR()
-            linearX = list(zip(linearRegion.index))
-            background.fit(X=linearX, y=linearRegion.counts)
+            regression = linregress(x=linearRegion.index,
+                                    y=linearRegion.counts)
+            slope = regression[0]
+            yIntercept = regression[1]
             # Extrapolate the background for the whole spectrum
-            self._df['background'] = background.predict(list(zip(self._df.index)))
+            self._df['background'] = self._df.index * slope + yIntercept
             self._df['subtracted'] = self._df.counts-self._df.background
             return self._df
 
@@ -457,7 +470,7 @@ class BaseSample():
                 fig = pyplot.figure()
                 ax = pyplot.gca()
             ax.plot(df.index, df.loc[:, 'counts'])
-            ax.set_xlabel('2θ')
+            ax.set_xlabel(r'$2\theta$')
             ax.set_ylabel('Counts')
             title = 'XRD Diffractogram at ({i}, {j}, {k})'.format(
                 i=self.cube_coords[0],
