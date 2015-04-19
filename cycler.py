@@ -5,6 +5,9 @@ import pandas as pd
 def read_csv(*args, **kwargs):
     """Wrapper around pandas read_csv that filters out crappy data"""
     kwargs['na_values'] = 'XXX'
+    kwargs['sep'] = '\t'
+    # Skip all the initial metadata
+    kwargs['skiprows'] = 69
     df = pd.read_csv(*args, **kwargs)
     return df
 
@@ -28,16 +31,18 @@ class GalvanostatRun():
     """
     cycles = []
 
-    def __init__(self, df, mass=None, *args, **kwargs):
-        self._df = df
+    def __init__(self, filename, mass=None, *args, **kwargs):
+        self._df = read_csv(filename)
         self.cycles = []
-        all_cycles = self._df.loc[self._df['mode']!=3]
+        # Remove the initial resting period
+        restingIndexes = self._df.loc[self._df['mode']==3].index
+        self._df.drop(restingIndexes, inplace=True)
         # Calculate capacity from charge
         if mass:
-            all_cycles.loc[:,'capacity'] = all_cycles.loc[:,'(Q-Qo)/mA.h']/mass
+            self._df.loc[:,'capacity'] = self._df.loc[:,'(Q-Qo)/mA.h']/mass
         # Split the data into cycles, except the initial resting phase
-        if 'cycle number' in all_cycles.columns:
-            cycles = list(all_cycles.groupby('cycle number'))
+        if 'cycle number' in self._df.columns:
+            cycles = list(self._df.groupby('cycle number'))
         else:
             cycles = [(0, all_cycles)]
         # Create Cycle objects for each cycle
