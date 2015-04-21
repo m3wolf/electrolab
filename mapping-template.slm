@@ -14,8 +14,8 @@ SCAN /SINGLERUN {{ number_of_frames }} &
  /X={{ '%0.3f' | format(scan.x+xoffset) }} /Y={{ '%0.3f' | format(scan.y+yoffset) }} /Z=@7 &
  /AUX=1.000 /AXIS="1-2T (Th2-det)" /WIDTH={{ frame_step}} /SCANTIME={{ scan_time }} /TITLE=? &
  /SAMPLE="{{ scan.filename }}" /NUMSAMPLE=1 /NAME={{ scan.filename }} &
- /RUN=1 /FRAMENO=0 /DISPLAY=15 /REALTIME /CLEAR /MODE=Step &
- /OSCILLATE=None /AMPLITUDE=2
+ /RUN=1 /FRAMENO=0 /DISPLAY=15 /VIDEO /CLEAR /MODE=Step &
+ /OSCILLATE=None /AMPLITUDE=0
 
 ! Integration
 {% for frame in frames %}

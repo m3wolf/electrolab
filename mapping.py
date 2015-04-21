@@ -4,6 +4,7 @@ import jinja2, math
 from matplotlib import pylab, pyplot, collections, patches, colors, cm
 import numpy as np
 import pandas as pd
+import PIL
 import os
 from scipy.stats import linregress
 from sklearn import svm
@@ -137,6 +138,14 @@ class BaseSample():
                     curr_coords += vector
                     yield curr_coords
 
+    def directory(self):
+        return '{samplename}-frames'.format(
+            samplename=self.sample_name
+        )
+
+    def xy_lim(self):
+        return self.diameter/2*1.25
+
     def write_slamfile(self, f=None):
         """
         Format the sample into a slam file that GADDS can process.
@@ -148,9 +157,7 @@ class BaseSample():
         context = self.get_context()
         # Create file and directory if necessary
         if f is None:
-            directory = '{samplename}-frames'.format(
-                samplename=self.sample_name
-            )
+            directory = self.directory()
             if not os.path.exists(directory):
                 os.makedirs(directory)
             filename = '{dir}/{samplename}.slm'.format(
@@ -238,14 +245,14 @@ class BaseSample():
         """Return a function that converts values in range 0 to 1 to colors."""
         return pyplot.get_cmap(self.cmap_name)
 
-    def plot_map_with_diffractogram(self, scan=None, alpha=None):
+    def plot_map_with_image(self, scan=None, alpha=None):
         fig, (map_axes, diffractogram_axes) = pyplot.subplots(1, 2)
         fig.set_figwidth(13.8)
         fig.set_figheight(5)
         self.plot_map(ax=map_axes, highlightedScan=scan, alpha=alpha)
         # Plot either the bulk diffractogram or the specific scan requested
         if scan is None:
-            self.plot_bulk_diffractogram(ax=diffractogram_axes)
+            self.plot_composite_image(ax=diffractogram_axes)
         else:
             scan.plot_diffractogram(ax=diffractogram_axes)
         return fig
@@ -322,7 +329,7 @@ class BaseSample():
         if not ax:
             # New axes unless one was already created
             ax = new_axes()
-        xy_lim = self.diameter/2*1.25
+        xy_lim = self.xy_lim()
         ax.set_xlim([-xy_lim, xy_lim])
         ax.set_ylim([-xy_lim, xy_lim])
         ax.set_xlabel('mm')
@@ -355,6 +362,68 @@ class BaseSample():
         pyplot.colorbar(mappable, ax=ax)
         return ax
 
+    def composite_image(self):
+        """
+        Combine all the individual photos from the diffractometer and
+        merge them into one image.
+        """
+        # Check for a cached image to return
+        compositeImage = getattr(self, '_composite_image', None)
+        if compositeImage is None: # No cached image
+            dots_per_mm = 640/7 # 640px/7mm
+            size = (
+                int(2 * self.xy_lim() * dots_per_mm),
+                int(2 * self.xy_lim() * dots_per_mm)
+            )
+            compositeImage = PIL.Image.new(size=size, mode='RGBA', color='white')
+            centerX = size[0]/2
+            centerY = size[1]/2
+            # Step through each scan
+            for scan in self.scans:
+                filename = '{dir}/{file_base}_01.jpg'.format(
+                    dir=self.directory(),
+                    file_base=scan.filename
+                )
+                rawImage = PIL.Image.open(filename)
+                rawImage = rawImage.rotate(180)
+                # Create a single frame to average with the current composite
+                sampleImage = PIL.Image.new(size=size, mode='RGBA', color=(256, 256, 0, 0))
+                pixel_coords = (
+                    scan.xy_coords()[0] * dots_per_mm,
+                    scan.xy_coords()[1] * dots_per_mm
+                )
+                center = (
+                    size[0]/2 + pixel_coords[0],
+                    size[1]/2 - pixel_coords[1]
+                )
+                box = (
+                    int(center[0] - rawImage.size[0]/2),
+                    int(center[1] - rawImage.size[1]/2),
+                )
+                sampleImage.paste(rawImage, box=box)
+                # Apply this scan's image to the composite
+                compositeImage.paste(rawImage, box=box)
+            # Save a cached version
+            self._composite_image = compositeImage
+        compositeImage.save('composite-image.png')
+        return compositeImage
+
+    def plot_composite_image(self, ax=None):
+        """
+        Show the composite micrograph image on a set of axes.
+        """
+        if ax is None:
+            ax = new_axes()
+        axis_limits = (
+            -self.xy_lim(), self.xy_lim(),
+            -self.xy_lim(), self.xy_lim()
+        )
+        ax.imshow(self.composite_image(), extent=axis_limits)
+        ax.set_title('Micrograph of Mapped Area')
+        ax.set_xlabel('mm')
+        ax.set_ylabel('mm')
+        return ax
+
     def __repr__(self):
         return '<Sample: {name}>'.format(name=self.sample_name)
 
@@ -363,6 +432,7 @@ class BaseSample():
         An XRD scan at one X,Y location. Several Scan objects make up a
         Sample object.
         """
+        peaks_by_hkl = {}
         _df = None # Replaced by load_diffractogram() method
         def __init__(self, location, filename, sample=None, *args, **kwargs):
             self.cube_coords = location
