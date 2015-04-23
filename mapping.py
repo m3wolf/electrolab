@@ -63,6 +63,7 @@ class BaseSample():
     THETA1_MAX=50
     THETA2_MIN=0 # Detector limits based on geometry
     THETA2_MAX=55
+    microscope_zoom = 6
     frame_step = 20 # How much to move detector by in degrees
     frame_width = 30 # 2-theta coverage of detector face
     scan_time = 300 # 5 minutes per scan
@@ -195,6 +196,7 @@ class BaseSample():
             'yoffset': self.center[1],
             'theta1': self.get_theta1(),
             'theta2': self.get_theta2_start(),
+            'aux': self.microscope_zoom,
             'scan_time': self.scan_time,
             'total_time': total_time,
             'sample_name': self.sample_name
@@ -370,7 +372,8 @@ class BaseSample():
         # Check for a cached image to return
         compositeImage = getattr(self, '_composite_image', None)
         if compositeImage is None: # No cached image
-            dots_per_mm = 640/7 # 640px/7mm
+            # dpm taken from camera calibration (640px/~12.90mm)
+            dots_per_mm = self.microscope_zoom * 99.2 / 2
             size = (
                 int(2 * self.xy_lim() * dots_per_mm),
                 int(2 * self.xy_lim() * dots_per_mm)
