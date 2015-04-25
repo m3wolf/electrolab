@@ -529,9 +529,17 @@ class BaseSample():
 
         def reliability(self):
             """
-            How reliable is the metric() returned for this scan.
+            Use peak area to determine how likely this scan is to represent
+            sample rather than tape.
             """
-            return 1
+            normalize = self.sample.reliability_normalizer
+            # Determine peak area for normalization
+            df = self.diffractogram()
+            peakRange = self.sample.peak_list[self.sample.reliability_peak]
+            peak = df.loc[peakRange[0]:peakRange[1], 'subtracted']
+            peakArea = np.trapz(y=peak, x=peak.index)
+            reliability = normalize(peakArea)
+            return reliability
 
         def plot_diffractogram(self, ax=None):
             """
@@ -552,3 +560,52 @@ class BaseSample():
             )
             ax.set_title(title)
             return ax
+
+
+class SolidSolutionSample(BaseSample):
+    """
+    Class for mapping sample that discharge by the solid solution
+    mechanism. Operates by change in 2-theta peak position.
+    """
+    class XRDScan(BaseSample.XRDScan):
+        def metric(self):
+            """
+            Return the 2θ difference of self.peak1 and self.peak2. Peak
+            difference is used to overcome errors caused by shifter
+            patterns.
+            """
+            df = self.diffractogram()
+            # Get the 2θ value of peak
+            peak2 = self.sample.peak_list[self.sample.metric_peak]
+            range2 = df.loc[peak2[0]:peak2[1], 'subtracted']
+            theta2 = range2.argmax()
+            return theta2
+
+
+class TwoPhaseSample(BaseSample):
+    """
+    Class for mapping sample that discharge by a two-phase
+    mechanism. Operates by the ratio of peak areas for each phase.
+    """
+    class XRDScan(BaseSample.XRDScan):
+        def metric(self):
+            """
+            Compare the ratio of two peaks, one for discharged and one for
+            charged material.
+            """
+            df = self.diffractogram()
+            # Get peak dataframes for integration
+            peakDischarged = df.loc[
+                self.sample.peak_list[self.sample.peak_discharged],
+                'subtracted'
+            ]
+            peakCharged = df.loc[
+                self.sample.peak_list[self.sample.peak_charged],
+                'subtracted'
+            ]
+            # Integrate peaks
+            areaCharged = np.trapz(y=peakCharged, x=peakCharged.index)
+            areaDischarged = np.trapz(y=peakDischarged, x=peakDischarged.index)
+            # Compare areas of the two peaks
+            ratio = areaCharged/(areaCharged+areaDischarged)
+            return ratio
