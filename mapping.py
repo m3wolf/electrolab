@@ -69,7 +69,7 @@ class BaseSample():
     scan_time = 300 # 5 minutes per scan
     scans = []
     # Range to use for normalizing the metric into 0.0 to 0.1
-    normalizer = colors.Normalize(0, 1)
+    metric_normalizer = colors.Normalize(0, 1)
     def __init__(self, center, diameter, collimator=0.5, scan_time=None,
                  rows=None, sample_name='unknown', *args, **kwargs):
         self.center = center
@@ -278,7 +278,6 @@ class BaseSample():
                 )
                 print(errorMsg)
             else:
-                # print(scan.reliability())
                 corrected_diffractogram = scan_diffractogram * scan.reliability()
                 scanCount = scanCount + 1
                 bulk_diffractogram = bulk_diffractogram.add(corrected_diffractogram, fill_value=0)
@@ -288,6 +287,9 @@ class BaseSample():
 
     def plot_bulk_diffractogram(self, ax=None):
         bulk_diffractogram = self.bulk_diffractogram()
+        # Get default axis if none is given
+        if ax is None:
+            ax = new_axes()
         bulk_diffractogram.plot(ax=ax)
         ax.set_ylabel('counts')
         ax.set_title('Bulk diffractogram')
@@ -359,7 +361,7 @@ class BaseSample():
                                 edgecolor='blue', fill=False, linestyle='dashed')
         ax.add_patch(circle)
         # Add colormap to the side of the axes
-        mappable = cm.ScalarMappable(norm=self.normalizer, cmap=cmap)
+        mappable = cm.ScalarMappable(norm=self.metric_normalizer, cmap=cmap)
         mappable.set_array(np.arange(0, 2))
         pyplot.colorbar(mappable, ax=ax)
         return ax
@@ -524,7 +526,7 @@ class BaseSample():
             """
             cmap = self.sample.get_cmap()
             metric = self.metric()
-            color = cmap(self.sample.normalizer(metric))
+            color = cmap(self.sample.metric_normalizer(metric))
             return color
 
         def reliability(self):
@@ -596,11 +598,11 @@ class TwoPhaseSample(BaseSample):
             df = self.diffractogram()
             # Get peak dataframes for integration
             peakDischarged = df.loc[
-                self.sample.peak_list[self.sample.peak_discharged],
+                self.sample.peak_list[self.sample.discharged_peak],
                 'subtracted'
             ]
             peakCharged = df.loc[
-                self.sample.peak_list[self.sample.peak_charged],
+                self.sample.peak_list[self.sample.charged_peak],
                 'subtracted'
             ]
             # Integrate peaks
