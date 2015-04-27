@@ -2,15 +2,6 @@ from matplotlib import pyplot
 import numpy as np
 import pandas as pd
 
-def read_csv(*args, **kwargs):
-    """Wrapper around pandas read_csv that filters out crappy data"""
-    kwargs['na_values'] = 'XXX'
-    kwargs['sep'] = '\t'
-    # Skip all the initial metadata
-    kwargs['skiprows'] = 69
-    df = pd.read_csv(*args, **kwargs)
-    return df
-
 def axis_label(key):
     axis_labels = {
         'Ewe/V': r'$E\ /V$',
@@ -23,6 +14,15 @@ def new_axes():
     fig = pyplot.figure(figsize=(10, 6))
     ax = pyplot.gca()
     return ax
+
+def read_csv(*args, **kwargs):
+    """Wrapper around pandas read_csv that filters out crappy data"""
+    kwargs['na_values'] = 'XXX'
+    kwargs['sep'] = '\t'
+    # Skip all the initial metadata
+    kwargs['skiprows'] = 69
+    df = pd.read_csv(*args, **kwargs)
+    return df
 
 class GalvanostatRun():
     """

@@ -69,7 +69,7 @@ class BaseSample():
     scan_time = 300 # 5 minutes per scan
     scans = []
     # Range to use for normalizing the metric into 0.0 to 0.1
-    normalizer = colors.Normalize(0, 1)
+    metric_normalizer = colors.Normalize(0, 1)
     def __init__(self, center, diameter, collimator=0.5, scan_time=None,
                  rows=None, sample_name='unknown', *args, **kwargs):
         self.center = center
@@ -278,7 +278,6 @@ class BaseSample():
                 )
                 print(errorMsg)
             else:
-                # print(scan.reliability())
                 corrected_diffractogram = scan_diffractogram * scan.reliability()
                 scanCount = scanCount + 1
                 bulk_diffractogram = bulk_diffractogram.add(corrected_diffractogram, fill_value=0)
@@ -288,6 +287,9 @@ class BaseSample():
 
     def plot_bulk_diffractogram(self, ax=None):
         bulk_diffractogram = self.bulk_diffractogram()
+        # Get default axis if none is given
+        if ax is None:
+            ax = new_axes()
         bulk_diffractogram.plot(ax=ax)
         ax.set_ylabel('counts')
         ax.set_title('Bulk diffractogram')
@@ -357,7 +359,7 @@ class BaseSample():
         # Add circle for theoretical edge
         self.draw_edge(ax, color='blue')
         # Add colormap to the side of the axes
-        mappable = cm.ScalarMappable(norm=self.normalizer, cmap=cmap)
+        mappable = cm.ScalarMappable(norm=self.metric_normalizer, cmap=cmap)
         mappable.set_array(np.arange(0, 2))
         pyplot.colorbar(mappable, ax=ax)
         return ax
@@ -540,14 +542,22 @@ class BaseSample():
             """
             cmap = self.sample.get_cmap()
             metric = self.metric()
-            color = cmap(self.sample.normalizer(metric))
+            color = cmap(self.sample.metric_normalizer(metric))
             return color
 
         def reliability(self):
             """
-            How reliable is the metric() returned for this scan.
+            Use peak area to determine how likely this scan is to represent
+            sample rather than tape.
             """
-            return 1
+            normalize = self.sample.reliability_normalizer
+            # Determine peak area for normalization
+            df = self.diffractogram()
+            peakRange = self.sample.peak_list[self.sample.reliability_peak]
+            peak = df.loc[peakRange[0]:peakRange[1], 'subtracted']
+            peakArea = np.trapz(y=peak, x=peak.index)
+            reliability = normalize(peakArea)
+            return reliability
 
         def plot_diffractogram(self, ax=None):
             """
@@ -568,3 +578,52 @@ class BaseSample():
             )
             ax.set_title(title)
             return ax
+
+
+class SolidSolutionSample(BaseSample):
+    """
+    Class for mapping sample that discharge by the solid solution
+    mechanism. Operates by change in 2-theta peak position.
+    """
+    class XRDScan(BaseSample.XRDScan):
+        def metric(self):
+            """
+            Return the 2θ difference of self.peak1 and self.peak2. Peak
+            difference is used to overcome errors caused by shifter
+            patterns.
+            """
+            df = self.diffractogram()
+            # Get the 2θ value of peak
+            peak2 = self.sample.peak_list[self.sample.metric_peak]
+            range2 = df.loc[peak2[0]:peak2[1], 'subtracted']
+            theta2 = range2.argmax()
+            return theta2
+
+
+class TwoPhaseSample(BaseSample):
+    """
+    Class for mapping sample that discharge by a two-phase
+    mechanism. Operates by the ratio of peak areas for each phase.
+    """
+    class XRDScan(BaseSample.XRDScan):
+        def metric(self):
+            """
+            Compare the ratio of two peaks, one for discharged and one for
+            charged material.
+            """
+            df = self.diffractogram()
+            # Get peak dataframes for integration
+            peakDischarged = df.loc[
+                self.sample.peak_list[self.sample.discharged_peak],
+                'subtracted'
+            ]
+            peakCharged = df.loc[
+                self.sample.peak_list[self.sample.charged_peak],
+                'subtracted'
+            ]
+            # Integrate peaks
+            areaCharged = np.trapz(y=peakCharged, x=peakCharged.index)
+            areaDischarged = np.trapz(y=peakDischarged, x=peakDischarged.index)
+            # Compare areas of the two peaks
+            ratio = areaCharged/(areaCharged+areaDischarged)
+            return ratio

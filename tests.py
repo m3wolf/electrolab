@@ -5,13 +5,13 @@ import os.path
 import pandas as pd
 
 from mapping import BaseSample, Cube
-from samples import LMOSolidSolutionSample
+from samples import LMOSolidSolution
 from cycler import GalvanostatRun
 
 
 class LMOSolidSolutionTest(unittest.TestCase):
     def setUp(self):
-        self.sample = LMOSolidSolutionSample(center=(0.078,-30.688),
+        self.sample = LMOSolidSolution(center=(0.078,-30.688),
                                 diameter=15,
                                 collimator=0.5,
                                 sample_name='test-sample')
@@ -46,8 +46,8 @@ class LMOSolidSolutionTest(unittest.TestCase):
 
 class CycleTest(unittest.TestCase):
     def setUp(self):
-        self.df = pd.read_csv('eclab-test-data.csv')
-        self.run = GalvanostatRun(self.df, mass=0.022563)
+        # self.df = pd.read_csv()
+        self.run = GalvanostatRun('eclab-test-data.mpt', mass=0.022563)
         self.cycle = self.run.cycles[0]
 
     def test_discharge_capacity(self):
@@ -59,8 +59,7 @@ class CycleTest(unittest.TestCase):
 class GalvanostatRunTest(unittest.TestCase):
     # Currently just tests import statement
     def test_import(self):
-        df = pd.read_csv('eclab-test-data.csv')
-        run = GalvanostatRun(df)
+        run = GalvanostatRun('eclab-test-data.mpt')
 
 
 class SlamFileTest(unittest.TestCase):
