@@ -355,13 +355,26 @@ class BaseSample():
                                              color='red')
             ax.add_patch(hexagon)
         # Add circle for theoretical edge
-        circle = patches.Circle((0, 0), radius=self.diameter/2,
-                                edgecolor='blue', fill=False, linestyle='dashed')
-        ax.add_patch(circle)
+        self.draw_edge(ax, color='blue')
         # Add colormap to the side of the axes
         mappable = cm.ScalarMappable(norm=self.normalizer, cmap=cmap)
         mappable.set_array(np.arange(0, 2))
         pyplot.colorbar(mappable, ax=ax)
+        return ax
+
+    def draw_edge(self, ax, color):
+        """
+        Accept an set of axes and draw a circle for where the theoretical
+        edge should be.
+        """
+        circle = patches.Circle(
+            (0, 0),
+            radius=self.diameter/2,
+            edgecolor=color,
+            fill=False,
+            linestyle='dashed'
+        )
+        ax.add_patch(circle)
         return ax
 
     def composite_image(self):
@@ -372,8 +385,9 @@ class BaseSample():
         # Check for a cached image to return
         compositeImage = getattr(self, '_composite_image', None)
         if compositeImage is None: # No cached image
-            # dpm taken from camera calibration (640px/~12.90mm)
-            dots_per_mm = self.microscope_zoom * 99.2 / 2
+            # dpm taken from camera calibration using quadratic regression
+            regression = lambda x: 3.640*x**2 + 13.869*x + 31.499
+            dots_per_mm = regression(self.microscope_zoom)
             size = (
                 int(2 * self.xy_lim() * dots_per_mm),
                 int(2 * self.xy_lim() * dots_per_mm)
@@ -388,7 +402,7 @@ class BaseSample():
                     file_base=scan.filename
                 )
                 rawImage = PIL.Image.open(filename)
-                rawImage = rawImage.rotate(180)
+                # rawImage = rawImage.rotate(180)
                 # Create a single frame to average with the current composite
                 sampleImage = PIL.Image.new(size=size, mode='RGBA', color=(256, 256, 0, 0))
                 pixel_coords = (
@@ -396,8 +410,8 @@ class BaseSample():
                     scan.xy_coords()[1] * dots_per_mm
                 )
                 center = (
-                    size[0]/2 + pixel_coords[0],
-                    size[1]/2 - pixel_coords[1]
+                    size[0]/2 - pixel_coords[0],
+                    size[1]/2 + pixel_coords[1]
                 )
                 box = (
                     int(center[0] - rawImage.size[0]/2),
@@ -422,9 +436,11 @@ class BaseSample():
             -self.xy_lim(), self.xy_lim()
         )
         ax.imshow(self.composite_image(), extent=axis_limits)
+        # Add plot annotations
         ax.set_title('Micrograph of Mapped Area')
         ax.set_xlabel('mm')
         ax.set_ylabel('mm')
+        self.draw_edge(ax, color='red')
         return ax
 
     def __repr__(self):

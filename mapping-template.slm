@@ -7,6 +7,9 @@
 ! Turn on logging
 LOGFILE /NEW logfile._lg
 
+! Set generator to full power
+GONIOMETER /GENERATOR 40.000 40.000 /WAIT
+
 {% for scan in scans %}
 ! Scanning
 SCAN /SINGLERUN {{ number_of_frames }} &
