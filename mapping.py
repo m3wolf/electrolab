@@ -4,6 +4,7 @@ import jinja2, math
 from matplotlib import pylab, pyplot, collections, patches, colors, cm
 import numpy as np
 import pandas as pd
+import scipy
 import PIL
 import os
 from scipy.stats import linregress
@@ -63,7 +64,7 @@ class BaseSample():
     THETA1_MAX=50
     THETA2_MIN=0 # Detector limits based on geometry
     THETA2_MAX=55
-    microscope_zoom = 6
+    camera_zoom = 6
     frame_step = 20 # How much to move detector by in degrees
     frame_width = 30 # 2-theta coverage of detector face
     scan_time = 300 # 5 minutes per scan
@@ -145,7 +146,7 @@ class BaseSample():
         )
 
     def xy_lim(self):
-        return self.diameter/2*1.25
+        return self.diameter/2*1.5
 
     def write_slamfile(self, f=None):
         """
@@ -196,7 +197,7 @@ class BaseSample():
             'yoffset': self.center[1],
             'theta1': self.get_theta1(),
             'theta2': self.get_theta2_start(),
-            'aux': self.microscope_zoom,
+            'aux': self.camera_zoom,
             'scan_time': self.scan_time,
             'total_time': total_time,
             'sample_name': self.sample_name
@@ -379,17 +380,72 @@ class BaseSample():
         ax.add_patch(circle)
         return ax
 
-    def composite_image(self):
+    def dots_per_mm(self):
+        """
+        Determine the width of the scan images based on sample's camera zoom
+        """
+        # (dpm taken from camera calibration using quadratic regression)
+        regression = lambda x: 3.640*x**2 + 13.869*x + 31.499
+        dots_per_mm = regression(self.camera_zoom)
+        return dots_per_mm
+
+    def composite_image_with_numpy(self):
         """
         Combine all the individual photos from the diffractometer and
-        merge them into one image.
+        merge them into one image. Uses numpy to average the pixel values.
         """
         # Check for a cached image to return
-        compositeImage = getattr(self, '_composite_image', None)
+        compositeImage = getattr(self, '_numpy_image', None)
+        if compositeImage is None: # No cached image
+            compositeWidth = int(2 * self.xy_lim() * self.dots_per_mm())
+            compositeHeight = compositeWidth
+            # Create a new numpy array to hold the composited image
+            # (it is unsigned int 16 to not overflow when images are added)
+            dtype = np.uint16
+            dtypeMax = 65535
+            compositeImage = np.ndarray((compositeHeight, compositeWidth, 3),
+                                        dtype=dtype)
+            # This array keeps track of how many images contribute to each pixel
+            counterArray = np.ndarray((compositeHeight, compositeWidth, 3),
+                                      dtype=dtype)
+            # Set to white by default
+            compositeImage.fill(0)
+            # Step through each scan
+            for scan in self.scans:
+                # load raw image
+                # pad raw image to composite image size
+                scanImage = scan.padded_image(height=compositeHeight,
+                                                width=compositeWidth)
+                # add padded image to composite image
+                compositeImage = compositeImage + scanImage
+                # create padded image mask
+                scanMask = scan.padded_image_mask(height=compositeHeight,
+                                                  width=compositeWidth)
+                # add padded image mask to counter image
+                counterArray = counterArray + scanMask
+            # Divide by the total count for each pixel
+            compositeImage = compositeImage / counterArray
+            # Convert back to a uint8 array for displaying
+            compositeImage = compositeImage.astype(np.uint8)
+            # Roll over pixels to force white background
+            # (bias was added in padded_image method)
+            compositeImage = compositeImage - 1
+            # Save a cached version
+            self._numpy_image = compositeImage
+        return compositeImage
+
+    def composite_image_with_pillow(self):
+        """
+        Combine all the individual photos from the diffractometer and
+        merge them into one image. This method uses the pillow library
+        instead of numpy arrays.
+        """
+        # Check for a cached image to return
+        compositeImage = getattr(self, '_pillow_image', None)
         if compositeImage is None: # No cached image
             # dpm taken from camera calibration using quadratic regression
             regression = lambda x: 3.640*x**2 + 13.869*x + 31.499
-            dots_per_mm = regression(self.microscope_zoom)
+            dots_per_mm = regression(self.camera_zoom)
             size = (
                 int(2 * self.xy_lim() * dots_per_mm),
                 int(2 * self.xy_lim() * dots_per_mm)
@@ -423,8 +479,7 @@ class BaseSample():
                 # Apply this scan's image to the composite
                 compositeImage.paste(rawImage, box=box)
             # Save a cached version
-            self._composite_image = compositeImage
-        compositeImage.save('composite-image.png')
+            self._pillow_image = compositeImage
         return compositeImage
 
     def plot_composite_image(self, ax=None):
@@ -437,7 +492,7 @@ class BaseSample():
             -self.xy_lim(), self.xy_lim(),
             -self.xy_lim(), self.xy_lim()
         )
-        ax.imshow(self.composite_image(), extent=axis_limits)
+        ax.imshow(self.composite_image_with_numpy(), extent=axis_limits)
         # Add plot annotations
         ax.set_title('Micrograph of Mapped Area')
         ax.set_xlabel('mm')
@@ -453,6 +508,8 @@ class BaseSample():
         An XRD scan at one X,Y location. Several Scan objects make up a
         Sample object.
         """
+        IMAGE_HEIGHT = 480 # px
+        IMAGE_WIDTH = 640 # px
         peaks_by_hkl = {}
         _df = None # Replaced by load_diffractogram() method
         def __init__(self, location, filename, sample=None, *args, **kwargs):
@@ -483,6 +540,19 @@ class BaseSample():
             x = xy[0] + self.sample.center[0]
             y = xy[1] + self.sample.center[1]
             return (x, y)
+
+        def pixel_coords(self, height, width):
+            """
+            Convert internal coordinates to pixels in an image with given
+            height and width.
+            """
+            xy_coords = self.xy_coords
+            dots_per_mm = self.sample.dots_per_mm()
+            pixel_coords = {
+                'height': int(height/2 + xy_coords()[1] * dots_per_mm),
+                'width': int(width/2 - xy_coords()[0] * dots_per_mm)
+            }
+            return pixel_coords
 
         def diffractogram(self, filename=None):
             """Return a pandas dataframe with the X-ray diffractogram for this
@@ -559,7 +629,53 @@ class BaseSample():
             reliability = normalize(peakArea)
             return reliability
 
+        def image(self):
+            """
+            Retrieve the image file taken by the diffractometer.
+            """
+            filename = '{dir}/{file_base}_01.jpg'.format(
+                    dir=self.sample.directory(),
+                    file_base=self.filename
+                )
+            imageArray = scipy.misc.imread(filename)
+            return imageArray
+
+        def padded_image(self, height, width, image=None):
+            """
+            Take the image for this scan and pad the edges to make it new
+            height and width.
+            """
+            if image is None:
+                image = self.image().astype(np.uint16)
+                # Add a bias that will be removed after the image is composited
+                image = image + 1
+            # Calculate padding
+            center = self.pixel_coords(height=height, width=width)
+            padLeft = int(center['width'] - self.IMAGE_WIDTH/2)
+            padRight = int(width - center['width'] - self.IMAGE_WIDTH/2)
+            padTop = int(center['height'] - self.IMAGE_HEIGHT/2)
+            padBottom = int(height - center['height'] - self.IMAGE_HEIGHT/2)
+            # Apply padding
+            paddedImage = np.pad(
+                image,
+                ((padTop, padBottom), (padLeft, padRight), (0, 0)),
+                mode='constant'
+            )
+            return paddedImage
+
+        def padded_image_mask(self, height, width):
+            """
+            Return an array of height x width where any pixels in this scans
+            image are 1 and all other are 0.
+            """
+            scanImage = self.image()
+            scanImage.fill(1)
+            return self.padded_image(height=height,
+                                     width=width,
+                                     image=scanImage)
+
         def plot_diffractogram(self, ax=None):
+
             """
             Plot the XRD diffractogram for this scan. Generates a new set of axes
             unless supplied by the `ax` keyword.
