@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 
 import jinja2, math
-from matplotlib import pylab, pyplot, collections, patches, colors, cm
+from matplotlib import pylab, pyplot, figure, collections, patches, colors, cm
+from matplotlib.backends.backend_gtk3cairo import FigureCanvasGTK3Cairo as FigureCanvas
 import numpy as np
 import pandas as pd
 import scipy
@@ -9,6 +10,7 @@ import PIL
 import os
 from scipy.stats import linregress
 from sklearn import svm
+from gi.repository import Gtk, Gdk
 
 def new_axes():
     """Create a new set of matplotlib axes for plotting"""
@@ -52,6 +54,85 @@ class Cube():
         return "Cube{0}".format(self.__str__())
 
 
+class GtkPlots():
+    """
+    A set of plots for interactive data analysis.
+    """
+    currentCoords = Cube(0, 0, 0)
+    local_mode = False
+    def __init__(self, sample, *args, **kwargs):
+        self.sample = sample
+
+    def redraw_plots(self, scan=None):
+        """
+        (re)draw the plots on the gtk window
+        """
+        sample = self.sample
+        # Check if a scan should be highlighted
+        if self.local_mode:
+            scan = self.sample.scan(self.currentCoords)
+        else:
+            scan = None
+
+        self.fig.clear()
+        # Prepare plots
+        mapAxes = self.fig.add_subplot(221)
+        sample.plot_map(ax=mapAxes, highlightedScan=scan)
+        mapAxes.set_aspect(1)
+        compositeImageAxes = self.fig.add_subplot(223)
+        sample.plot_composite_image(ax=compositeImageAxes)
+        diffractogramAxes = self.fig.add_subplot(222)
+        if scan:
+            # Draw individual scan's image
+            scanImageAxes = self.fig.add_subplot(224)
+            scan.plot_image(ax=scanImageAxes)
+            scan.plot_diffractogram(ax=diffractogramAxes)
+        else:
+            sample.plot_bulk_diffractogram(ax=diffractogramAxes)
+
+        # Force a redraw of the canvas since Gtk won't do it
+        self.fig.canvas.draw()
+
+    def on_key_press(self, widget, event, user_data=None):
+        # Check for arrow keys -> move to new location on map
+        if not self.local_mode:
+            self.local_mode = True
+        elif event.keyval == Gdk.KEY_Left:
+            self.currentCoords = self.currentCoords + Cube(-1, 0, 1)
+        elif event.keyval == Gdk.KEY_Right:
+            self.currentCoords = self.currentCoords + Cube(1, 0, -1)
+        elif event.keyval == Gdk.KEY_Up:
+            self.currentCoords = self.currentCoords + Cube(0, 1, -1)
+        elif event.keyval == Gdk.KEY_Down:
+            self.currentCoords = self.currentCoords + Cube(0, -1, 1)
+        self.redraw_plots()
+
+    def launch(self):
+        self.window = Gtk.Window(
+            title="Maps for sample '{}'".format(self.sample.sample_name)
+        )
+        self.window.connect('delete-event', Gtk.main_quit)
+        self.window.set_default_size(1000, 1000)
+
+        # Connect to keypress event for changing position
+        self.window.connect('key_press_event', self.on_key_press)
+
+        # Set up the matplotlib features
+        self.fig = figure.Figure(figsize=(13.8, 10))
+
+        self.fig.figurePatch.set_facecolor('white')
+
+        sw = Gtk.ScrolledWindow()
+        self.window.add(sw)
+
+        canvas = FigureCanvas(self.fig)
+        canvas.set_size_request(400,400)
+        sw.add_with_viewport(canvas)
+        self.redraw_plots()
+        self.window.show_all()
+
+        Gtk.main()
+
 class BaseSample():
     """
     A physical sample that gets mapped by XRD, presumed to be circular
@@ -69,9 +150,13 @@ class BaseSample():
     frame_width = 30 # 2-theta coverage of detector face
     scan_time = 300 # 5 minutes per scan
     scans = []
+    peak_list = {}
+    reliability_peak = None
+    hexagon_patches = None # Replaced by cached versions
     # Range to use for normalizing the metric into 0.0 to 0.1
     metric_normalizer = colors.Normalize(0, 1)
-    def __init__(self, center, diameter, collimator=0.5, scan_time=None,
+    reliability_normalizer = colors.Normalize(0, 1)
+    def __init__(self, center=(0, 0), diameter=12.7, collimator=0.5, scan_time=None,
                  rows=None, sample_name='unknown', *args, **kwargs):
         self.center = center
         self.diameter = diameter
@@ -89,7 +174,8 @@ class BaseSample():
 
     @property
     def unit_size(self):
-        return self.diameter / self.rows / math.sqrt(3)
+        unit_size = self.diameter / self.rows / math.sqrt(3)
+        return unit_size
 
     def create_scans(self):
         """Populate the scans array with new scans in a hexagonal array."""
@@ -304,33 +390,45 @@ class BaseSample():
         highlightedScan can be given which will show up as a different
         color.
         """
-        x = []
-        y = []
-        values = []
-        colors = []
-        alphas = []
-        i = 0
         cmap = self.get_cmap()
-        for scan in self.scans:
-            i+=1
-            coord = scan.xy_coords(self.unit_size)
-            x.append(coord[0])
-            y.append(coord[1])
-            try:
-                color = scan.color()
-            except OSError:
-                # Diffractogram cannot be loaded for some reason
-                colors.append('black')
-                alphas.append(1)
-            else:
-                colors.append(color)
-                # User can specify an alpha value, otherwise use reliability
-                if alpha is not None:
-                    alphas.append(alpha)
+        # Check for cached hexagons and build if not cached
+        if self.hexagon_patches is None:
+            x = []
+            y = []
+            values = []
+            colors = []
+            alphas = []
+            i = 0
+            for scan in self.scans:
+                i+=1
+                coord = scan.xy_coords(self.unit_size)
+                x.append(coord[0])
+                y.append(coord[1])
+                try:
+                    color = scan.color()
+                except OSError:
+                    # Diffractogram cannot be loaded for some reason
+                    colors.append('black')
+                    alphas.append(1)
                 else:
-                    alphas.append(scan.reliability())
-        xy = list(zip(x, y))
-        # Build and show the hexagons
+                    colors.append(color)
+                    # User can specify an alpha value, otherwise use reliability
+                    if alpha is not None:
+                        alphas.append(alpha)
+                    else:
+                        alphas.append(scan.reliability())
+            xy = list(zip(x, y))
+            # Build and show the hexagons
+            self.hexagon_patches = []
+            for key, loc in enumerate(xy):
+                hexagon = patches.RegularPolygon(xy=loc,
+                                                 numVertices=6,
+                                                 radius=0.595*self.unit_size,
+                                                 linewidth=0,
+                                                 alpha=alphas[key],
+                                                 color=colors[key])
+                self.hexagon_patches.append(hexagon)
+        # Plot hexagons
         if not ax:
             # New axes unless one was already created
             ax = new_axes()
@@ -339,13 +437,7 @@ class BaseSample():
         ax.set_ylim([-xy_lim, xy_lim])
         ax.set_xlabel('mm')
         ax.set_ylabel('mm')
-        for key, loc in enumerate(xy):
-            hexagon = patches.RegularPolygon(xy=loc,
-                                             numVertices=6,
-                                             radius=0.595*self.unit_size,
-                                             linewidth=0,
-                                             alpha=alphas[key],
-                                             color=colors[key])
+        for hexagon in self.hexagon_patches:
             ax.add_patch(hexagon)
         # If a highlighted scan was given, show it in a different color
         if highlightedScan is not None:
@@ -364,6 +456,13 @@ class BaseSample():
         mappable.set_array(np.arange(0, 2))
         pyplot.colorbar(mappable, ax=ax)
         return ax
+
+    def plot_map_gtk(self):
+        """
+        Create a gtk window with plots and images for interactive data analysis.
+        """
+        gtkMap = GtkPlots(sample=self)
+        gtkMap.launch()
 
     def draw_edge(self, ax, color):
         """
@@ -599,11 +698,8 @@ class BaseSample():
             return self._df
 
         def metric(self):
-            # Just return the distance from bottom left to top right
-            p = self.cube_coords[0]
-            rows = self.sample.rows
-            r = p/2/rows + 0.5
-            return r
+            raise NotImplementedError
+
 
         def color(self):
             """
@@ -620,13 +716,16 @@ class BaseSample():
             Use peak area to determine how likely this scan is to represent
             sample rather than tape.
             """
-            normalize = self.sample.reliability_normalizer
-            # Determine peak area for normalization
-            df = self.diffractogram()
-            peakRange = self.sample.peak_list[self.sample.reliability_peak]
-            peak = df.loc[peakRange[0]:peakRange[1], 'subtracted']
-            peakArea = np.trapz(y=peak, x=peak.index)
-            reliability = normalize(peakArea)
+            if self.sample.reliability_peak:
+                normalize = self.sample.reliability_normalizer
+                # Determine peak area for normalization
+                df = self.diffractogram()
+                peakRange = self.sample.peak_list[self.sample.reliability_peak]
+                peak = df.loc[peakRange[0]:peakRange[1], 'subtracted']
+                peakArea = np.trapz(y=peak, x=peak.index)
+                reliability = normalize(peakArea)
+            else:
+                reliability = None
             return reliability
 
         def image(self):
@@ -638,7 +737,29 @@ class BaseSample():
                     file_base=self.filename
                 )
             imageArray = scipy.misc.imread(filename)
+            # Rotate to align with sample coords
+            imageArray = scipy.misc.imrotate(imageArray, 180)
             return imageArray
+
+        def plot_image(self, ax=None):
+            """
+            Show the scan's overhead picture on a set of axes.
+            """
+            if ax is None:
+                ax = new_axes()
+            # Calculate axes limit
+            center = self.xy_coords()
+            xMin = center[1] - self.IMAGE_WIDTH/2/self.sample.dots_per_mm()
+            xMax = center[1] + self.IMAGE_WIDTH/2/self.sample.dots_per_mm()
+            yMin = center[0] - self.IMAGE_HEIGHT/2/self.sample.dots_per_mm()
+            yMax = center[0] + self.IMAGE_HEIGHT/2/self.sample.dots_per_mm()
+            axes_limits = (xMin, xMax, yMin, yMax)
+            ax.imshow(self.image(), extent=axes_limits)
+            # Add plot annotations
+            ax.set_title('Micrograph of Mapped Area')
+            ax.set_xlabel('mm')
+            ax.set_ylabel('mm')
+            return ax
 
         def padded_image(self, height, width, image=None):
             """
@@ -694,6 +815,36 @@ class BaseSample():
             )
             ax.set_title(title)
             return ax
+
+
+class DummySample(BaseSample):
+    """
+    Sample that returns a dummy map for testing.
+    """
+
+    def bulk_diffractogram(self):
+        # Return some random data
+        twoTheta = np.linspace(10, 80, num=700)
+        intensity = pd.DataFrame(twoTheta*50, index=twoTheta)
+        return intensity
+
+    def composite_image_with_numpy(self):
+        import os
+        directory = os.path.dirname(os.path.realpath(__file__))
+        # Read a cached composite image from disk
+        image = scipy.misc.imread('{0}/test-composite-image.png'.format(directory))
+        return image
+
+    class XRDScan(BaseSample.XRDScan):
+        def metric(self):
+            # Just return the distance from bottom left to top right
+            p = self.cube_coords[0]
+            rows = self.sample.rows
+            r = p/2/rows + 0.5
+            return r
+
+        def reliability(self):
+            return 1
 
 
 class SolidSolutionSample(BaseSample):
