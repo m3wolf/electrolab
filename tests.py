@@ -4,7 +4,7 @@ import os.path
 
 import pandas as pd
 
-from mapping import BaseSample, Cube
+from mapping import BaseSample, DummySample, Cube
 from samples import LMOSolidSolution
 from cycler import GalvanostatRun
 
@@ -52,8 +52,8 @@ class CycleTest(unittest.TestCase):
 
     def test_discharge_capacity(self):
         self.assertEqual(
-            self.cycle.discharge_capacity(),
-            99.736007822541325
+            round(self.cycle.discharge_capacity(), 3),
+            99.736
         )
 
 class GalvanostatRunTest(unittest.TestCase):
@@ -204,6 +204,7 @@ class SlamFileTest(unittest.TestCase):
 class XRDScanTest(unittest.TestCase):
     def setUp(self):
         self.scan = BaseSample.XRDScan(Cube(1, 0, -1), 'sample')
+        self.scan.sample = DummySample()
 
     def test_xy_coords(self):
         self.scan.cube_coords = Cube(1, -1, 0)
@@ -230,6 +231,12 @@ class XRDScanTest(unittest.TestCase):
         self.assertEqual(
             self.scan.xy_coords(1),
             (1, math.sqrt(3))
+        )
+
+    def test_pixel_coords(self):
+        self.assertEqual(
+            self.scan.pixel_coords(height=1000, width=1000),
+            {'width': 569, 'height': 380},
         )
 
     def test_unit_size(self):

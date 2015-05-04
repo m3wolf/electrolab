@@ -20,7 +20,7 @@ def read_csv(*args, **kwargs):
     kwargs['na_values'] = 'XXX'
     kwargs['sep'] = '\t'
     # Skip all the initial metadata
-    kwargs['skiprows'] = 69
+    kwargs['skiprows'] = 68
     df = pd.read_csv(*args, **kwargs)
     return df
 

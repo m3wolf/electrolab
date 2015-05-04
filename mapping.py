@@ -495,7 +495,8 @@ class BaseSample():
         """
         # Check for a cached image to return
         compositeImage = getattr(self, '_numpy_image', None)
-        if compositeImage is None: # No cached image
+         # Check for cached image or create one if not cache found
+        if compositeImage is None:
             compositeWidth = int(2 * self.xy_lim() * self.dots_per_mm())
             compositeHeight = compositeWidth
             # Create a new numpy array to hold the composited image
@@ -511,10 +512,9 @@ class BaseSample():
             compositeImage.fill(0)
             # Step through each scan
             for scan in self.scans:
-                # load raw image
                 # pad raw image to composite image size
                 scanImage = scan.padded_image(height=compositeHeight,
-                                                width=compositeWidth)
+                                              width=compositeWidth)
                 # add padded image to composite image
                 compositeImage = compositeImage + scanImage
                 # create padded image mask
@@ -559,7 +559,7 @@ class BaseSample():
                     file_base=scan.filename
                 )
                 rawImage = PIL.Image.open(filename)
-                # rawImage = rawImage.rotate(180)
+                rawImage = rawImage.rotate(180)
                 # Create a single frame to average with the current composite
                 sampleImage = PIL.Image.new(size=size, mode='RGBA', color=(256, 256, 0, 0))
                 pixel_coords = (
@@ -643,13 +643,14 @@ class BaseSample():
         def pixel_coords(self, height, width):
             """
             Convert internal coordinates to pixels in an image with given
-            height and width.
+            height and width. Assumes the sample center is at the center
+            of the image.
             """
-            xy_coords = self.xy_coords
             dots_per_mm = self.sample.dots_per_mm()
+            xy_coords = self.xy_coords()
             pixel_coords = {
-                'height': int(height/2 + xy_coords()[1] * dots_per_mm),
-                'width': int(width/2 - xy_coords()[0] * dots_per_mm)
+                'height': round(height/2 - xy_coords[1] * dots_per_mm),
+                'width': round(width/2 + xy_coords[0] * dots_per_mm)
             }
             return pixel_coords
 
@@ -772,6 +773,8 @@ class BaseSample():
                 image = image + 1
             # Calculate padding
             center = self.pixel_coords(height=height, width=width)
+            # print('scan center = {}'.format(self.xy_coords()))
+            # print('image center = {}'.format(center))
             padLeft = int(center['width'] - self.IMAGE_WIDTH/2)
             padRight = int(width - center['width'] - self.IMAGE_WIDTH/2)
             padTop = int(center['height'] - self.IMAGE_HEIGHT/2)
@@ -829,7 +832,7 @@ class DummySample(BaseSample):
         return intensity
 
     def composite_image_with_numpy(self):
-        import os
+        # Stub image to show for layout purposes
         directory = os.path.dirname(os.path.realpath(__file__))
         # Read a cached composite image from disk
         image = scipy.misc.imread('{0}/test-composite-image.png'.format(directory))
