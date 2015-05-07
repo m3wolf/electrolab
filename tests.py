@@ -9,6 +9,20 @@ from samples import LMOSolidSolution
 from cycler import GalvanostatRun
 
 
+class CubeTest(unittest.TestCase):
+    def test_from_xy(self):
+        """Can a set of x, y coords get the closest cube coords."""
+        # Zero point
+        cube = Cube.from_xy((0, 0), 1)
+        self.assertEqual(cube, Cube(0, 0, 0))
+        # Exact location
+        cube = Cube.from_xy((0.5, math.sqrt(3)/2), unit_size=1)
+        self.assertEqual(cube, Cube(1, 0, -1))
+        # Rounding
+        cube = Cube.from_xy((0.45, 0.9* math.sqrt(3)/2), unit_size=1)
+        self.assertEqual(cube, Cube(1, 0, -1))
+
+
 class LMOSolidSolutionTest(unittest.TestCase):
     def setUp(self):
         self.sample = LMOSolidSolution(center=(0.078,-30.688),
@@ -43,6 +57,7 @@ class LMOSolidSolutionTest(unittest.TestCase):
             reliability < 0.1,
             'Reliability {} is not < 0.1'.format(reliability)
         )
+
 
 class CycleTest(unittest.TestCase):
     def setUp(self):

@@ -2,7 +2,8 @@
 
 import jinja2, math
 from matplotlib import pylab, pyplot, figure, collections, patches, colors, cm
-from matplotlib.backends.backend_gtk3cairo import FigureCanvasGTK3Cairo as FigureCanvas
+from matplotlib.backends.backend_gtk3agg import FigureCanvasGTK3Agg as FigureCanvas
+# from matplotlib.backends.backend_gtk3cairo import FigureCanvasGTK3Cairo as FigureCanvas
 import numpy as np
 import pandas as pd
 import scipy
@@ -23,11 +24,19 @@ def new_axes():
 
 class Cube():
     """Cubic coordinates of a hexagon"""
+    @staticmethod
+    def from_xy(xy, unit_size):
+        x, y = (xy[0], xy[1])
+        j = (y/math.sqrt(3)-x)/unit_size
+        i = 2*y/math.sqrt(3)/unit_size - j
+        i = round(i)
+        j = round(j)
+        return Cube(i, j, -(i+j))
+
     def __init__(self, i, j, k, *args, **kwargs):
         self.i = i
         self.j = j
         self.k = k
-        # super(Cube, self).__init__(*args, **kwargs)
 
     def __getitem__(self, key):
         coord_list = [self.i, self.j, self.k]
@@ -58,79 +67,136 @@ class GtkPlots():
     """
     A set of plots for interactive data analysis.
     """
-    currentCoords = Cube(0, 0, 0)
     local_mode = False
+    map_hexagon = None
+    image_hexagon = None
+    composite_hexagon = None
     def __init__(self, sample, *args, **kwargs):
         self.sample = sample
+        self.currentScan = self.sample.scan(Cube(0, 0, 0))
 
-    def redraw_plots(self, scan=None):
+    def draw_plots(self, scan=None):
         """
         (re)draw the plots on the gtk window
         """
         sample = self.sample
-        # Check if a scan should be highlighted
-        if self.local_mode:
-            scan = self.sample.scan(self.currentCoords)
-        else:
-            scan = None
 
         self.fig.clear()
         # Prepare plots
-        mapAxes = self.fig.add_subplot(221)
-        sample.plot_map(ax=mapAxes, highlightedScan=scan)
-        mapAxes.set_aspect(1)
-        compositeImageAxes = self.fig.add_subplot(223)
-        sample.plot_composite_image(ax=compositeImageAxes)
-        diffractogramAxes = self.fig.add_subplot(222)
-        if scan:
-            # Draw individual scan's image
-            scanImageAxes = self.fig.add_subplot(224)
-            scan.plot_image(ax=scanImageAxes)
-            scan.plot_diffractogram(ax=diffractogramAxes)
-        else:
-            sample.plot_bulk_diffractogram(ax=diffractogramAxes)
+        self.mapAxes = self.fig.add_subplot(221)
+        sample.plot_map(ax=self.mapAxes)
+        self.mapAxes.set_aspect(1)
+        self.compositeImageAxes = self.fig.add_subplot(223)
+        sample.plot_composite_image(ax=self.compositeImageAxes)
+        self.scanImageAxes = self.fig.add_subplot(224)
+        self.update_plots()
 
+    def update_plots(self):
+        """Respond to changes in the selected scan."""
+        # Clear old highlights
+        if self.map_hexagon:
+            self.map_hexagon.remove()
+            self.map_hexagon = None
+            self.composite_hexagon.remove()
+            self.composite_hexagon = None
+            self.image_hexagon.remove()
+            self.image_hexagon = None
+        # Check if a scan should be highlighted
+        if self.local_mode:
+            activeScan = self.currentScan
+        else:
+            activeScan = None
+        # Plot diffractogram (either bulk or local)
+        self.diffractogramAxes = self.fig.add_subplot(222)
+        self.diffractogramAxes.cla() # Clear axes
+        if activeScan:
+            activeScan.plot_diffractogram(ax=self.diffractogramAxes)
+        else:
+            self.sample.plot_bulk_diffractogram(ax=self.diffractogramAxes)
+        # Draw individual scan's image
+        if activeScan:
+            activeScan.plot_image(ax=self.scanImageAxes)
+        else:
+            self.scanImageAxes.cla()
+        # Highlight the hexagon on the map and composite image
+        if activeScan:
+            self.map_hexagon = activeScan.highlight_hexagon(ax=self.mapAxes)
+            self.composite_hexagon = activeScan.highlight_hexagon(
+                ax=self.compositeImageAxes)
+            self.image_hexagon = activeScan.highlight_hexagon(
+                ax=self.scanImageAxes)
+            self.mapAxes.draw_artist(self.map_hexagon)
         # Force a redraw of the canvas since Gtk won't do it
         self.fig.canvas.draw()
 
     def on_key_press(self, widget, event, user_data=None):
+        oldCoords = self.currentScan.cube_coords
+        newCoords = oldCoords
         # Check for arrow keys -> move to new location on map
         if not self.local_mode:
             self.local_mode = True
         elif event.keyval == Gdk.KEY_Left:
-            self.currentCoords = self.currentCoords + Cube(-1, 0, 1)
+            newCoords = oldCoords + Cube(0, 1, -1)
         elif event.keyval == Gdk.KEY_Right:
-            self.currentCoords = self.currentCoords + Cube(1, 0, -1)
+            newCoords = oldCoords + Cube(0, -1, 1)
         elif event.keyval == Gdk.KEY_Up:
-            self.currentCoords = self.currentCoords + Cube(0, 1, -1)
+            newCoords = oldCoords + Cube(1, 0, -1)
         elif event.keyval == Gdk.KEY_Down:
-            self.currentCoords = self.currentCoords + Cube(0, -1, 1)
-        self.redraw_plots()
+            newCoords = oldCoords + Cube(-1, 0, 1)
+        elif event.keyval == Gdk.KEY_Escape:
+            # Return to bulk view
+            self.local_mode = False
+        # Check if new coordinates are valid and update scan
+        scan = self.sample.scan(newCoords)
+        if scan:
+            self.currentScan = scan
+        self.update_plots()
+
+    def click_callback(self, event):
+        """Detect and then update which scan is active."""
+        inMapAxes = event.inaxes == self.mapAxes
+        inCompositeAxes = event.inaxes == self.compositeImageAxes
+        inImageAxes = event.inaxes == self.scanImageAxes
+        if (inMapAxes or inCompositeAxes or inImageAxes):
+            # Switch to new position on map
+            scan = self.sample.scan_by_xy((event.xdata, event.ydata))
+            if not self.local_mode:
+                self.local_mode = True
+            elif scan:
+                self.currentScan = scan
+        else:
+            # Reset local_mode
+            self.local_mode = False
+        self.update_plots()
 
     def launch(self):
-        self.window = Gtk.Window(
+        window = Gtk.Window(
             title="Maps for sample '{}'".format(self.sample.sample_name)
         )
-        self.window.connect('delete-event', Gtk.main_quit)
-        self.window.set_default_size(1000, 1000)
-
-        # Connect to keypress event for changing position
-        self.window.connect('key_press_event', self.on_key_press)
-
+        self.window = window
+        window.connect('delete-event', Gtk.main_quit)
+        # Load icon
+        directory = os.path.dirname(os.path.realpath(__file__))
+        image = '{0}/images/icon.png'.format(directory)
+        window.set_icon_from_file(image)
+        window.set_default_size(1000, 1000)
         # Set up the matplotlib features
-        self.fig = figure.Figure(figsize=(13.8, 10))
-
-        self.fig.figurePatch.set_facecolor('white')
-
+        fig = figure.Figure(figsize=(13.8, 10))
+        self.fig = fig
+        fig.figurePatch.set_facecolor('white')
+        # Prepare plotting area
         sw = Gtk.ScrolledWindow()
-        self.window.add(sw)
-
+        window.add(sw)
         canvas = FigureCanvas(self.fig)
         canvas.set_size_request(400,400)
         sw.add_with_viewport(canvas)
-        self.redraw_plots()
-        self.window.show_all()
-
+        self.draw_plots()
+        # Connect to keypress event for changing position
+        window.connect('key_press_event', self.on_key_press)
+        # Connect to mouse click event
+        fig.canvas.mpl_connect('button_press_event', self.click_callback)
+        # Launch window
+        window.show_all()
         Gtk.main()
 
 class BaseSample():
@@ -196,6 +262,11 @@ class BaseSample():
                 result = scan
                 break
         return result
+
+    def scan_by_xy(self, xy):
+        """Find the nearest scan by set of xy coords."""
+        scan = self.scan(Cube.from_xy(xy, unit_size=self.unit_size))
+        return scan
 
     def path(self, rows):
         """Generator gives coordinates for a spiral path around the sample."""
@@ -378,6 +449,7 @@ class BaseSample():
         if ax is None:
             ax = new_axes()
         bulk_diffractogram.plot(ax=ax)
+        ax.set_xlabel(r'$2\theta$')
         ax.set_ylabel('counts')
         ax.set_title('Bulk diffractogram')
         return ax
@@ -391,43 +463,6 @@ class BaseSample():
         color.
         """
         cmap = self.get_cmap()
-        # Check for cached hexagons and build if not cached
-        if self.hexagon_patches is None:
-            x = []
-            y = []
-            values = []
-            colors = []
-            alphas = []
-            i = 0
-            for scan in self.scans:
-                i+=1
-                coord = scan.xy_coords(self.unit_size)
-                x.append(coord[0])
-                y.append(coord[1])
-                try:
-                    color = scan.color()
-                except OSError:
-                    # Diffractogram cannot be loaded for some reason
-                    colors.append('black')
-                    alphas.append(1)
-                else:
-                    colors.append(color)
-                    # User can specify an alpha value, otherwise use reliability
-                    if alpha is not None:
-                        alphas.append(alpha)
-                    else:
-                        alphas.append(scan.reliability())
-            xy = list(zip(x, y))
-            # Build and show the hexagons
-            self.hexagon_patches = []
-            for key, loc in enumerate(xy):
-                hexagon = patches.RegularPolygon(xy=loc,
-                                                 numVertices=6,
-                                                 radius=0.595*self.unit_size,
-                                                 linewidth=0,
-                                                 alpha=alphas[key],
-                                                 color=colors[key])
-                self.hexagon_patches.append(hexagon)
         # Plot hexagons
         if not ax:
             # New axes unless one was already created
@@ -435,20 +470,13 @@ class BaseSample():
         xy_lim = self.xy_lim()
         ax.set_xlim([-xy_lim, xy_lim])
         ax.set_ylim([-xy_lim, xy_lim])
-        ax.set_xlabel('mm')
+        ax.set_xlabel('mmagic')
         ax.set_ylabel('mm')
-        for hexagon in self.hexagon_patches:
-            ax.add_patch(hexagon)
+        for scan in self.scans:
+            scan.plot_hexagon(ax=ax)
         # If a highlighted scan was given, show it in a different color
         if highlightedScan is not None:
-            coords = highlightedScan.xy_coords(self.unit_size)
-            hexagon = patches.RegularPolygon(xy=coords,
-                                             numVertices=6,
-                                             radius=0.595*self.unit_size,
-                                             linewidth=0,
-                                             alpha=1,
-                                             color='red')
-            ax.add_patch(hexagon)
+            highlightedScan.highlight_hexagon(ax=ax)
         # Add circle for theoretical edge
         self.draw_edge(ax, color='blue')
         # Add colormap to the side of the axes
@@ -615,6 +643,7 @@ class BaseSample():
             self.cube_coords = location
             self.filename = filename
             self.sample = sample
+            self.cached_data = {}
             # return super(BaseSample.XRDScan, self).__init__(*args, **kwargs)
 
         def xy_coords(self, unit_size=None):
@@ -698,21 +727,74 @@ class BaseSample():
             self._df['subtracted'] = self._df.counts-self._df.background
             return self._df
 
-        def metric(self):
+        def calculate_metric(self):
+            """Contains the specifics of getting one number from each scan.
+            To be overridden by actual Sample subclasses."""
             raise NotImplementedError
 
+        def metric(self):
+            """
+            Check for a cached metric and if none is found, generate a new
+            one.
+            """
+            metric = self.cached_data.get('metric', None)
+            if metric is None:
+                metric = self.calculate_metric()
+                self.cached_data['metric'] = metric
+            return metric
+
+        def plot_hexagon(self, ax):
+            """Build and plot a hexagon for display on the mapping routine.
+            Return the hexagon patch object."""
+            # Check for cached data
+            hexagon = patches.RegularPolygon(
+                xy=self.xy_coords(),
+                numVertices=6,
+                radius=0.595*self.sample.unit_size,
+                linewidth=0,
+                alpha=self.reliability(),
+                color=self.color()
+            )
+            ax.add_patch(hexagon)
+            return hexagon
+
+        def highlight_hexagon(self, ax):
+            """Plots a red hexagon to highlight this specific scan."""
+            hexagon = patches.RegularPolygon(
+                xy=self.xy_coords(),
+                numVertices=6,
+                radius=0.595*self.sample.unit_size,
+                linewidth=1,
+                alpha=1,
+                edgecolor='red',
+                facecolor='none'
+            )
+            ax.add_patch(hexagon)
+            return hexagon
 
         def color(self):
             """
             Use the metric for this material to determine what color this scan
             should be on the resulting map.
             """
-            cmap = self.sample.get_cmap()
-            metric = self.metric()
-            color = cmap(self.sample.metric_normalizer(metric))
+            color = self.cached_data.get('color', None)
+            if color is None:
+                # Not cached, so recalculate
+                metric = self.metric()
+                cmap = self.sample.get_cmap()
+                color = cmap(self.sample.metric_normalizer(metric))
+                self.cached_data['color'] = color
             return color
 
         def reliability(self):
+            """Serve up cached value or recalculate if necessary."""
+            reliability = self.cached_data.get('reliability', None)
+            if reliability is None:
+                reliability = self.calculate_reliability()
+                self.cached_data['reliability'] = reliability
+            return reliability
+
+        def calculate_reliability(self):
             """
             Use peak area to determine how likely this scan is to represent
             sample rather than tape.
@@ -750,10 +832,10 @@ class BaseSample():
                 ax = new_axes()
             # Calculate axes limit
             center = self.xy_coords()
-            xMin = center[1] - self.IMAGE_WIDTH/2/self.sample.dots_per_mm()
-            xMax = center[1] + self.IMAGE_WIDTH/2/self.sample.dots_per_mm()
-            yMin = center[0] - self.IMAGE_HEIGHT/2/self.sample.dots_per_mm()
-            yMax = center[0] + self.IMAGE_HEIGHT/2/self.sample.dots_per_mm()
+            xMin = center[0] - self.IMAGE_WIDTH/2/self.sample.dots_per_mm()
+            xMax = center[0] + self.IMAGE_WIDTH/2/self.sample.dots_per_mm()
+            yMin = center[1] - self.IMAGE_HEIGHT/2/self.sample.dots_per_mm()
+            yMax = center[1] + self.IMAGE_HEIGHT/2/self.sample.dots_per_mm()
             axes_limits = (xMin, xMax, yMin, yMax)
             ax.imshow(self.image(), extent=axes_limits)
             # Add plot annotations
@@ -773,8 +855,6 @@ class BaseSample():
                 image = image + 1
             # Calculate padding
             center = self.pixel_coords(height=height, width=width)
-            # print('scan center = {}'.format(self.xy_coords()))
-            # print('image center = {}'.format(center))
             padLeft = int(center['width'] - self.IMAGE_WIDTH/2)
             padRight = int(width - center['width'] - self.IMAGE_WIDTH/2)
             padTop = int(center['height'] - self.IMAGE_HEIGHT/2)
@@ -809,6 +889,8 @@ class BaseSample():
                 fig = pyplot.figure()
                 ax = pyplot.gca()
             ax.plot(df.index, df.loc[:, 'counts'])
+            ax.set_xlim(left=df.index.min(), right=df.index.max())
+            ax.set_ylim(bottom=0)
             ax.set_xlabel(r'$2\theta$')
             ax.set_ylabel('Counts')
             title = 'XRD Diffractogram at ({i}, {j}, {k})'.format(
@@ -839,14 +921,14 @@ class DummySample(BaseSample):
         return image
 
     class XRDScan(BaseSample.XRDScan):
-        def metric(self):
+        def calculate_metric(self):
             # Just return the distance from bottom left to top right
             p = self.cube_coords[0]
             rows = self.sample.rows
             r = p/2/rows + 0.5
             return r
 
-        def reliability(self):
+        def calculate_reliability(self):
             return 1
 
 
@@ -856,7 +938,7 @@ class SolidSolutionSample(BaseSample):
     mechanism. Operates by change in 2-theta peak position.
     """
     class XRDScan(BaseSample.XRDScan):
-        def metric(self):
+        def calculate_metric(self):
             """
             Return the 2θ difference of self.peak1 and self.peak2. Peak
             difference is used to overcome errors caused by shifter
@@ -876,7 +958,7 @@ class TwoPhaseSample(BaseSample):
     mechanism. Operates by the ratio of peak areas for each phase.
     """
     class XRDScan(BaseSample.XRDScan):
-        def metric(self):
+        def calculate_metric(self):
             """
             Compare the ratio of two peaks, one for discharged and one for
             charged material.
