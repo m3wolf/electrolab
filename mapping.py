@@ -206,7 +206,7 @@ class BaseSample():
     scan_time determines seconds spent at each detector position.
     """
     cmap_name = 'summer'
-    two_theta_range = (50, 90) # Detector angle range in degrees
+    two_theta_range = (50, 90) # Bragg angle range in degrees
     THETA1_MIN=0 # Source limits based on geometry
     THETA1_MAX=50
     THETA2_MIN=0 # Detector limits based on geometry
@@ -808,7 +808,7 @@ class BaseSample():
                 peakArea = np.trapz(y=peak, x=peak.index)
                 reliability = normalize(peakArea)
             else:
-                reliability = None
+                reliability = 1
             return reliability
 
         def image(self):

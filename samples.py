@@ -18,6 +18,7 @@ lmo_peak_list = {
     '400': (44, 45),
     '400-charged': (44.5, 45.25),
     '400-discharged': (43.75, 44.5),
+    'tetragonal': (39, 41),
     '331': (48, 49),
     '333': (55, 62),
     '511': (55, 62),
@@ -47,3 +48,20 @@ class LMOTwoPhase(TwoPhaseSample):
     charged_peak = '400-charged'
     discharged_peak = '400-discharged'
     reliability_peak = '400'
+
+
+class LMOLowV(TwoPhaseSample):
+    """Sample for mapping LiMn2O4 in the low potential region from
+    Li_1Mn_2O_4 to Mn_2O_4."""
+    two_theta_range = (30, 50)
+    peak_list = lmo_peak_list
+    discharged_peak = 'tetragonal'
+    charged_peak = '400'
+    reliability_peak = '400'
+
+
+class MgMnO(TwoPhaseSample):
+    """MgMn_2O_4"""
+    scan_time = 2400
+    two_theta_range = (17.5, 37.5)
+    peak_list = []

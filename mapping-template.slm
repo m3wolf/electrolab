@@ -27,7 +27,7 @@ SCAN /SINGLERUN {{ number_of_frames }} &
   /QUADRANT=0 /LO=0 /HI=63 /X=0 /Y=0 /MAG=1
  INTEGRATE /CHI {{ frame.start }} {{ frame.end }} -105 -75 &
   /NORMAL=5 /STEPSIZE=.005
- INTEGRATE /WRITE "LiMn2O4 Li1 to Li0 to Li0.8" &
+ INTEGRATE /WRITE "{{ scan.filename }}" &
   /FILENAME={{ scan.filename }}.plt /FORMAT=PLOTSO &
   {% if not loop.first %}/APPEND {% endif %}/SCALE=1.0
  {% endfor %}
