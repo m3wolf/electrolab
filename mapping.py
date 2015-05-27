@@ -220,8 +220,8 @@ class BaseSample():
     reliability_peak = None
     hexagon_patches = None # Replaced by cached versions
     # Range to use for normalizing the metric into 0.0 to 0.1
-    metric_normalizer = colors.Normalize(0, 1)
-    reliability_normalizer = colors.Normalize(0, 1)
+    metric_normalizer = colors.Normalize(0, 1, clip=True)
+    reliability_normalizer = colors.Normalize(0, 1, clip=True)
     def __init__(self, center=(0, 0), diameter=12.7, collimator=0.5, scan_time=None,
                  rows=None, sample_name='unknown', *args, **kwargs):
         self.center = center
@@ -427,6 +427,7 @@ class BaseSample():
         # Add a contribution from each map location
         for scan in self.scans:
             try:
+                # scan_diffractogram = scan.diffractogram()['subtracted']
                 scan_diffractogram = scan.diffractogram()['counts']
             except OSError:
                 errorMsg = 'could not load "{filename}" for scan at {coords}'
@@ -637,7 +638,7 @@ class BaseSample():
         """
         IMAGE_HEIGHT = 480 # px
         IMAGE_WIDTH = 640 # px
-        peaks_by_hkl = {}
+        peak_list = {}
         _df = None # Replaced by load_diffractogram() method
         def __init__(self, location, filename, sample=None, *args, **kwargs):
             self.cube_coords = location
@@ -712,19 +713,19 @@ class BaseSample():
             """
             background = self._df.copy()
             # Remove registered peaks
-            for key, peak in self.peaks_by_hkl.items():
+            for key, peak in self.sample.peak_list.items():
                 background.drop(background[peak[0]:peak[1]].index, inplace=True)
-            # Determine a background line from the noise on either side of our peak of interest
-            noiseLeft = self._df[42.25:43.75]
-            noiseRight = self._df[45.25:46.75]
-            linearRegion = pd.concat([noiseLeft, noiseRight])
-            regression = linregress(x=linearRegion.index,
-                                    y=linearRegion.counts)
-            slope = regression[0]
-            yIntercept = regression[1]
+            # Determine a background line from the noise without peaks
+            self.spline = scipy.interpolate.UnivariateSpline(
+                x=background.index,
+                y=background.counts,
+                s=len(background.index)*25,
+                k=4
+            )
             # Extrapolate the background for the whole spectrum
-            self._df['background'] = self._df.index * slope + yIntercept
-            self._df['subtracted'] = self._df.counts-self._df.background
+            x = self._df.index
+            self._df['background'] = self.spline(x)
+            self._df['subtracted'] = self._df.counts - self._df.background
             return self._df
 
         def calculate_metric(self):
@@ -889,6 +890,13 @@ class BaseSample():
                 fig = pyplot.figure()
                 ax = pyplot.gca()
             ax.plot(df.index, df.loc[:, 'counts'])
+            ax.plot(df.index, self.spline(df.index))
+            # Highlight peaks of interest
+            peak_indexes = []
+            for key, peak in self.sample.peak_list.items():
+                # peak_indexes.append(df.loc[peak[0]:peak[1], 'counts'])
+                ax.axvspan(peak[0], peak[1], color='green', alpha=0.25)
+            # peak_df = pd.concat(peak_indexes)
             ax.set_xlim(left=df.index.min(), right=df.index.max())
             ax.set_ylim(bottom=0)
             ax.set_xlabel(r'$2\theta$')

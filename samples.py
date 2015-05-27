@@ -64,4 +64,10 @@ class MgMnO(TwoPhaseSample):
     """MgMn_2O_4"""
     scan_time = 2400
     two_theta_range = (17.5, 37.5)
-    peak_list = []
+    peak_list = {
+        'tetragonal1': (28, 30),
+        'tetragonal2': (32, 34),
+        'cubic': (35, 37),
+    }
+    discharged_peak = 'tetragonal1'
+    charged_peak = 'cubic'
