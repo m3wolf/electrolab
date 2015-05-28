@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
 
+import pickle
+import os
+
 import jinja2, math
 from matplotlib import pylab, pyplot, figure, collections, patches, colors, cm
 from matplotlib.backends.backend_gtk3agg import FigureCanvasGTK3Agg as FigureCanvas
@@ -8,10 +11,10 @@ import numpy as np
 import pandas as pd
 import scipy
 import PIL
-import os
-from scipy.stats import linregress
 from sklearn import svm
 from gi.repository import Gtk, Gdk
+
+from electrolab import xrd
 
 def new_axes():
     """Create a new set of matplotlib axes for plotting"""
@@ -71,15 +74,15 @@ class GtkPlots():
     map_hexagon = None
     image_hexagon = None
     composite_hexagon = None
-    def __init__(self, sample, *args, **kwargs):
-        self.sample = sample
-        self.currentScan = self.sample.scan(Cube(0, 0, 0))
+    def __init__(self, xrd_map, *args, **kwargs):
+        self.xrd_map = xrd_map
+        self.currentScan = self.xrd_map.scan(Cube(0, 0, 0))
 
     def draw_plots(self, scan=None):
         """
         (re)draw the plots on the gtk window
         """
-        sample = self.sample
+        sample = self.xrd_map
 
         self.fig.clear()
         # Prepare plots
@@ -112,7 +115,7 @@ class GtkPlots():
         if activeScan:
             activeScan.plot_diffractogram(ax=self.diffractogramAxes)
         else:
-            self.sample.plot_bulk_diffractogram(ax=self.diffractogramAxes)
+            self.xrd_map.plot_bulk_diffractogram(ax=self.diffractogramAxes)
         # Draw individual scan's image
         if activeScan:
             activeScan.plot_image(ax=self.scanImageAxes)
@@ -147,7 +150,7 @@ class GtkPlots():
             # Return to bulk view
             self.local_mode = False
         # Check if new coordinates are valid and update scan
-        scan = self.sample.scan(newCoords)
+        scan = self.xrd_map.scan(newCoords)
         if scan:
             self.currentScan = scan
         self.update_plots()
@@ -159,7 +162,7 @@ class GtkPlots():
         inImageAxes = event.inaxes == self.scanImageAxes
         if (inMapAxes or inCompositeAxes or inImageAxes):
             # Switch to new position on map
-            scan = self.sample.scan_by_xy((event.xdata, event.ydata))
+            scan = self.xrd_map.scan_by_xy((event.xdata, event.ydata))
             if not self.local_mode:
                 self.local_mode = True
             elif scan:
@@ -171,7 +174,7 @@ class GtkPlots():
 
     def launch(self):
         window = Gtk.Window(
-            title="Maps for sample '{}'".format(self.sample.sample_name)
+            title="Maps for sample '{}'".format(self.xrd_map.sample_name)
         )
         self.window = window
         window.connect('delete-event', Gtk.main_quit)
@@ -199,7 +202,7 @@ class GtkPlots():
         window.show_all()
         Gtk.main()
 
-class BaseSample():
+class Map():
     """
     A physical sample that gets mapped by XRD, presumed to be circular
     with center and diameter in millimeters. Collimator size given in mm.
@@ -219,13 +222,11 @@ class BaseSample():
     peak_list = {}
     reliability_peak = None
     hexagon_patches = None # Replaced by cached versions
-    # Range to use for normalizing the metric into 0.0 to 0.1
-    metric_normalizer = colors.Normalize(0, 1, clip=True)
-    reliability_normalizer = colors.Normalize(0, 1, clip=True)
     def __init__(self, center=(0, 0), diameter=12.7, collimator=0.5, scan_time=None,
-                 rows=None, sample_name='unknown', *args, **kwargs):
+                 rows=None, sample_name='unknown', material=None, *args, **kwargs):
         self.center = center
         self.diameter = diameter
+        self.material = material
         self.collimator = collimator
         if scan_time is not None:
             self.scan_time = scan_time # Seconds at each detector angle
@@ -236,7 +237,6 @@ class BaseSample():
             self.rows = rows
         self.sample_name = sample_name
         self.create_scans()
-        # return super(BaseSample, self).__init__(*args, **kwargs)
 
     @property
     def unit_size(self):
@@ -251,7 +251,8 @@ class BaseSample():
                 sample=self.sample_name,
                 n=idx
             )
-            new_scan = self.XRDScan(coords, filename, sample=self)
+            new_scan = MapScan(location=coords, filename=filename, xrd_map=self,
+                               material=self.material)
             self.scans.append(new_scan)
 
     def scan(self, cube):
@@ -405,6 +406,15 @@ class BaseSample():
         """Return a function that converts values in range 0 to 1 to colors."""
         return pyplot.get_cmap(self.cmap_name)
 
+    def prepare_mapping_data(self):
+        """
+        Perform initial calculations on mapping data and save results to file.
+        """
+        for scan in [self.scans[0]]:
+            scan.reliability()
+            scan.color()
+        pickle.dump(self.scans, open('test-data.p', 'wb'))
+
     def plot_map_with_image(self, scan=None, alpha=None):
         fig, (map_axes, diffractogram_axes) = pyplot.subplots(1, 2)
         fig.set_figwidth(13.8)
@@ -450,6 +460,7 @@ class BaseSample():
         if ax is None:
             ax = new_axes()
         bulk_diffractogram.plot(ax=ax)
+        self.material.highlight_peaks(ax=ax)
         ax.set_xlabel(r'$2\theta$')
         ax.set_ylabel('counts')
         ax.set_title('Bulk diffractogram')
@@ -471,7 +482,7 @@ class BaseSample():
         xy_lim = self.xy_lim()
         ax.set_xlim([-xy_lim, xy_lim])
         ax.set_ylim([-xy_lim, xy_lim])
-        ax.set_xlabel('mmagic')
+        ax.set_xlabel('mm')
         ax.set_ylabel('mm')
         for scan in self.scans:
             scan.plot_hexagon(ax=ax)
@@ -481,7 +492,7 @@ class BaseSample():
         # Add circle for theoretical edge
         self.draw_edge(ax, color='blue')
         # Add colormap to the side of the axes
-        mappable = cm.ScalarMappable(norm=self.metric_normalizer, cmap=cmap)
+        mappable = cm.ScalarMappable(norm=self.material.metric_normalizer, cmap=cmap)
         mappable.set_array(np.arange(0, 2))
         pyplot.colorbar(mappable, ax=ax)
         return ax
@@ -490,7 +501,7 @@ class BaseSample():
         """
         Create a gtk window with plots and images for interactive data analysis.
         """
-        gtkMap = GtkPlots(sample=self)
+        gtkMap = GtkPlots(xrd_map=self)
         gtkMap.launch()
 
     def draw_edge(self, ax, color):
@@ -631,290 +642,215 @@ class BaseSample():
     def __repr__(self):
         return '<Sample: {name}>'.format(name=self.sample_name)
 
-    class XRDScan():
+
+class MapScan(xrd.XRDScan):
+    """
+    An XRD scan at one X,Y location. Several Scan objects make up a
+    Sample object.
+    """
+    IMAGE_HEIGHT = 480 # px
+    IMAGE_WIDTH = 640 # px
+    def __init__(self, location, xrd_map=None, *args, **kwargs):
+        self.cube_coords = location
+        self.xrd_map = xrd_map
+        return super(MapScan, self).__init__(*args, **kwargs)
+
+    def xy_coords(self, unit_size=None):
+        """Convert internal coordinates to conventional cartesian coords"""
+        # Get default unit vector magnitude if not given
+        if unit_size is None:
+            unit = self.xrd_map.unit_size
+        else:
+            unit = unit_size
+        # Calculate x and y positions
+        cube = self.cube_coords
+        x = unit * 1/2 * (cube.i - cube.j)
+        y = unit * math.sqrt(3)/2 * (cube.i + cube.j)
+        return (x, y)
+
+    def instrument_coords(self, unit_size=1):
         """
-        An XRD scan at one X,Y location. Several Scan objects make up a
-        Sample object.
+        Convert internal coordinates to cartesian coordinates relative to
+        the sample stage of the instrument.
         """
-        IMAGE_HEIGHT = 480 # px
-        IMAGE_WIDTH = 640 # px
-        peak_list = {}
-        _df = None # Replaced by load_diffractogram() method
-        def __init__(self, location, filename, sample=None, *args, **kwargs):
-            self.cube_coords = location
-            self.filename = filename
-            self.sample = sample
-            self.cached_data = {}
-            # return super(BaseSample.XRDScan, self).__init__(*args, **kwargs)
+        xy = self.xy_coords(self.xrd_map.unit_size)
+        x = xy[0] + self.xrd_map.center[0]
+        y = xy[1] + self.xrd_map.center[1]
+        return (x, y)
 
-        def xy_coords(self, unit_size=None):
-            """Convert internal coordinates to conventional cartesian coords"""
-            # Get default unit vector magnitude if not given
-            if unit_size is None:
-                unit = self.sample.unit_size
-            else:
-                unit = unit_size
-            # Calculate x and y positions
-            cube = self.cube_coords
-            x = unit * 1/2 * (cube.i - cube.j)
-            y = unit * math.sqrt(3)/2 * (cube.i + cube.j)
-            return (x, y)
+    def pixel_coords(self, height, width):
+        """
+        Convert internal coordinates to pixels in an image with given
+        height and width. Assumes the sample center is at the center
+        of the image.
+        """
+        dots_per_mm = self.xrd_map.dots_per_mm()
+        xy_coords = self.xy_coords()
+        pixel_coords = {
+            'height': round(height/2 - xy_coords[1] * dots_per_mm),
+            'width': round(width/2 + xy_coords[0] * dots_per_mm)
+        }
+        return pixel_coords
 
-        def instrument_coords(self, unit_size=1):
-            """
-            Convert internal coordinates to cartesian coordinates relative to
-            the sample stage of the instrument.
-            """
-            xy = self.xy_coords(self.sample.unit_size)
-            x = xy[0] + self.sample.center[0]
-            y = xy[1] + self.sample.center[1]
-            return (x, y)
-
-        def pixel_coords(self, height, width):
-            """
-            Convert internal coordinates to pixels in an image with given
-            height and width. Assumes the sample center is at the center
-            of the image.
-            """
-            dots_per_mm = self.sample.dots_per_mm()
-            xy_coords = self.xy_coords()
-            pixel_coords = {
-                'height': round(height/2 - xy_coords[1] * dots_per_mm),
-                'width': round(width/2 + xy_coords[0] * dots_per_mm)
-            }
-            return pixel_coords
-
-        def diffractogram(self, filename=None):
-            """Return a pandas dataframe with the X-ray diffractogram for this
-            scan.
-            """
-            if self._df is None:
-                df = self.load_diffractogram(filename)
-            else:
-                df = self._df
-            return df
-
-        def load_diffractogram(self, filename=None):
-            if filename is None:
-                # Try and determine filename from the sample
-                filename = "{samplename}-frames/{filename}.plt".format(
-                    samplename=self.sample.sample_name,
-                    filename=self.filename
-                )
-            self._df = pd.read_csv(filename, names=['2theta', 'counts'],
-                             sep=' ', comment='!', index_col=0)
-            self.subtract_background()
-            return self._df
-
-        def subtract_background(self):
-            """
-            Calculate the baseline for the diffractogram and generate a
-            background correction.
-            """
-            background = self._df.copy()
-            # Remove registered peaks
-            for key, peak in self.sample.peak_list.items():
-                background.drop(background[peak[0]:peak[1]].index, inplace=True)
-            # Determine a background line from the noise without peaks
-            self.spline = scipy.interpolate.UnivariateSpline(
-                x=background.index,
-                y=background.counts,
-                s=len(background.index)*25,
-                k=4
+    def diffractogram(self):
+        """Return a diffractogram based on naming scheme for mapping,
+        with caching."""
+        # Check for cached version
+        if not (self._df is None):
+            df = self._df
+        else:
+            # Try and determine filename from the sample name
+            filename = "{samplename}-frames/{filename}.plt".format(
+                samplename=self.xrd_map.sample_name,
+                filename=self.filename
             )
-            # Extrapolate the background for the whole spectrum
-            x = self._df.index
-            self._df['background'] = self.spline(x)
-            self._df['subtracted'] = self._df.counts - self._df.background
-            return self._df
+            # Get file from disk
+            df = self.load_diffractogram(filename)
+        return df
 
-        def calculate_metric(self):
-            """Contains the specifics of getting one number from each scan.
-            To be overridden by actual Sample subclasses."""
-            raise NotImplementedError
+    def metric(self):
+        """
+        Check for a cached metric and if none is found, generate a new
+        one.
+        """
+        metric = self.cached_data.get('metric', None)
+        if metric is None:
+            metric = self.material.mapscan_metric(scan=self)
+            self.cached_data['metric'] = metric
+        return metric
 
-        def metric(self):
-            """
-            Check for a cached metric and if none is found, generate a new
-            one.
-            """
-            metric = self.cached_data.get('metric', None)
-            if metric is None:
-                metric = self.calculate_metric()
-                self.cached_data['metric'] = metric
-            return metric
+    def plot_hexagon(self, ax):
+        """Build and plot a hexagon for display on the mapping routine.
+        Return the hexagon patch object."""
+        # Check for cached data
+        hexagon = patches.RegularPolygon(
+            xy=self.xy_coords(),
+            numVertices=6,
+            radius=0.595*self.xrd_map.unit_size,
+            linewidth=0,
+            alpha=self.reliability(),
+            color=self.color()
+        )
+        ax.add_patch(hexagon)
+        return hexagon
 
-        def plot_hexagon(self, ax):
-            """Build and plot a hexagon for display on the mapping routine.
-            Return the hexagon patch object."""
-            # Check for cached data
-            hexagon = patches.RegularPolygon(
-                xy=self.xy_coords(),
-                numVertices=6,
-                radius=0.595*self.sample.unit_size,
-                linewidth=0,
-                alpha=self.reliability(),
-                color=self.color()
+    def highlight_hexagon(self, ax):
+        """Plots a red hexagon to highlight this specific scan."""
+        hexagon = patches.RegularPolygon(
+            xy=self.xy_coords(),
+            numVertices=6,
+            radius=0.595*self.xrd_map.unit_size,
+            linewidth=1,
+            alpha=1,
+            edgecolor='red',
+            facecolor='none'
+        )
+        ax.add_patch(hexagon)
+        return hexagon
+
+    def color(self):
+        """
+        Use the metric for this material to determine what color this scan
+        should be on the resulting map.
+        """
+        color = self.cached_data.get('color', None)
+        if color is None:
+            # Not cached, so recalculate
+            metric = self.metric()
+            cmap = self.xrd_map.get_cmap()
+            color = cmap(self.material.metric_normalizer(metric))
+            self.cached_data['color'] = color
+        return color
+
+    def reliability(self):
+        """Serve up cached value or recalculate if necessary."""
+        reliability = self.cached_data.get('reliability', None)
+        if reliability is None:
+            reliability = self.material.mapscan_reliability(scan=self)
+            self.cached_data['reliability'] = reliability
+        return reliability
+
+    def axes_title(self):
+        """Determine diffractogram axes title from cube coordinates."""
+        title = 'XRD Diffractogram at ({i}, {j}, {k})'.format(
+            i=self.cube_coords[0],
+            j=self.cube_coords[1],
+            k=self.cube_coords[2]
+        )
+        return title
+
+    def image(self):
+        """
+        Retrieve the image file taken by the diffractometer.
+        """
+        filename = '{dir}/{file_base}_01.jpg'.format(
+                dir=self.xrd_map.directory(),
+                file_base=self.filename
             )
-            ax.add_patch(hexagon)
-            return hexagon
+        imageArray = scipy.misc.imread(filename)
+        # Rotate to align with sample coords
+        imageArray = scipy.misc.imrotate(imageArray, 180)
+        return imageArray
 
-        def highlight_hexagon(self, ax):
-            """Plots a red hexagon to highlight this specific scan."""
-            hexagon = patches.RegularPolygon(
-                xy=self.xy_coords(),
-                numVertices=6,
-                radius=0.595*self.sample.unit_size,
-                linewidth=1,
-                alpha=1,
-                edgecolor='red',
-                facecolor='none'
-            )
-            ax.add_patch(hexagon)
-            return hexagon
+    def plot_image(self, ax=None):
+        """
+        Show the scan's overhead picture on a set of axes.
+        """
+        if ax is None:
+            ax = new_axes()
+        # Calculate axes limit
+        center = self.xy_coords()
+        xMin = center[0] - self.IMAGE_WIDTH/2/self.xrd_map.dots_per_mm()
+        xMax = center[0] + self.IMAGE_WIDTH/2/self.xrd_map.dots_per_mm()
+        yMin = center[1] - self.IMAGE_HEIGHT/2/self.xrd_map.dots_per_mm()
+        yMax = center[1] + self.IMAGE_HEIGHT/2/self.xrd_map.dots_per_mm()
+        axes_limits = (xMin, xMax, yMin, yMax)
+        ax.imshow(self.image(), extent=axes_limits)
+        # Add plot annotations
+        ax.set_title('Micrograph of Mapped Area')
+        ax.set_xlabel('mm')
+        ax.set_ylabel('mm')
+        return ax
 
-        def color(self):
-            """
-            Use the metric for this material to determine what color this scan
-            should be on the resulting map.
-            """
-            color = self.cached_data.get('color', None)
-            if color is None:
-                # Not cached, so recalculate
-                metric = self.metric()
-                cmap = self.sample.get_cmap()
-                color = cmap(self.sample.metric_normalizer(metric))
-                self.cached_data['color'] = color
-            return color
+    def padded_image(self, height, width, image=None):
+        """
+        Take the image for this scan and pad the edges to make it new
+        height and width.
+        """
+        if image is None:
+            image = self.image().astype(np.uint16)
+            # Add a bias that will be removed after the image is composited
+            image = image + 1
+        # Calculate padding
+        center = self.pixel_coords(height=height, width=width)
+        padLeft = int(center['width'] - self.IMAGE_WIDTH/2)
+        padRight = int(width - center['width'] - self.IMAGE_WIDTH/2)
+        padTop = int(center['height'] - self.IMAGE_HEIGHT/2)
+        padBottom = int(height - center['height'] - self.IMAGE_HEIGHT/2)
+        # Apply padding
+        paddedImage = np.pad(
+            image,
+            ((padTop, padBottom), (padLeft, padRight), (0, 0)),
+            mode='constant'
+        )
+        return paddedImage
 
-        def reliability(self):
-            """Serve up cached value or recalculate if necessary."""
-            reliability = self.cached_data.get('reliability', None)
-            if reliability is None:
-                reliability = self.calculate_reliability()
-                self.cached_data['reliability'] = reliability
-            return reliability
-
-        def calculate_reliability(self):
-            """
-            Use peak area to determine how likely this scan is to represent
-            sample rather than tape.
-            """
-            if self.sample.reliability_peak:
-                normalize = self.sample.reliability_normalizer
-                # Determine peak area for normalization
-                df = self.diffractogram()
-                peakRange = self.sample.peak_list[self.sample.reliability_peak]
-                peak = df.loc[peakRange[0]:peakRange[1], 'subtracted']
-                peakArea = np.trapz(y=peak, x=peak.index)
-                reliability = normalize(peakArea)
-            else:
-                reliability = 1
-            return reliability
-
-        def image(self):
-            """
-            Retrieve the image file taken by the diffractometer.
-            """
-            filename = '{dir}/{file_base}_01.jpg'.format(
-                    dir=self.sample.directory(),
-                    file_base=self.filename
-                )
-            imageArray = scipy.misc.imread(filename)
-            # Rotate to align with sample coords
-            imageArray = scipy.misc.imrotate(imageArray, 180)
-            return imageArray
-
-        def plot_image(self, ax=None):
-            """
-            Show the scan's overhead picture on a set of axes.
-            """
-            if ax is None:
-                ax = new_axes()
-            # Calculate axes limit
-            center = self.xy_coords()
-            xMin = center[0] - self.IMAGE_WIDTH/2/self.sample.dots_per_mm()
-            xMax = center[0] + self.IMAGE_WIDTH/2/self.sample.dots_per_mm()
-            yMin = center[1] - self.IMAGE_HEIGHT/2/self.sample.dots_per_mm()
-            yMax = center[1] + self.IMAGE_HEIGHT/2/self.sample.dots_per_mm()
-            axes_limits = (xMin, xMax, yMin, yMax)
-            ax.imshow(self.image(), extent=axes_limits)
-            # Add plot annotations
-            ax.set_title('Micrograph of Mapped Area')
-            ax.set_xlabel('mm')
-            ax.set_ylabel('mm')
-            return ax
-
-        def padded_image(self, height, width, image=None):
-            """
-            Take the image for this scan and pad the edges to make it new
-            height and width.
-            """
-            if image is None:
-                image = self.image().astype(np.uint16)
-                # Add a bias that will be removed after the image is composited
-                image = image + 1
-            # Calculate padding
-            center = self.pixel_coords(height=height, width=width)
-            padLeft = int(center['width'] - self.IMAGE_WIDTH/2)
-            padRight = int(width - center['width'] - self.IMAGE_WIDTH/2)
-            padTop = int(center['height'] - self.IMAGE_HEIGHT/2)
-            padBottom = int(height - center['height'] - self.IMAGE_HEIGHT/2)
-            # Apply padding
-            paddedImage = np.pad(
-                image,
-                ((padTop, padBottom), (padLeft, padRight), (0, 0)),
-                mode='constant'
-            )
-            return paddedImage
-
-        def padded_image_mask(self, height, width):
-            """
-            Return an array of height x width where any pixels in this scans
-            image are 1 and all other are 0.
-            """
-            scanImage = self.image()
-            scanImage.fill(1)
-            return self.padded_image(height=height,
-                                     width=width,
-                                     image=scanImage)
-
-        def plot_diffractogram(self, ax=None):
-
-            """
-            Plot the XRD diffractogram for this scan. Generates a new set of axes
-            unless supplied by the `ax` keyword.
-            """
-            df = self.diffractogram()
-            if not ax:
-                fig = pyplot.figure()
-                ax = pyplot.gca()
-            ax.plot(df.index, df.loc[:, 'counts'])
-            ax.plot(df.index, self.spline(df.index))
-            # Highlight peaks of interest
-            peak_indexes = []
-            for key, peak in self.sample.peak_list.items():
-                # peak_indexes.append(df.loc[peak[0]:peak[1], 'counts'])
-                ax.axvspan(peak[0], peak[1], color='green', alpha=0.25)
-            # peak_df = pd.concat(peak_indexes)
-            ax.set_xlim(left=df.index.min(), right=df.index.max())
-            ax.set_ylim(bottom=0)
-            ax.set_xlabel(r'$2\theta$')
-            ax.set_ylabel('Counts')
-            title = 'XRD Diffractogram at ({i}, {j}, {k})'.format(
-                i=self.cube_coords[0],
-                j=self.cube_coords[1],
-                k=self.cube_coords[2]
-            )
-            ax.set_title(title)
-            return ax
+    def padded_image_mask(self, height, width):
+        """
+        Return an array of height x width where any pixels in this scans
+        image are 1 and all other are 0.
+        """
+        scanImage = self.image()
+        scanImage.fill(1)
+        return self.padded_image(height=height,
+                                 width=width,
+                                 image=scanImage)
 
 
-class DummySample(BaseSample):
+class DummyMap(Map):
     """
     Sample that returns a dummy map for testing.
     """
-
     def bulk_diffractogram(self):
         # Return some random data
         twoTheta = np.linspace(10, 80, num=700)
@@ -927,63 +863,3 @@ class DummySample(BaseSample):
         # Read a cached composite image from disk
         image = scipy.misc.imread('{0}/test-composite-image.png'.format(directory))
         return image
-
-    class XRDScan(BaseSample.XRDScan):
-        def calculate_metric(self):
-            # Just return the distance from bottom left to top right
-            p = self.cube_coords[0]
-            rows = self.sample.rows
-            r = p/2/rows + 0.5
-            return r
-
-        def calculate_reliability(self):
-            return 1
-
-
-class SolidSolutionSample(BaseSample):
-    """
-    Class for mapping sample that discharge by the solid solution
-    mechanism. Operates by change in 2-theta peak position.
-    """
-    class XRDScan(BaseSample.XRDScan):
-        def calculate_metric(self):
-            """
-            Return the 2θ difference of self.peak1 and self.peak2. Peak
-            difference is used to overcome errors caused by shifter
-            patterns.
-            """
-            df = self.diffractogram()
-            # Get the 2θ value of peak
-            peak2 = self.sample.peak_list[self.sample.metric_peak]
-            range2 = df.loc[peak2[0]:peak2[1], 'subtracted']
-            theta2 = range2.argmax()
-            return theta2
-
-
-class TwoPhaseSample(BaseSample):
-    """
-    Class for mapping sample that discharge by a two-phase
-    mechanism. Operates by the ratio of peak areas for each phase.
-    """
-    class XRDScan(BaseSample.XRDScan):
-        def calculate_metric(self):
-            """
-            Compare the ratio of two peaks, one for discharged and one for
-            charged material.
-            """
-            df = self.diffractogram()
-            # Get peak dataframes for integration
-            peakDischarged = df.loc[
-                self.sample.peak_list[self.sample.discharged_peak],
-                'subtracted'
-            ]
-            peakCharged = df.loc[
-                self.sample.peak_list[self.sample.charged_peak],
-                'subtracted'
-            ]
-            # Integrate peaks
-            areaCharged = np.trapz(y=peakCharged, x=peakCharged.index)
-            areaDischarged = np.trapz(y=peakDischarged, x=peakDischarged.index)
-            # Compare areas of the two peaks
-            ratio = areaCharged/(areaCharged+areaDischarged)
-            return ratio

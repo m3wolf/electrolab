@@ -4,8 +4,9 @@ import os.path
 
 import pandas as pd
 
-from mapping import BaseSample, DummySample, Cube
-from samples import LMOSolidSolution
+from materials import lmo_solid_solution
+from mapping import Map, DummyMap, Cube, MapScan
+# from samples import LMOSolidSolution
 from cycler import GalvanostatRun
 
 
@@ -25,34 +26,28 @@ class CubeTest(unittest.TestCase):
 
 class LMOSolidSolutionTest(unittest.TestCase):
     def setUp(self):
-        self.sample = LMOSolidSolution(center=(0.078,-30.688),
-                                diameter=15,
-                                collimator=0.5,
-                                sample_name='test-sample')
-        self.sample.create_scans()
+        self.material = lmo_solid_solution
+        self.scan = MapScan(location=(0, 0), material=self.material)
+        self.scan.load_diffractogram('test-sample-frames/LMO-sample-data.plt')
 
     def test_metric(self):
-        scan = self.sample.scans[0]
-        df = scan.load_diffractogram()
-        metric = scan.metric()
+        df = self.scan.diffractogram()
+        metric = self.scan.metric()
         self.assertEqual(
             metric,
-            44.185
+            44.37
         )
 
     def test_reliability_sample(self):
-        scan = self.sample.scans[0]
-        scan.filename = 'LMO-sample'
-        reliability = scan.reliability()
+        reliability = self.scan.reliability()
         self.assertTrue(
             reliability > 0.9,
             'Reliability {} is not > 0.9'.format(reliability)
        )
 
     def test_reliability_background(self):
-        scan = self.sample.scans[0]
-        scan.filename = 'LMO-background'
-        reliability = scan.reliability()
+        self.scan.load_diffractogram('test-sample-frames/LMO-background.plt')
+        reliability = self.scan.reliability()
         self.assertTrue(
             reliability < 0.1,
             'Reliability {} is not < 0.1'.format(reliability)
@@ -80,8 +75,8 @@ class GalvanostatRunTest(unittest.TestCase):
 class SlamFileTest(unittest.TestCase):
 
     def setUp(self):
-        self.sample = BaseSample(center=(0, 0), diameter=12.7, rows=2,
-                                 sample_name='slamfile-test')
+        self.sample = Map(center=(0, 0), diameter=12.7, rows=2,
+                              sample_name='slamfile-test')
         self.sample.two_theta_range = (50, 90)
 
     def test_number_of_frames(self):
@@ -98,7 +93,7 @@ class SlamFileTest(unittest.TestCase):
 
     def test_collimator(self):
         # Does passing a collimator diameter set the appropriate number of rows
-        self.sample = BaseSample(center=(0, 0), diameter=12.7, collimator=0.5)
+        self.sample = Map(center=(0, 0), diameter=12.7, collimator=0.5)
         self.assertEqual(
             self.sample.rows,
             13
@@ -164,11 +159,11 @@ class SlamFileTest(unittest.TestCase):
         )
 
     def test_cell_size(self):
-        sample = BaseSample(center=(0, 0), diameter=20, rows=5)
+        sample = Map(center=(0, 0), diameter=20, rows=5)
         self.assertEqual(sample.unit_size, 4/math.sqrt(3))
 
     def test_jinja_context(self):
-        sample = BaseSample(center=(-10.5, 20.338), diameter=10, rows=4,
+        sample = Map(center=(-10.5, 20.338), diameter=10, rows=4,
                             sample_name='LiMn2O4')
         sample.create_scans()
         context = sample.get_context()
@@ -216,10 +211,11 @@ class SlamFileTest(unittest.TestCase):
         os.rmdir(directory)
 
 
-class XRDScanTest(unittest.TestCase):
+class MapScanTest(unittest.TestCase):
     def setUp(self):
-        self.scan = BaseSample.XRDScan(Cube(1, 0, -1), 'sample')
-        self.scan.sample = DummySample()
+        xrdMap = Map()
+        self.scan = MapScan(Cube(1, 0, -1), xrd_map=xrdMap)
+        self.scan.sample = DummyMap()
 
     def test_xy_coords(self):
         self.scan.cube_coords = Cube(1, -1, 0)
