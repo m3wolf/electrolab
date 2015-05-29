@@ -51,27 +51,52 @@ class Material():
             ax.axvspan(peak[0], peak[1], color='green', alpha=0.25)
 
 class TwoPhaseMaterial(Material):
+    def peak_area(self, scan, peak):
+        """Integrated area for the given peak."""
+        df = scan.diffractogram()
+        # Get peak dataframes for integration
+        peakCharged = df.loc[
+            peak[0]:peak[1],
+            'subtracted'
+        ]
+        # Integrate peaks
+        areaCharged = np.trapz(y=peakCharged, x=peakCharged.index)
+        return areaCharged
     def mapscan_metric(self, scan):
         """
         Compare the ratio of two peaks, one for discharged and one for
         charged material.
         """
-        df = scan.diffractogram()
-        # Get peak dataframes for integration
-        peakDischarged = df.loc[
-            self.peak_list[self.discharged_peak],
-            'subtracted'
-        ]
-        peakCharged = df.loc[
-            self.peak_list[self.charged_peak],
-            'subtracted'
-        ]
+        # df = scan.diffractogram()
+        # # Get peak dataframes for integration
+        # peakDischarged = df.loc[
+        #     self.peak_list[self.discharged_peak],
+        #     'subtracted'
+        # ]
+        # peakCharged = df.loc[
+        #     self.peak_list[self.charged_peak],
+        #     'subtracted'
+        # ]
+        # areaCharged = np.trapz(y=peakCharged, x=peakCharged.index)
+        # areaDischarged = np.trapz(y=peakDischarged, x=peakDischarged.index)
         # Integrate peaks
-        areaCharged = np.trapz(y=peakCharged, x=peakCharged.index)
-        areaDischarged = np.trapz(y=peakDischarged, x=peakDischarged.index)
+        areaCharged = self.peak_area(scan, self.peak_list[self.charged_peak])
+        areaDischarged = self.peak_area(scan, self.peak_list[self.discharged_peak])
         # Compare areas of the two peaks
         ratio = areaCharged/(areaCharged+areaDischarged)
         return ratio
+
+class IORMaterial(TwoPhaseMaterial):
+    """One-off material for submitting an image of the Image of Research
+    competition at UIC."""
+
+    def mapscan_metric(self, scan):
+        area = self.peak_area(scan, self.peak_list[self.charged_peak])
+        # area = self.charged_area(scan)
+        metric = 0
+        if area > 0.2:
+            metric = 1
+        return area
 
 class SolidSolutionMaterial(Material):
     def mapscan_metric(self, scan):
@@ -104,6 +129,7 @@ class DummyMaterial(Material):
 ##################################################
 
 lmo_peak_list = {
+    'null': (0, 0),
     '111': (18, 20),
     '311': (36, 37),
     '222': (37.5, 39),
@@ -111,7 +137,7 @@ lmo_peak_list = {
     '400-charged': (44.5, 45.25),
     '400-discharged': (43.75, 44.5),
     'tetragonal': (39, 41),
-    '331': (48, 49),
+    '331': (49, 49.8),
     '333': (55, 62),
     '511': (55, 62),
     '440': (62, 67),
@@ -132,11 +158,20 @@ lmo_solid_solution = SolidSolutionMaterial(
 
 # Material for mapping LiMn2O4 using peak area (two-phase mechanism)"""
 lmo_two_phase = TwoPhaseMaterial(
-    metric_normalizer = colors.Normalize(0, 1),
+    metric_normalizer = colors.Normalize(0, 1.3, clip=True),
     reliability_normalizer = colors.Normalize(2.3, 4.5, clip=True),
     peak_list = lmo_peak_list,
     charged_peak = '400-charged',
     discharged_peak = '400-discharged',
+    reliability_peak = '400',
+)
+
+ior_material = IORMaterial(
+    metric_normalizer = colors.Normalize(0, 1, clip=True),
+    reliability_normalizer = colors.Normalize(2.3, 4.5, clip=True),
+    peak_list = lmo_peak_list,
+    charged_peak = '331',
+    discharged_peak = '400',
     reliability_peak = '400',
 )
 

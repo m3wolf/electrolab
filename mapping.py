@@ -775,7 +775,7 @@ class MapScan(xrd.XRDScan):
         title = 'XRD Diffractogram at ({i}, {j}, {k})'.format(
             i=self.cube_coords[0],
             j=self.cube_coords[1],
-            k=self.cube_coords[2]
+            k=self.cube_coords[2],
         )
         return title
 
