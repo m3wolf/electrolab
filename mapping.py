@@ -696,7 +696,7 @@ class MapScan(xrd.XRDScan):
         """Return a diffractogram based on naming scheme for mapping,
         with caching."""
         # Check for cached version
-        if not (self._df is None):
+        if self._df is not None:
             df = self._df
         else:
             # Try and determine filename from the sample name
@@ -768,6 +768,8 @@ class MapScan(xrd.XRDScan):
         if reliability is None:
             reliability = self.material.mapscan_reliability(scan=self)
             self.cached_data['reliability'] = reliability
+        normalizer = self.xrd_map.material.reliability_normalizer
+        reliability = normalizer(reliability)
         return reliability
 
     def axes_title(self):

@@ -4,8 +4,9 @@ import os.path
 
 import pandas as pd
 
-from materials import lmo_solid_solution
+from materials import lmo_solid_solution_material as lmo_solid_solution
 from mapping import Map, DummyMap, Cube, MapScan
+from xrd import Phase, hkl_to_tuple, Reflection, XRDScan, remove_peak_from_df
 # from samples import LMOSolidSolution
 from cycler import GalvanostatRun
 
@@ -211,6 +212,22 @@ class SlamFileTest(unittest.TestCase):
         os.rmdir(directory)
 
 
+class XRDScanTest(unittest.TestCase):
+    def setUp(self):
+        self.xrd_scan = XRDScan(filename='test-sample-frames/map-0.plt')
+    def test_remove_peak_from_df(self):
+        peakRange = (35, 40)
+        df = self.xrd_scan.diffractogram()
+        peakIndex = df[peakRange[0]:peakRange[1]].index
+        remove_peak_from_df(Reflection(peakRange, '000'), df)
+        intersection = df.index.intersection(peakIndex)
+        self.assertEqual(
+            len(intersection),
+            0,
+            'Peak not removed ({0} remaining)'.format(len(intersection))
+        )
+
+
 class MapScanTest(unittest.TestCase):
     def setUp(self):
         xrdMap = Map()
@@ -254,6 +271,33 @@ class MapScanTest(unittest.TestCase):
         self.assertEqual(
             self.scan.xy_coords(2),
             (1, math.sqrt(3))
+        )
+
+class ReflectionTest(unittest.TestCase):
+    def test_hkl_to_tuple(self):
+        newHkl = hkl_to_tuple((1, 1, 1))
+        self.assertEqual(
+            newHkl,
+            (1, 1, 1)
+        )
+        newHkl = hkl_to_tuple('315')
+        self.assertEqual(
+            newHkl,
+            (3, 1, 5)
+        )
+
+
+class PhaseTest(unittest.TestCase):
+    def setUp(self):
+        self.phase = Phase(
+            reflection_list = [Reflection(two_theta_range=(0, 1), hkl='111')]
+        )
+
+    def test_peak_by_hkl(self):
+        reflection = self.phase.reflection_by_hkl('111')
+        self.assertEqual(
+            reflection.hkl,
+            (1, 1, 1)
         )
 
 if __name__ == '__main__':
