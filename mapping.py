@@ -66,7 +66,7 @@ class Cube():
         return "Cube{0}".format(self.__str__())
 
 
-class GtkPlots():
+class GtkMapWindow(Gtk.Window):
     """
     A set of plots for interactive data analysis.
     """
@@ -77,20 +77,42 @@ class GtkPlots():
     def __init__(self, xrd_map, *args, **kwargs):
         self.xrd_map = xrd_map
         self.currentScan = self.xrd_map.scan(Cube(0, 0, 0))
+        return_val = super(GtkMapWindow, self).__init__(*args, **kwargs)
+        self.connect('delete-event', Gtk.main_quit)
+        # Load icon
+        directory = os.path.dirname(os.path.realpath(__file__))
+        image = '{0}/images/icon.png'.format(directory)
+        self.set_icon_from_file(image)
+        self.set_default_size(1000, 1000)
+        # Set up the matplotlib features
+        fig = figure.Figure(figsize=(13.8, 10))
+        self.fig = fig
+        fig.figurePatch.set_facecolor('white')
+        # Prepare plotting area
+        sw = Gtk.ScrolledWindow()
+        self.add(sw)
+        canvas = FigureCanvas(self.fig)
+        canvas.set_size_request(400,400)
+        sw.add_with_viewport(canvas)
+        self.draw_plots()
+        # Connect to keypress event for changing position
+        self.connect('key_press_event', self.on_key_press)
+        # Connect to mouse click event
+        fig.canvas.mpl_connect('button_press_event', self.click_callback)
+        return return_val
 
     def draw_plots(self, scan=None):
         """
         (re)draw the plots on the gtk window
         """
-        sample = self.xrd_map
-
+        xrdMap = self.xrd_map
         self.fig.clear()
         # Prepare plots
         self.mapAxes = self.fig.add_subplot(221)
-        sample.plot_map(ax=self.mapAxes)
+        xrdMap.plot_map(ax=self.mapAxes)
         self.mapAxes.set_aspect(1)
         self.compositeImageAxes = self.fig.add_subplot(223)
-        sample.plot_composite_image(ax=self.compositeImageAxes)
+        xrdMap.plot_composite_image(ax=self.compositeImageAxes)
         self.scanImageAxes = self.fig.add_subplot(224)
         self.update_plots()
 
@@ -116,11 +138,12 @@ class GtkPlots():
             activeScan.plot_diffractogram(ax=self.diffractogramAxes)
         else:
             self.xrd_map.plot_bulk_diffractogram(ax=self.diffractogramAxes)
-        # Draw individual scan's image
+        # Draw individual scan's image or histogram
+        self.scanImageAxes.cla()
         if activeScan:
             activeScan.plot_image(ax=self.scanImageAxes)
         else:
-            self.scanImageAxes.cla()
+            self.xrd_map.plot_histogram(ax=self.scanImageAxes)
         # Highlight the hexagon on the map and composite image
         if activeScan:
             self.map_hexagon = activeScan.highlight_hexagon(ax=self.mapAxes)
@@ -172,35 +195,7 @@ class GtkPlots():
             self.local_mode = False
         self.update_plots()
 
-    def launch(self):
-        window = Gtk.Window(
-            title="Maps for sample '{}'".format(self.xrd_map.sample_name)
-        )
-        self.window = window
-        window.connect('delete-event', Gtk.main_quit)
-        # Load icon
-        directory = os.path.dirname(os.path.realpath(__file__))
-        image = '{0}/images/icon.png'.format(directory)
-        window.set_icon_from_file(image)
-        window.set_default_size(1000, 1000)
-        # Set up the matplotlib features
-        fig = figure.Figure(figsize=(13.8, 10))
-        self.fig = fig
-        fig.figurePatch.set_facecolor('white')
-        # Prepare plotting area
-        sw = Gtk.ScrolledWindow()
-        window.add(sw)
-        canvas = FigureCanvas(self.fig)
-        canvas.set_size_request(400,400)
-        sw.add_with_viewport(canvas)
-        self.draw_plots()
-        # Connect to keypress event for changing position
-        window.connect('key_press_event', self.on_key_press)
-        # Connect to mouse click event
-        fig.canvas.mpl_connect('button_press_event', self.click_callback)
-        # Launch window
-        window.show_all()
-        Gtk.main()
+#     def launch(self):
 
 class Map():
     """
@@ -501,8 +496,10 @@ class Map():
         """
         Create a gtk window with plots and images for interactive data analysis.
         """
-        gtkMap = GtkPlots(xrd_map=self)
-        gtkMap.launch()
+        title = "Maps for sample '{}'".format(self.sample_name)
+        window = GtkMapWindow(xrd_map=self, title=title)
+        window.show_all()
+        Gtk.main()
 
     def draw_edge(self, ax, color):
         """
@@ -639,6 +636,19 @@ class Map():
         self.draw_edge(ax, color='red')
         return ax
 
+    def plot_histogram(self, ax=None):
+        metrics = [scan.metric() for scan in self.scans]
+        min = self.material.metric_normalizer.vmin
+        max = self.material.metric_normalizer.vmax
+        metrics = np.clip(metrics, min, max)
+        weights = [scan.reliability() for scan in self.scans]
+        if ax is not None:
+            ax.hist(metrics, bins=100, weights=weights)
+        else:
+            ax = pyplot.hist(metrics, bins=100, weights=weights)
+        ax.set_xlim(min, max)
+        return ax
+
     def __repr__(self):
         return '<Sample: {name}>'.format(name=self.sample_name)
 
@@ -719,6 +729,16 @@ class MapScan(xrd.XRDScan):
             self.cached_data['metric'] = metric
         return metric
 
+    def reliability(self):
+        """Serve up cached value or recalculate if necessary."""
+        reliability = self.cached_data.get('reliability', None)
+        if reliability is None:
+            reliability = self.material.mapscan_reliability(scan=self)
+            self.cached_data['reliability'] = reliability
+        normalizer = self.xrd_map.material.reliability_normalizer
+        reliability = normalizer(reliability)
+        return reliability
+
     def plot_hexagon(self, ax):
         """Build and plot a hexagon for display on the mapping routine.
         Return the hexagon patch object."""
@@ -761,16 +781,6 @@ class MapScan(xrd.XRDScan):
             color = cmap(self.material.metric_normalizer(metric))
             self.cached_data['color'] = color
         return color
-
-    def reliability(self):
-        """Serve up cached value or recalculate if necessary."""
-        reliability = self.cached_data.get('reliability', None)
-        if reliability is None:
-            reliability = self.material.mapscan_reliability(scan=self)
-            self.cached_data['reliability'] = reliability
-        normalizer = self.xrd_map.material.reliability_normalizer
-        reliability = normalizer(reliability)
-        return reliability
 
     def axes_title(self):
         """Determine diffractogram axes title from cube coordinates."""

@@ -71,7 +71,6 @@ class Material():
         # Highlight background phases (sample stage, etc)
         for phase in self.background_phases:
             for reflection in phase.reflection_list:
-                print('reflection', reflection.two_theta_range)
                 two_theta = reflection.two_theta_range
                 ax.axvspan(two_theta[0], two_theta[1], color='0.8', alpha=1)
 
@@ -201,7 +200,7 @@ class LMOSolidSolutionMaterial(SolidSolutionMaterial):
 # Material for mapping LiMn2O4 using peak area (two-phase mechanism)"""
 #lmo_two_phase_material = TwoPhaseMaterial(
 class LMOTwoPhaseMaterial(TwoPhaseMaterial):
-    metric_normalizer = colors.Normalize(0, 1.3, clip=True)
+    metric_normalizer = colors.Normalize(0.8, 1.2, clip=True)
     reliability_normalizer = colors.Normalize(0, 1, clip=True)
     phase_list = [lmo_cubic_phase, lmo_tetragonal_phase]
     background_phases = [aluminum_phase]
