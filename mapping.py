@@ -204,7 +204,6 @@ class Map():
     scan_time determines seconds spent at each detector position.
     """
     cmap_name = 'summer'
-    two_theta_range = (50, 90) # Bragg angle range in degrees
     THETA1_MIN=0 # Source limits based on geometry
     THETA1_MAX=50
     THETA2_MIN=0 # Detector limits based on geometry
@@ -212,19 +211,30 @@ class Map():
     camera_zoom = 6
     frame_step = 20 # How much to move detector by in degrees
     frame_width = 30 # 2-theta coverage of detector face
-    scan_time = 300 # 5 minutes per scan
     scans = []
     peak_list = {}
     reliability_peak = None
     hexagon_patches = None # Replaced by cached versions
-    def __init__(self, center=(0, 0), diameter=12.7, collimator=0.5, scan_time=None,
-                 rows=None, sample_name='unknown', material=None, *args, **kwargs):
+    def __init__(self, center=(0, 0), diameter=12.7, collimator=0.5,
+                 two_theta_range=None,
+                 scan_time=None, rows=None, sample_name='unknown',
+                 material=None, *args, **kwargs):
         self.center = center
         self.diameter = diameter
         self.material = material
         self.collimator = collimator
         if scan_time is not None:
             self.scan_time = scan_time # Seconds at each detector angle
+        elif material is not None:
+            self.scan_time = material.scan_time
+        else:
+            raise TypeError("Either scan_time or material must be given")
+        if two_theta_range is not None:
+            self.two_theta_range = two_theta_range
+        elif material is not None:
+            self.scan_time = material.two_theta_range
+        else:
+            raise TypeError("Either two_theta_range or material must be given")
         # Determine number of rows from collimator size
         if rows is None:
             self.rows = math.ceil(diameter/collimator/2)
