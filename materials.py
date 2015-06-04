@@ -183,6 +183,34 @@ aluminum_phase = Phase(
     ]
 )
 
+# 304 Stainless steel. PDF2 card: 00-033-0397
+stainless_steel_phase = Phase(
+    crystal_system = 'cubic',
+    reflection_list = [
+        Reflection((42, 46), '111'),
+        Reflection((49, 53), '200'),
+        Reflection((72, 78), '220'),
+    ]
+)
+class StainlessSteelMaterial(Material):
+    phase_list = [stainless_steel_phase]
+
+# Corundum standard
+class CorundumMaterial(Material):
+    phase_list = [Phase(
+        crystal_system = 'rhombohedral',
+        reflection_list = [
+            Reflection((25, 27), '012'),
+            Reflection((34, 36), '104'),
+            Reflection((37, 39), '110'),
+            Reflection((41, 42.5), '006'),
+            Reflection((42.5, 44), '113'),
+            Reflection((52, 54), '024'),
+            Reflection((56, 59), '116'),
+        ]
+    )]
+
+
 # Material for mapping LiMn2O4 cathodes using peak position.
 # lmo_solid_solution_material = SolidSolutionMaterial(
 class LMOSolidSolutionMaterial(SolidSolutionMaterial):
