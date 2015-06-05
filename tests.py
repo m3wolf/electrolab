@@ -4,10 +4,9 @@ import os.path
 
 import pandas as pd
 
-from materials import lmo_solid_solution_material as lmo_solid_solution
+from materials import LMOSolidSolutionMaterial
 from mapping import Map, DummyMap, Cube, MapScan
 from xrd import Phase, hkl_to_tuple, Reflection, XRDScan, remove_peak_from_df
-# from samples import LMOSolidSolution
 from cycler import GalvanostatRun
 
 
@@ -27,8 +26,12 @@ class CubeTest(unittest.TestCase):
 
 class LMOSolidSolutionTest(unittest.TestCase):
     def setUp(self):
-        self.material = lmo_solid_solution
-        self.scan = MapScan(location=(0, 0), material=self.material)
+        self.material = LMOSolidSolutionMaterial()
+        self.map = Map(scan_time=10,
+                  two_theta_range=(10, 20))
+        self.scan = MapScan(location=(0, 0), material=self.material,
+                            xrd_map=self.map,
+                            filebase="map-0")
         self.scan.load_diffractogram('test-sample-frames/LMO-sample-data.plt')
 
     def test_metric(self):
@@ -36,7 +39,7 @@ class LMOSolidSolutionTest(unittest.TestCase):
         metric = self.scan.metric()
         self.assertEqual(
             metric,
-            44.37
+            36.485
         )
 
     def test_reliability_sample(self):
@@ -54,6 +57,14 @@ class LMOSolidSolutionTest(unittest.TestCase):
             'Reliability {} is not < 0.1'.format(reliability)
         )
 
+    def test_reliability_noise(self):
+        # Check that background noise gives low reliability
+        self.scan.load_diffractogram('test-sample-frames/LMO-noise.plt')
+        reliability = self.scan.reliability()
+        self.assertTrue(
+            reliability < 0.1,
+            'Reliability {} is not < 0.1'.format(reliability)
+        )
 
 class CycleTest(unittest.TestCase):
     def setUp(self):
@@ -77,7 +88,8 @@ class SlamFileTest(unittest.TestCase):
 
     def setUp(self):
         self.sample = Map(center=(0, 0), diameter=12.7, rows=2,
-                              sample_name='slamfile-test')
+                          sample_name='slamfile-test',
+                          scan_time=5, two_theta_range=(10, 20))
         self.sample.two_theta_range = (50, 90)
 
     def test_number_of_frames(self):
@@ -94,7 +106,11 @@ class SlamFileTest(unittest.TestCase):
 
     def test_collimator(self):
         # Does passing a collimator diameter set the appropriate number of rows
-        self.sample = Map(center=(0, 0), diameter=12.7, collimator=0.5)
+        self.sample = Map(center=(0, 0),
+                          diameter=12.7,
+                          collimator=0.5,
+                          scan_time=10,
+                          two_theta_range=(10, 20))
         self.assertEqual(
             self.sample.rows,
             13
@@ -160,12 +176,20 @@ class SlamFileTest(unittest.TestCase):
         )
 
     def test_cell_size(self):
-        sample = Map(center=(0, 0), diameter=20, rows=5)
+        sample = Map(center=(0, 0),
+                     diameter=20,
+                     rows=5,
+                     scan_time=10,
+                     two_theta_range=(10, 20))
         self.assertEqual(sample.unit_size, 4/math.sqrt(3))
 
     def test_jinja_context(self):
-        sample = Map(center=(-10.5, 20.338), diameter=10, rows=4,
-                            sample_name='LiMn2O4')
+        sample = Map(center=(-10.5, 20.338),
+                     diameter=10,
+                     rows=4,
+                     sample_name='LiMn2O4',
+                     scan_time=10,
+                     two_theta_range=(10, 20))
         sample.create_scans()
         context = sample.get_context()
         self.assertEqual(
@@ -214,8 +238,10 @@ class SlamFileTest(unittest.TestCase):
 
 class XRDScanTest(unittest.TestCase):
     def setUp(self):
-        self.xrd_scan = XRDScan(filename='test-sample-frames/map-0.plt')
+        self.xrd_scan = XRDScan(filename='test-sample-frames/corundum.xye')
+
     def test_remove_peak_from_df(self):
+        self.xrd_scan = XRDScan(filename='test-sample-frames/map-0.plt')
         peakRange = (35, 40)
         df = self.xrd_scan.diffractogram()
         peakIndex = df[peakRange[0]:peakRange[1]].index
@@ -227,12 +253,34 @@ class XRDScanTest(unittest.TestCase):
             'Peak not removed ({0} remaining)'.format(len(intersection))
         )
 
+    def test_filetypes(self):
+        # Can the class determine the filetype and load it appropriately
+        scan = XRDScan(filename='test-sample-frames/corundum.xye')
+
+    def test_contains_peak(self):
+        """Method for determining if a given two_theta
+        range is within the limits of the index."""
+        # Completely inside range
+        self.assertTrue(
+            self.xrd_scan.contains_peak(peak=(20, 23))
+        )
+        # Completely outside range
+        self.assertFalse(
+            self.xrd_scan.contains_peak(peak=(2, 3))
+        )
+        # Partial overlap
+        self.assertTrue(
+            self.xrd_scan.contains_peak(peak=(79, 81))
+        )
+
 
 class MapScanTest(unittest.TestCase):
     def setUp(self):
-        xrdMap = Map()
-        self.scan = MapScan(Cube(1, 0, -1), xrd_map=xrdMap)
-        self.scan.sample = DummyMap()
+        xrdMap = Map(scan_time=10,
+                     two_theta_range=(10, 20))
+        self.scan = MapScan(Cube(1, 0, -1), xrd_map=xrdMap, filebase="map-0")
+        self.scan.sample = DummyMap(scan_time=10,
+                                    two_theta_range=(10, 20))
 
     def test_xy_coords(self):
         self.scan.cube_coords = Cube(1, -1, 0)

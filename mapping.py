@@ -232,7 +232,7 @@ class Map():
         if two_theta_range is not None:
             self.two_theta_range = two_theta_range
         elif material is not None:
-            self.scan_time = material.two_theta_range
+            self.two_theta_range = material.two_theta_range
         else:
             raise TypeError("Either two_theta_range or material must be given")
         # Determine number of rows from collimator size
@@ -252,12 +252,10 @@ class Map():
         """Populate the scans array with new scans in a hexagonal array."""
         self.scans = []
         for idx, coords in enumerate(self.path(self.rows)):
-            filename = 'map-{n:x}'.format(
-                sample=self.sample_name,
-                n=idx
-            )
-            new_scan = MapScan(location=coords, filename=filename, xrd_map=self,
-                               material=self.material)
+            # Try and determine filename from the sample name
+            fileBase = "map-{n:x}".format(n=idx)
+            new_scan = MapScan(location=coords, xrd_map=self,
+                               material=self.material, filebase=fileBase)
             self.scans.append(new_scan)
 
     def scan(self, cube):
@@ -368,7 +366,7 @@ class Map():
         for idx, scan in enumerate(self.scans):
             # Prepare scan-specific details
             x, y = scan.xy_coords(unit_size=self.unit_size)
-            scan_metadata = {'x': x, 'y': y, 'filename': scan.filename}
+            scan_metadata = {'x': x, 'y': y, 'filename': scan.filebase}
             context['scans'].append(scan_metadata)
         return context
 
@@ -380,7 +378,7 @@ class Map():
         # Check for values outside instrument limits
         t2_start = self.get_theta2_start()
         t2_end = t2_start + num_frames*self.frame_step
-        if t2_end > self.THETA2_MAX:
+        if t2_end - self.THETA1_MAX > self.THETA2_MAX:
             msg = "2-theta range {given} is outside detector limits: {limits}".format(
                 given=self.two_theta_range,
                 limits=(self.THETA2_MIN, self.THETA2_MAX))
@@ -441,17 +439,8 @@ class Map():
         scanCount = 0
         # Add a contribution from each map location
         for scan in self.scans:
-            try:
-                # scan_diffractogram = scan.diffractogram()['subtracted']
+            if scan.diffractogram_is_loaded:
                 scan_diffractogram = scan.diffractogram()['counts']
-            except OSError:
-                errorMsg = 'could not load "{filename}" for scan at {coords}'
-                errorMsg = errorMsg.format(
-                    filename = scan.filename,
-                    coords = scan.cube_coords,
-                )
-                print(errorMsg)
-            else:
                 corrected_diffractogram = scan_diffractogram * scan.reliability()
                 scanCount = scanCount + 1
                 bulk_diffractogram = bulk_diffractogram.add(corrected_diffractogram, fill_value=0)
@@ -464,7 +453,10 @@ class Map():
         # Get default axis if none is given
         if ax is None:
             ax = new_axes()
-        bulk_diffractogram.plot(ax=ax)
+        if len(bulk_diffractogram) > 0:
+            bulk_diffractogram.plot(ax=ax)
+        else:
+            print("No bulk diffractogram data to plot")
         self.material.highlight_peaks(ax=ax)
         ax.set_xlabel(r'$2\theta$')
         ax.set_ylabel('counts')
@@ -603,7 +595,7 @@ class Map():
             for scan in self.scans:
                 filename = '{dir}/{file_base}_01.jpg'.format(
                     dir=self.directory(),
-                    file_base=scan.filename
+                    file_base=scan.filebase
                 )
                 rawImage = PIL.Image.open(filename)
                 rawImage = rawImage.rotate(180)
@@ -670,9 +662,14 @@ class MapScan(xrd.XRDScan):
     """
     IMAGE_HEIGHT = 480 # px
     IMAGE_WIDTH = 640 # px
-    def __init__(self, location, xrd_map=None, *args, **kwargs):
+    def __init__(self, location, xrd_map, filebase, *args, **kwargs):
         self.cube_coords = location
         self.xrd_map = xrd_map
+        self.filebase = filebase
+        self.filename = "{samplename}-frames/{filebase}.plt".format(
+                samplename=self.xrd_map.sample_name,
+                filebase=self.filebase,
+        )
         return super(MapScan, self).__init__(*args, **kwargs)
 
     def xy_coords(self, unit_size=None):
@@ -719,13 +716,17 @@ class MapScan(xrd.XRDScan):
         if self._df is not None:
             df = self._df
         else:
-            # Try and determine filename from the sample name
-            filename = "{samplename}-frames/{filename}.plt".format(
-                samplename=self.xrd_map.sample_name,
-                filename=self.filename
-            )
             # Get file from disk
+            filename = self.filename
             df = self.load_diffractogram(filename)
+        return df
+
+    def load_diffractogram(self, filename):
+        # Checking for existance of file allows for partial maps
+        if filename is not None and os.path.isfile(filename):
+            df = super(MapScan, self).load_diffractogram(filename)
+        else:
+            df = None
         return df
 
     def metric(self):
@@ -735,17 +736,24 @@ class MapScan(xrd.XRDScan):
         """
         metric = self.cached_data.get('metric', None)
         if metric is None:
-            metric = self.material.mapscan_metric(scan=self)
-            self.cached_data['metric'] = metric
+            if self.diffractogram_is_loaded:
+                metric = self.material.mapscan_metric(scan=self)
+                self.cached_data['metric'] = metric
+            else:
+                metric = 0
         return metric
 
     def reliability(self):
         """Serve up cached value or recalculate if necessary."""
         reliability = self.cached_data.get('reliability', None)
         if reliability is None:
-            reliability = self.material.mapscan_reliability(scan=self)
-            self.cached_data['reliability'] = reliability
-        normalizer = self.xrd_map.material.reliability_normalizer
+            self.diffractogram()
+            if self.diffractogram_is_loaded:
+                reliability = self.material.mapscan_reliability(scan=self)
+                self.cached_data['reliability'] = reliability
+            else:
+                reliability = 0
+        normalizer = self.material.reliability_normalizer
         reliability = normalizer(reliability)
         return reliability
 
@@ -807,7 +815,7 @@ class MapScan(xrd.XRDScan):
         """
         filename = '{dir}/{file_base}_01.jpg'.format(
                 dir=self.xrd_map.directory(),
-                file_base=self.filename
+                file_base=self.filebase
             )
         imageArray = scipy.misc.imread(filename)
         # Rotate to align with sample coords
