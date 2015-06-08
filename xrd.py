@@ -49,6 +49,18 @@ def plot_scans(scan_list, step_size=1):
     ax.set_xlabel(r'$2\theta$')
     ax.set_ylabel('counts')
 
+def align_scans(scan_list, peak):
+    """Align each scan to the peak in the given range. The first scan in
+    the list is not modified."""
+    # First calculate the two-theta position to use as a reference.
+    referenceScan = scan_list[0]
+    referencePeak = referenceScan.peak_position(peak)
+    for scan in scan_list[1:]:
+        scanPeak = scan.peak_position(peak)
+        offset = referencePeak - scanPeak
+        scan.offset_diffractogram(offset)
+    return scan_list
+
 class Reflection():
     """An XRD reflection with a specific hkl value."""
     def __init__(self, two_theta_range=(10, 80), hkl=(0, 0, 0)):
@@ -274,6 +286,12 @@ class XRDScan():
         self._df['background'] = self.spline(x)
         self._df['subtracted'] = self._df.counts - self._df.background
         return self._df
+
+    def offset_diffractogram(self, offset):
+        """Slide the whole diffractogram to the right by offset."""
+        df = self.diffractogram()
+        df['2theta'] = df.index + offset
+        df.set_index('2theta', inplace=True)
 
     def plot_diffractogram(self, ax=None):
         """

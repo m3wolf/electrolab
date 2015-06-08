@@ -62,7 +62,6 @@ class Material():
                 ax.axvspan(two_theta[0], two_theta[1], color='0.8', alpha=1)
 
 class TwoPhaseMaterial(Material):
-
     def mapscan_metric(self, scan):
         """
         Compare the ratio of two peaks, one for discharged and one for
@@ -134,7 +133,6 @@ lmo_cubic_phase = Phase(
 )
 
 lmo_tetragonal_phase = Phase(
-    # crystal_system = "cubic",
     diagnostic_reflection = None,
     reflection_list = [
         Reflection((39.5, 40.5), '000'),
@@ -144,7 +142,6 @@ lmo_tetragonal_phase = Phase(
 # Currently not indexed properly
 aluminum_phase = Phase(
     name = 'aluminum',
-    # crystal_system = None,
     diagnostic_reflection = '111',
     reflection_list = [
         Reflection((37.3, 39), '111'),
@@ -157,7 +154,7 @@ aluminum_phase = Phase(
 
 # 304 Stainless steel. PDF2 card: 00-033-0397
 stainless_steel_phase = Phase(
-    # crystal_system = 'cubic',
+    diagnostic_reflection = '111',
     reflection_list = [
         Reflection((42, 46), '111'),
         Reflection((49, 53), '200'),
@@ -170,7 +167,6 @@ class StainlessSteelMaterial(Material):
 # Corundum standard
 class CorundumMaterial(Material):
     phase_list = [Phase(
-        # crystal_system = 'rhombohedral',
         unit_cell = xrd.HexagonalUnitCell(a=4.75, c=12.982),
         reflection_list = [
             Reflection((25, 27), '012'),
@@ -220,7 +216,7 @@ class LMOLowVMaterial(TwoPhaseMaterial):
 ##################################################
 
 mmo_tetragonal_phase = Phase(
-    # crystal_system = "tetragonal",
+    diagnostic_reflection = '000',
     reflection_list = [
         Reflection((28, 30), '000'),
         Reflection((32, 34), '000'),
@@ -228,13 +224,13 @@ mmo_tetragonal_phase = Phase(
 )
 
 mmo_cubic_phase = Phase(
-    # crystal_system = "cubic",
-    diagnostic_reflection = None,
+    diagnostic_reflection = '000',
     reflection_list = [
+        Reflection((18, 19), '101'),
+        Reflection((30, 32), '000'),
         Reflection((35, 37), '000'),
     ]
 )
-
 
 class MMOMaterial(TwoPhaseMaterial):
     scan_time = 2400

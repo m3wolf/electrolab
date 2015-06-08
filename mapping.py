@@ -802,10 +802,11 @@ class MapScan(xrd.XRDScan):
 
     def axes_title(self):
         """Determine diffractogram axes title from cube coordinates."""
-        title = 'XRD Diffractogram at ({i}, {j}, {k})'.format(
+        title = 'XRD Diffractogram at ({i}, {j}, {k}). Metric={metric}'.format(
             i=self.cube_coords[0],
             j=self.cube_coords[1],
             k=self.cube_coords[2],
+            metric=self.metric(),
         )
         return title
 
