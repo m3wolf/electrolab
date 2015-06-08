@@ -4,9 +4,11 @@ import os.path
 
 import pandas as pd
 
-from materials import LMOSolidSolutionMaterial
+import materials
+from materials import LMOSolidSolutionMaterial, CorundumMaterial
 from mapping import Map, DummyMap, Cube, MapScan
 from xrd import Phase, hkl_to_tuple, Reflection, XRDScan, remove_peak_from_df
+import xrd
 from cycler import GalvanostatRun
 
 
@@ -238,12 +240,13 @@ class SlamFileTest(unittest.TestCase):
 
 class XRDScanTest(unittest.TestCase):
     def setUp(self):
-        self.xrd_scan = XRDScan(filename='test-sample-frames/corundum.xye')
+        self.xrd_scan = XRDScan(filename='test-sample-frames/corundum.xye',
+                                material=CorundumMaterial())
 
     def test_remove_peak_from_df(self):
-        self.xrd_scan = XRDScan(filename='test-sample-frames/map-0.plt')
+        xrd_scan = XRDScan(filename='test-sample-frames/map-0.plt')
         peakRange = (35, 40)
-        df = self.xrd_scan.diffractogram()
+        df = xrd_scan.diffractogram()
         peakIndex = df[peakRange[0]:peakRange[1]].index
         remove_peak_from_df(Reflection(peakRange, '000'), df)
         intersection = df.index.intersection(peakIndex)
@@ -271,6 +274,86 @@ class XRDScanTest(unittest.TestCase):
         # Partial overlap
         self.assertTrue(
             self.xrd_scan.contains_peak(peak=(79, 81))
+        )
+
+    def test_peak_list(self):
+        peak_list = self.xrd_scan.peak_list
+        self.assertEqual(
+            peak_list,
+            [25.575146738439802,
+             35.151143238879698,
+             37.777643879875498,
+             41.671405530534699,
+             43.347460414282999,
+             52.545322581194299,
+             57.491728457622202]
+        )
+
+    def test_refine_unit_cell(self):
+        deviation = self.xrd_scan.refine_cell_parameters()
+        self.assertEqual(
+            self.xrd_scan.cell_parameters,
+            (4.7628, 4.7628, 13.0045, 90, 90, 120)
+        )
+        self.assertEqual(deviation, 0.00288)
+
+
+class TestUnitCell(unittest.TestCase):
+    def test_init(self):
+        unitCell = xrd.UnitCell(a=15, b=3, alpha=45)
+        self.assertEqual(unitCell.a, 15)
+        self.assertEqual(unitCell.b, 3)
+        self.assertEqual(unitCell.alpha, 45)
+
+    def test_setattr(self):
+        """Does the unitcell give an error when passed crappy values."""
+        # Negative unit cell parameter
+        unitCell = xrd.UnitCell()
+        with self.assertRaises(xrd.UnitCellError):
+            unitCell.a = -5
+        with self.assertRaises(xrd.UnitCellError):
+            unitCell.alpha = -10
+
+class TestCubicUnitCell(unittest.TestCase):
+    def setUp(self):
+        self.unit_cell = xrd.CubicUnitCell()
+
+    def test_mutators(self):
+        # Due to high symmetry, a=b=c
+        self.unit_cell.a = 2
+        self.assertEqual(self.unit_cell.b, 2)
+        self.assertEqual(self.unit_cell.c, 2)
+        with self.assertRaises(xrd.UnitCellError):
+            self.unit_cell.a = -5
+        # and alpha=beta=gamma=90
+        with self.assertRaises(xrd.UnitCellError):
+            self.unit_cell.alpha = 120
+
+    def test_cell_parameters(self):
+        self.assertEqual(
+            self.unit_cell.cell_parameters,
+            (1, )
+        )
+
+
+class TestHexagonalUnitCell(unittest.TestCase):
+    def setUp(self):
+        self.unit_cell = xrd.HexagonalUnitCell()
+
+    def test_mutators(self):
+        self.unit_cell.a = 3
+        self.assertEqual(self.unit_cell.b, 3)
+        self.assertNotEqual(self.unit_cell.c, 3)
+        # Angles are fixed
+        with self.assertRaises(xrd.UnitCellError):
+            self.unit_cell.alpha = 80
+
+    def test_cell_parameters(self):
+        self.unit_cell.a = 6.5
+        self.unit_cell.c = 9
+        self.assertEqual(
+            self.unit_cell.cell_parameters,
+            (6.5, 9)
         )
 
 
@@ -346,6 +429,32 @@ class PhaseTest(unittest.TestCase):
         self.assertEqual(
             reflection.hkl,
             (1, 1, 1)
+        )
+
+
+class ExperimentalDataTest(unittest.TestCase):
+    """
+    These tests compare results to experimentally determined values.
+    """
+    def test_predicted_peak_positions(self):
+        # Predicted peaks were calculated using celref with the R-3C space group
+        material = materials.CorundumMaterial()
+        phase = material.phase_list[0]
+        predicted_peaks = phase.predicted_peak_positions()
+        celref_peaks = pd.DataFrame(
+            [
+                ('012', 3.4746, 25.637),
+                ('104', 2.5480, 35.222),
+                ('110', 2.3750, 37.881),
+                ('006', 2.1637, 41.745),
+                ('113', 2.0820, 43.464),
+                ('024', 1.7373, 52.684),
+                ('116', 1.5994, 57.629)
+            ], columns=('hkl', 'd', '2theta')
+        )
+        self.assertEqual(
+            predicted_peaks,
+            celref_peaks
         )
 
 if __name__ == '__main__':

@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import os
+from collections import namedtuple
 
 import numpy as np
 import pandas as pd
@@ -73,9 +74,10 @@ class Reflection():
 class Phase():
     """A crystallographic phase that can be found in a Material."""
     reflection_list = []
-    def __init__(self, reflection_list=[], diagnostic_reflection=None, crystal_system=None, name="phase"):
+    def __init__(self, reflection_list=[], diagnostic_reflection=None, unit_cell=None, name="phase", space_group=None):
         self.reflection_list = reflection_list
         self.name = name
+        self.space_group = space_group
         if diagnostic_reflection is not None:
             self.diagnostic_reflection = self.reflection_by_hkl(diagnostic_reflection)
         else:
@@ -86,8 +88,117 @@ class Phase():
             if reflection.hkl == hkl_to_tuple(hkl_input):
                 return reflection
 
+    def predicted_peak_positions(self):
+        pass
+
     def __repr__(self):
         return "<{}: {}>".format(self.__class__.__name__, self.name)
+
+
+class UnitCellError(ValueError):
+    pass
+
+
+class UnitCell():
+    """Describes a crystallographic unit cell for XRD Refinement. Composed
+    of up to three lengths (a, b and c) in angstroms and three angles
+    (alpha, beta, gamma) in degrees. Subclasses with high symmetry
+    with have less than six parameters.
+    """
+    free_parameters = ('a', 'b', 'c', 'alpha', 'beta', 'gamma')
+    a = 1
+    b = 1
+    c = 1
+    constrained_length = 1
+    alpha = 90
+    beta = 90
+    gamma = 90
+    def __init__(self, a=None, b=None, c=None,
+                 alpha=None, beta=None, gamma=None):
+        # Set initial cell parameters
+        for attr in ['a', 'b', 'c', 'alpha', 'beta', 'gamma']:
+            value = locals()[attr]
+            if value is not None:
+                self.__setattr__(attr, value)
+
+    def __setattr__(self, name, value):
+        """Check for reasonable value for crystallography parameters"""
+        # Unit cell lengths
+        if name in ['a', 'b', 'c'] and value <= 0:
+            msg = 'unit-cell dimensions must be greater than 0 ({}={})'
+            raise UnitCellError(msg.format(name, value))
+        # Unit cell angles
+        elif name in ['alpha', 'beta', 'gamma'] and not (0 < value < 180):
+            msg = 'unit-cell angles must be between 0° and 180° ({}={}°)'
+            raise UnitCellError(msg.format(name, value))
+        # No problems, so set the attribute as normal
+        else:
+            super(UnitCell, self).__setattr__(name, value)
+
+    def __repr__(self):
+        name = '<{cls}: a={a}, b={b}, c={c}, α={alpha}, β={beta}, γ={gamma}>'
+        name = name.format(cls=self.__class__.__name__,
+                           a=self.a, b=self.b, c=self.c,
+                           alpha=self.alpha, beta=self.beta, gamma=self.gamma)
+        return name
+
+    @property
+    def cell_parameters(self):
+        """Named tuple of the cell parameters that aren't fixed."""
+        params = self.free_parameters
+        CellParameters = namedtuple('CellParameters', params)
+        paramArgs = {param: getattr(self, param) for param in params}
+        parameters = CellParameters(**paramArgs)
+        return parameters
+
+    class FixedAngle():
+        """A Unit-cell angle that cannot change for that unit cell"""
+        def __init__(self, angle, name='angle'):
+            self.angle = angle
+            self.name = name
+
+        def __get__(self, obj, objtype):
+            return angle
+
+        def __set__(self, obj, value):
+            msg = "{name} must equal {angle}° for {cls}"
+            msg = msg.format(name=self.name,
+                             angle=self.angle,
+                             cls=obj.__class__.__name__)
+            raise UnitCellError(msg)
+
+    class ConstrainedLength():
+        """
+        Unit-cell angle that is tied to another length in the cell. Eg. a=b
+        """
+        def __get__(self, obj, objtype):
+            return obj.constrained_length
+
+        def __set__(self, obj, value):
+            obj.constrained_length = value
+
+
+class CubicUnitCell(UnitCell):
+    """Unit cell where a=b=c and α=β=γ=90°"""
+    free_parameters = ('a', )
+    # Descriptors for unit-cell lengths, since a=b=c
+    a = UnitCell.ConstrainedLength()
+    b = UnitCell.ConstrainedLength()
+    c = UnitCell.ConstrainedLength()
+    alpha = UnitCell.FixedAngle(90, name="α")
+    beta = UnitCell.FixedAngle(90, name="β")
+    gamma = UnitCell.FixedAngle(90, name="γ")
+
+
+class HexagonalUnitCell(UnitCell):
+    """Unit cell where a=b, α=β=90°, γ=120°."""
+    free_parameters = ('a', 'c')
+    a = UnitCell.ConstrainedLength()
+    b = UnitCell.ConstrainedLength()
+    alpha = UnitCell.FixedAngle(angle=90, name="α")
+    beta = UnitCell.FixedAngle(angle=90, name="β")
+    gamma = UnitCell.FixedAngle(angle=120, name="γ")
+
 
 class XRDScan():
     """
@@ -201,6 +312,20 @@ class XRDScan():
                      or two_theta_min < peak[1] < two_theta_max)
         return isInRange
 
+    @property
+    def peak_list(self):
+        df = self.diffractogram()
+        # Make a list of all reflections
+        reflection_list = []
+        for phase in self.material.phase_list:
+            reflection_list += phase.reflection_list
+        # Find two_theta of each reflection
+        peak_list = []
+        for reflection in reflection_list:
+            peakPosition = self.peak_position(reflection.two_theta_range)
+            peak_list.append(peakPosition)
+        return peak_list
+
     def peak_area(self, two_theta_range):
         """Integrated area for the given peak."""
         fullDF = self.diffractogram()
@@ -224,3 +349,16 @@ class XRDScan():
         ]
         twotheta = peakDF.argmax()
         return twotheta
+
+    @property
+    def cell_parameters(self):
+        # - Calculate predicted two-theta peaks from space group and unit-cell parameters
+	# - Compare predicted and experimental peak positions
+	# - Change the unit-cell parameters
+	# - Recalculate the mean-square-difference
+	# - Keep repeating until a minimum is reached
+        pass
+
+    def refine_cell_parameters(self):
+        """Residual least-squares refinement of the unit cell."""
+        pass

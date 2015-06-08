@@ -3,6 +3,7 @@
 from matplotlib import colors
 import numpy as np
 
+from electrolab import xrd
 from electrolab.xrd import Phase, Reflection
 
 class Material():
@@ -117,7 +118,7 @@ class DummyMaterial(Material):
 ##################################################
 
 lmo_cubic_phase = Phase(
-    crystal_system = "cubic",
+    unit_cell = xrd.CubicUnitCell(a=8),
     diagnostic_reflection = '311',
     reflection_list = [
         Reflection((17.5, 19.5), '111'),
@@ -133,7 +134,7 @@ lmo_cubic_phase = Phase(
 )
 
 lmo_tetragonal_phase = Phase(
-    crystal_system = "cubic",
+    # crystal_system = "cubic",
     diagnostic_reflection = None,
     reflection_list = [
         Reflection((39.5, 40.5), '000'),
@@ -143,7 +144,7 @@ lmo_tetragonal_phase = Phase(
 # Currently not indexed properly
 aluminum_phase = Phase(
     name = 'aluminum',
-    crystal_system = None,
+    # crystal_system = None,
     diagnostic_reflection = '111',
     reflection_list = [
         Reflection((37.3, 39), '111'),
@@ -156,7 +157,7 @@ aluminum_phase = Phase(
 
 # 304 Stainless steel. PDF2 card: 00-033-0397
 stainless_steel_phase = Phase(
-    crystal_system = 'cubic',
+    # crystal_system = 'cubic',
     reflection_list = [
         Reflection((42, 46), '111'),
         Reflection((49, 53), '200'),
@@ -169,7 +170,8 @@ class StainlessSteelMaterial(Material):
 # Corundum standard
 class CorundumMaterial(Material):
     phase_list = [Phase(
-        crystal_system = 'rhombohedral',
+        # crystal_system = 'rhombohedral',
+        unit_cell = xrd.HexagonalUnitCell(a=4.75, c=12.982),
         reflection_list = [
             Reflection((25, 27), '012'),
             Reflection((34, 36), '104'),
@@ -218,7 +220,7 @@ class LMOLowVMaterial(TwoPhaseMaterial):
 ##################################################
 
 mmo_tetragonal_phase = Phase(
-    crystal_system = "tetragonal",
+    # crystal_system = "tetragonal",
     reflection_list = [
         Reflection((28, 30), '000'),
         Reflection((32, 34), '000'),
@@ -226,7 +228,7 @@ mmo_tetragonal_phase = Phase(
 )
 
 mmo_cubic_phase = Phase(
-    crystal_system = "cubic",
+    # crystal_system = "cubic",
     diagnostic_reflection = None,
     reflection_list = [
         Reflection((35, 37), '000'),
