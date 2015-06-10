@@ -37,9 +37,13 @@ class Material():
         for phase in self.background_phases:
             two_theta_range = phase.diagnostic_reflection.two_theta_range
             background += scan.peak_area(two_theta_range)
-        totalIntensity = signal + background
-        intensityModifier = colors.Normalize(0.15, 0.5, clip=True)(totalIntensity)
-        reliability = intensityModifier * signal / (signal+background)
+        if background == 0:
+            # No background peaks available
+            reliability = 1
+        else:
+            totalIntensity = signal + background
+            intensityModifier = colors.Normalize(0.15, 0.5, clip=True)(totalIntensity)
+            reliability = intensityModifier * signal / (signal+background)
         return reliability
 
     def highlight_peaks(self, ax):
@@ -165,19 +169,21 @@ class StainlessSteelMaterial(Material):
     phase_list = [stainless_steel_phase]
 
 # Corundum standard
+corundum_phase = Phase(
+    unit_cell = xrd.HexagonalUnitCell(a=4.75, c=12.982),
+    name='corundum',
+    reflection_list = [
+        Reflection((25, 27), '012'),
+        Reflection((34, 36), '104'),
+        Reflection((37, 39), '110'),
+        Reflection((41, 42.5), '006'),
+        Reflection((42.5, 44), '113'),
+        Reflection((52, 54), '024'),
+        Reflection((56, 59), '116'),
+    ]
+)
 class CorundumMaterial(Material):
-    phase_list = [Phase(
-        unit_cell = xrd.HexagonalUnitCell(a=4.75, c=12.982),
-        reflection_list = [
-            Reflection((25, 27), '012'),
-            Reflection((34, 36), '104'),
-            Reflection((37, 39), '110'),
-            Reflection((41, 42.5), '006'),
-            Reflection((42.5, 44), '113'),
-            Reflection((52, 54), '024'),
-            Reflection((56, 59), '116'),
-        ]
-    )]
+    phase_list = [corundum_phase]
 
 
 # Material for mapping LiMn2O4 cathodes using peak position.
@@ -218,17 +224,17 @@ class LMOLowVMaterial(TwoPhaseMaterial):
 mmo_tetragonal_phase = Phase(
     diagnostic_reflection = '000',
     reflection_list = [
-        Reflection((28, 30), '000'),
-        Reflection((32, 34), '000'),
+        Reflection((28.3, 29.7), '000'),
+        Reflection((32, 33.5), '000'),
     ]
 )
 
 mmo_cubic_phase = Phase(
     diagnostic_reflection = '000',
     reflection_list = [
-        Reflection((18, 19), '101'),
-        Reflection((30, 32), '000'),
-        Reflection((35, 37), '000'),
+        Reflection((17.75, 19), '101'),
+        Reflection((30, 31.5), '000'),
+        Reflection((34, 37.5), '000'),
     ]
 )
 

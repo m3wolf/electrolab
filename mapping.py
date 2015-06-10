@@ -644,11 +644,13 @@ class Map():
         max = self.material.metric_normalizer.vmax
         metrics = np.clip(metrics, min, max)
         weights = [scan.reliability() for scan in self.scans]
-        if ax is not None:
-            ax.hist(metrics, bins=100, weights=weights)
-        else:
-            ax = pyplot.hist(metrics, bins=100, weights=weights)
+        if ax is None:
+            figure = pyplot.figure()
+            ax = pyplot.gca()
+        ax.hist(metrics, bins=100, weights=weights)
         ax.set_xlim(min, max)
+        ax.set_xlabel('Metric')
+        ax.set_ylabel('Occurrences')
         return ax
 
     def __repr__(self):

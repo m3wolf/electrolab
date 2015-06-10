@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
 
+import math
 import os
 from collections import namedtuple
 
 import numpy as np
 import pandas as pd
-from scipy.interpolate import UnivariateSpline
 import scipy
+from scipy.interpolate import UnivariateSpline
 from matplotlib import pyplot
 
 
@@ -61,6 +62,9 @@ def align_scans(scan_list, peak):
         scan.offset_diffractogram(offset)
     return scan_list
 
+
+HKL = namedtuple('HKL', ('h', 'k', 'l'))
+
 class Reflection():
     """An XRD reflection with a specific hkl value."""
     def __init__(self, two_theta_range=(10, 80), hkl=(0, 0, 0)):
@@ -72,7 +76,13 @@ class Reflection():
 
     @property
     def hkl(self):
-        return (self._h, self._k, self._l)
+        hkl_tuple = HKL(self._h, self._k, self._l)
+        return hkl_tuple
+
+    @property
+    def hkl_string(self):
+        string = "{h}{k}{l}".format(h=self._h, k=self._k, l=self._l)
+        return string
 
     def __repr__(self):
         template = "<Reflection: {0}{1}{2}>"
@@ -89,27 +99,102 @@ class Phase():
     def __init__(self, reflection_list=[], diagnostic_reflection=None, unit_cell=None, name="phase", space_group=None):
         self.reflection_list = reflection_list
         self.name = name
+        self.unit_cell = unit_cell
         self.space_group = space_group
         if diagnostic_reflection is not None:
             self.diagnostic_reflection = self.reflection_by_hkl(diagnostic_reflection)
         else:
             self.diagnostic_reflection = Reflection()
 
+    def __repr__(self):
+        return "<{}: {}>".format(self.__class__.__name__, self.name)
+
     def reflection_by_hkl(self, hkl_input):
         for reflection in self.reflection_list:
             if reflection.hkl == hkl_to_tuple(hkl_input):
                 return reflection
 
-    def predicted_peak_positions(self):
-        pass
+    def refine_unit_cell(self, scan, quiet=False):
+        """Residual least squares refinement of the unit-cell
+        parameters. Returns the residual root-mean-square error between
+        predicted and observed 2θ."""
+        # Define an objective function that will be minimized
+        def objective(cell_parameters):
+            # Determine cell parameters from numpy array
+            # Create a temporary unit cell and return the residual error
+            unit_cell = self.unit_cell.__class__()
+            unit_cell.set_cell_parameters_from_list(cell_parameters)
+            residuals = self.peak_rms_error(scan=scan,
+                                            unit_cell=unit_cell)
+            return residuals
+        # Now minimize it
+        initial_parameters = self.unit_cell.cell_parameters
+        result = scipy.optimize.minimize(fun=objective,
+                                         x0=initial_parameters,
+                                         method='Nelder-Mead',
+                                         options={'disp': not quiet})
+        if result.success:
+            # Optimiziation was successful, so set new parameters
+            optimized_parameters = result.x
+            self.unit_cell.set_cell_parameters_from_list(optimized_parameters)
+            residual_error = self.peak_rms_error(scan=scan)
+            return residual_error
+        else:
+            # Optimization failed for some reason
+            raise RefinementError(result.message)
 
-    def __repr__(self):
-        return "<{}: {}>".format(self.__class__.__name__, self.name)
+    def predicted_peak_positions(self, wavelength, unit_cell=None):
+        # Use current unit_cell if none is given
+        if unit_cell is None:
+            unit_cell = self.unit_cell
+        PredictedPeak = namedtuple('PredictedPeak', ('hkl', 'd', 'two_theta'))
+        predicted_peaks = []
+        for reflection in self.reflection_list:
+            hkl = reflection.hkl
+            d = unit_cell.d_spacing(hkl)
+            radians = math.asin(wavelength/2/d)
+            two_theta = 2*math.degrees(radians)
+            predicted_peaks.append(
+                PredictedPeak(reflection.hkl_string, d, two_theta)
+            )
+        return predicted_peaks
+
+    def actual_peak_positions(self, scan):
+        ActualPeak = namedtuple('ActualPeak', ('hkl', 'two_theta'))
+        df = scan.diffractogram()
+        # Make a list of all reflections
+        reflection_list = self.reflection_list
+        # Find two_theta of each reflection
+        peak_list = []
+        for reflection in reflection_list:
+            peakPosition = scan.peak_position(reflection.two_theta_range)
+            peak_list.append(ActualPeak(reflection.hkl_string, peakPosition))
+        return peak_list
+
+    def peak_rms_error(self, scan, unit_cell=None):
+        diffs = []
+        wavelength = scan.wavelength
+        actual_peaks = self.actual_peak_positions(scan=scan)
+        predicted_peaks = self.predicted_peak_positions(wavelength=wavelength,
+                                                        unit_cell=unit_cell)
+        # Prepare list of peak position differences
+        for idx, actual_peak in enumerate(actual_peaks):
+            actual = actual_peak.two_theta
+            predicted = predicted_peaks[idx].two_theta
+            diffs.append(actual-predicted)
+        # Calculate mean-square-difference
+        running_total = 0
+        for diff in diffs:
+            running_total += diff**2
+        rms_error = math.sqrt(running_total/len(diffs))
+        return rms_error
 
 
 class UnitCellError(ValueError):
     pass
 
+class RefinementError(Exception):
+    pass
 
 class UnitCell():
     """Describes a crystallographic unit cell for XRD Refinement. Composed
@@ -127,7 +212,8 @@ class UnitCell():
     gamma = 90
     def __init__(self, a=None, b=None, c=None,
                  alpha=None, beta=None, gamma=None):
-        # Set initial cell parameters
+        # Set initial cell parameters.
+        # This method avoids setting constrained values to defaults
         for attr in ['a', 'b', 'c', 'alpha', 'beta', 'gamma']:
             value = locals()[attr]
             if value is not None:
@@ -163,6 +249,16 @@ class UnitCell():
         parameters = CellParameters(**paramArgs)
         return parameters
 
+    def set_cell_parameters_from_list(self, parameters_list):
+        """
+        Accept a list of parameters and assumes they are in the order of
+        self.free_parameters. This is a shaky assumption and should not be
+        used if avoidable. This method was created for use in cell refinement
+        where scipy.optimize.minimize passes a numpy array.
+        """
+        for idx, key in enumerate(self.free_parameters):
+            setattr(self, key, parameters_list[idx])
+
     class FixedAngle():
         """A Unit-cell angle that cannot change for that unit cell"""
         def __init__(self, angle, name='angle'):
@@ -170,7 +266,7 @@ class UnitCell():
             self.name = name
 
         def __get__(self, obj, objtype):
-            return angle
+            return self.angle
 
         def __set__(self, obj, value):
             msg = "{name} must equal {angle}° for {cls}"
@@ -201,6 +297,12 @@ class CubicUnitCell(UnitCell):
     beta = UnitCell.FixedAngle(90, name="β")
     gamma = UnitCell.FixedAngle(90, name="γ")
 
+    def d_spacing(self, hkl):
+        """Determine d-space for the given hkl plane."""
+        h, k, l = hkl
+        inverse_d_squared = (h**2 + k**2 + l**2)/(self.a**2)
+        d = math.sqrt(1/inverse_d_squared)
+        return d
 
 class HexagonalUnitCell(UnitCell):
     """Unit cell where a=b, α=β=90°, γ=120°."""
@@ -211,6 +313,18 @@ class HexagonalUnitCell(UnitCell):
     beta = UnitCell.FixedAngle(angle=90, name="β")
     gamma = UnitCell.FixedAngle(angle=120, name="γ")
 
+    def d_spacing(self, hkl):
+        """Determine d-space for the given hkl plane."""
+        h, k, l = hkl
+        a, c = (self.a, self.c)
+        inverse_d_squared = 4*(h**2 + h*k + k**2)/(3*a**2) + l**2/(c**2)
+        d = math.sqrt(1/inverse_d_squared)
+        return d
+
+
+tube_wavelengths = {
+    'Cu': 1.5418
+}
 
 class XRDScan():
     """
@@ -219,12 +333,18 @@ class XRDScan():
     _df = None # Replaced by load_diffractogram() method
     diffractogram_is_loaded = False
     filename = None
-    def __init__(self, filename=None, material=None, *args, **kwargs):
+    def __init__(self, filename=None, material=None, tube='Cu', wavelength=None):
         self.material = material
+        self.cached_data = {}
+        # Determine wavelength from tube type
+        if wavelength is None:
+            self.wavelength = tube_wavelengths[tube]
+        else:
+            self.wavelength = wavelength
+        # Load diffractogram from file
         if filename is not None:
             self.filename=filename
             self.load_diffractogram(filename)
-        self.cached_data = {}
 
     def diffractogram(self, filename=None):
         """Return a pandas dataframe with the X-ray diffractogram for this
@@ -332,17 +452,14 @@ class XRDScan():
 
     @property
     def peak_list(self):
-        df = self.diffractogram()
-        # Make a list of all reflections
-        reflection_list = []
-        for phase in self.material.phase_list:
-            reflection_list += phase.reflection_list
-        # Find two_theta of each reflection
+        """Return a list of all observed peaks for which the phases have been
+        indexed."""
         peak_list = []
-        for reflection in reflection_list:
-            peakPosition = self.peak_position(reflection.two_theta_range)
-            peak_list.append(peakPosition)
-        return peak_list
+        # Look through phases and collect peaks
+        for phase in self.material.phase_list:
+            for peak in phase.actual_peak_positions(scan=self):
+                peak_list.append(peak.two_theta)
+        return set(peak_list)
 
     def peak_area(self, two_theta_range):
         """Integrated area for the given peak."""
@@ -368,15 +485,8 @@ class XRDScan():
         twotheta = peakDF.argmax()
         return twotheta
 
-    @property
-    def cell_parameters(self):
-        # - Calculate predicted two-theta peaks from space group and unit-cell parameters
-	# - Compare predicted and experimental peak positions
-	# - Change the unit-cell parameters
-	# - Recalculate the mean-square-difference
-	# - Keep repeating until a minimum is reached
-        pass
-
-    def refine_cell_parameters(self):
-        """Residual least-squares refinement of the unit cell."""
-        pass
+    def refine_unit_cells(self):
+        """Residual least-squares refinement of the unit cell for each
+        phase. Warning: overlapping reflections from different phases is
+        likely to cause considerable errors."""
+        raise NotImplementedError

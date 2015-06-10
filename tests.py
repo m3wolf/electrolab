@@ -280,22 +280,16 @@ class XRDScanTest(unittest.TestCase):
         peak_list = self.xrd_scan.peak_list
         self.assertEqual(
             peak_list,
-            [25.575146738439802,
-             35.151143238879698,
-             37.777643879875498,
-             41.671405530534699,
-             43.347460414282999,
-             52.545322581194299,
-             57.491728457622202]
+            set([
+                25.575146738439802,
+                35.151143238879698,
+                37.777643879875498,
+                41.671405530534699,
+                43.347460414282999,
+                52.545322581194299,
+                57.491728457622202
+            ])
         )
-
-    def test_refine_unit_cell(self):
-        deviation = self.xrd_scan.refine_cell_parameters()
-        self.assertEqual(
-            self.xrd_scan.cell_parameters,
-            (4.7628, 4.7628, 13.0045, 90, 90, 120)
-        )
-        self.assertEqual(deviation, 0.00288)
 
 
 class TestUnitCell(unittest.TestCase):
@@ -313,6 +307,7 @@ class TestUnitCell(unittest.TestCase):
             unitCell.a = -5
         with self.assertRaises(xrd.UnitCellError):
             unitCell.alpha = -10
+
 
 class TestCubicUnitCell(unittest.TestCase):
     def setUp(self):
@@ -335,6 +330,11 @@ class TestCubicUnitCell(unittest.TestCase):
             (1, )
         )
 
+    def test_d_spacing(self):
+        self.assertEqual(
+            self.unit_cell.d_spacing((1, 1, 1)),
+            math.sqrt(1/3)
+        )
 
 class TestHexagonalUnitCell(unittest.TestCase):
     def setUp(self):
@@ -354,6 +354,14 @@ class TestHexagonalUnitCell(unittest.TestCase):
         self.assertEqual(
             self.unit_cell.cell_parameters,
             (6.5, 9)
+        )
+
+    def test_d_spacing(self):
+        self.unit_cell.a = 1
+        self.unit_cell.c = 2
+        self.assertEqual(
+            self.unit_cell.d_spacing((1, 2, 3)),
+            math.sqrt(1/11.583333333333334)
         )
 
 
@@ -420,15 +428,42 @@ class ReflectionTest(unittest.TestCase):
 
 class PhaseTest(unittest.TestCase):
     def setUp(self):
-        self.phase = Phase(
-            reflection_list = [Reflection(two_theta_range=(0, 1), hkl='111')]
-        )
+        self.phase = materials.corundum_phase
+        self.corundum = materials.CorundumMaterial()
+        self.corundum_scan = xrd.XRDScan(filename='test-sample-frames/corundum.xye',
+                                         material=self.corundum)
 
     def test_peak_by_hkl(self):
-        reflection = self.phase.reflection_by_hkl('111')
+        reflection = self.phase.reflection_by_hkl('110')
         self.assertEqual(
             reflection.hkl,
-            (1, 1, 1)
+            (1, 1, 0)
+        )
+
+    def test_peak_list(self):
+        phase = self.corundum.phase_list[0]
+        peak_list = phase.actual_peak_positions(scan=self.corundum_scan)
+        self.assertEqual(
+            peak_list,
+            [
+                ('012', 25.575146738439802),
+                ('104', 35.151143238879698),
+                ('110', 37.777643879875498),
+                ('006', 41.671405530534699),
+                ('113', 43.347460414282999),
+                ('024', 52.545322581194299),
+                ('116', 57.491728457622202)
+            ]
+        )
+
+    def test_refine_unit_cell(self):
+        # Results take from celref using corundum standard
+        residuals = self.phase.refine_unit_cell(scan=self.corundum_scan,
+                                                quiet=True)
+        self.assertTrue(residuals < 0.00288)
+        self.assertEqual(
+            self.phase.unit_cell.cell_parameters,
+            (4.7629683775774989, 13.003960220861639)
         )
 
 
@@ -436,26 +471,37 @@ class ExperimentalDataTest(unittest.TestCase):
     """
     These tests compare results to experimentally determined values.
     """
+    def setUp(self):
+        self.material = materials.CorundumMaterial()
+        self.phase = self.material.phase_list[0]
+
     def test_predicted_peak_positions(self):
         # Predicted peaks were calculated using celref with the R-3C space group
-        material = materials.CorundumMaterial()
-        phase = material.phase_list[0]
-        predicted_peaks = phase.predicted_peak_positions()
-        celref_peaks = pd.DataFrame(
-            [
-                ('012', 3.4746, 25.637),
-                ('104', 2.5480, 35.222),
-                ('110', 2.3750, 37.881),
-                ('006', 2.1637, 41.745),
-                ('113', 2.0820, 43.464),
-                ('024', 1.7373, 52.684),
-                ('116', 1.5994, 57.629)
-            ], columns=('hkl', 'd', '2theta')
-        )
+        predicted_peaks = self.phase.predicted_peak_positions(wavelength=1.5418)
+        celref_peaks = [
+                ('012', 3.4746228816945104, 25.637288649553085),
+                ('104', 2.5479680737754244, 35.22223164557721),
+                ('110', 2.375, 37.88141047624646),
+                ('006', 2.1636666666666664, 41.74546075011751),
+                ('113', 2.0820345582756135, 43.46365474219995),
+                ('024', 1.7373114408472552, 52.68443192186963),
+                ('116', 1.5994489779586798, 57.62940019834231)
+        ]
         self.assertEqual(
             predicted_peaks,
             celref_peaks
         )
+
+    def test_mean_square_error(self):
+        scan = xrd.XRDScan(filename='test-sample-frames/corundum.xye',
+                           material=self.material)
+        rms_error = self.phase.peak_rms_error(scan=scan)
+        # Check that the result is close to the value from celref
+        diff = rms_error - 0.10492
+        self.assertTrue(
+            diff < 0.001
+        )
+
 
 if __name__ == '__main__':
     unittest.main()
