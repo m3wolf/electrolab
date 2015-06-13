@@ -41,7 +41,7 @@ def plot_scans(scan_list, step_size=1):
     ax = pyplot.gca()
     filenames = []
     for idx, scan in enumerate(scan_list):
-        df = scan.diffractogram()
+        df = scan.diffractogram
         df.counts = df.counts + step_size * idx
         ax.plot(df.index, df.counts)
         filenames.append(scan.filename)
@@ -59,7 +59,7 @@ def align_scans(scan_list, peak):
     for scan in scan_list[1:]:
         scanPeak = scan.peak_position(peak)
         offset = referencePeak - scanPeak
-        scan.offset_diffractogram(offset)
+        scan.shift_diffractogram(offset)
     return scan_list
 
 
@@ -161,7 +161,7 @@ class Phase():
 
     def actual_peak_positions(self, scan):
         ActualPeak = namedtuple('ActualPeak', ('hkl', 'two_theta'))
-        df = scan.diffractogram()
+        df = scan.diffractogram
         # Make a list of all reflections
         reflection_list = self.reflection_list
         # Find two_theta of each reflection
@@ -346,6 +346,7 @@ class XRDScan():
             self.filename=filename
             self.load_diffractogram(filename)
 
+    @property
     def diffractogram(self, filename=None):
         """Return a pandas dataframe with the X-ray diffractogram for this
         scan.
@@ -387,7 +388,7 @@ class XRDScan():
         Calculate the baseline for the diffractogram and generate a
         background correction.
         """
-        background = self.diffractogram().copy()
+        background = self.diffractogram.copy()
         # Remove pre-indexed peaks for background fitting
         if self.material is not None:
             phase_list = self.material.phase_list + self.material.background_phases
@@ -407,9 +408,9 @@ class XRDScan():
         self._df['subtracted'] = self._df.counts - self._df.background
         return self._df
 
-    def offset_diffractogram(self, offset):
+    def shift_diffractogram(self, offset):
         """Slide the whole diffractogram to the right by offset."""
-        df = self.diffractogram()
+        df = self.diffractogram
         df['2theta'] = df.index + offset
         df.set_index('2theta', inplace=True)
 
@@ -418,7 +419,7 @@ class XRDScan():
         Plot the XRD diffractogram for this scan. Generates a new set of axes
         unless supplied by the `ax` keyword.
         """
-        df = self.diffractogram()
+        df = self.diffractogram
         if not ax:
             fig = pyplot.figure()
             ax = pyplot.gca()
@@ -443,7 +444,7 @@ class XRDScan():
 
     def contains_peak(self, peak):
         """Does this instance have the given peak within its two_theta_range?"""
-        df = self.diffractogram()
+        df = self.diffractogram
         two_theta_max = df.index.max()
         two_theta_min = df.index.min()
         isInRange = (two_theta_min < peak[0] < two_theta_max
@@ -463,7 +464,7 @@ class XRDScan():
 
     def peak_area(self, two_theta_range):
         """Integrated area for the given peak."""
-        fullDF = self.diffractogram()
+        fullDF = self.diffractogram
         # Get peak dataframe for integration
         if self.contains_peak(two_theta_range):
             peakDF = fullDF.loc[
@@ -477,7 +478,7 @@ class XRDScan():
         return area
 
     def peak_position(self, twotheta_range):
-        fullDF = self.diffractogram()
+        fullDF = self.diffractogram
         peakDF = fullDF.loc[
             twotheta_range[0]:twotheta_range[1],
             'subtracted'

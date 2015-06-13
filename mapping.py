@@ -228,13 +228,15 @@ class Map():
         elif material is not None:
             self.scan_time = material.scan_time
         else:
-            raise TypeError("Either scan_time or material must be given")
+            # Default value
+            self.scan_time = 60
         if two_theta_range is not None:
             self.two_theta_range = two_theta_range
         elif material is not None:
             self.two_theta_range = material.two_theta_range
         else:
-            raise TypeError("Either two_theta_range or material must be given")
+            # Default value
+            self.two_theta_range = (10, 80)
         # Determine number of rows from collimator size
         if rows is None:
             self.rows = math.ceil(diameter/collimator/2)
@@ -413,10 +415,59 @@ class Map():
         """
         Perform initial calculations on mapping data and save results to file.
         """
-        for scan in [self.scans[0]]:
-            scan.reliability()
-            scan.color()
-        pickle.dump(self.scans, open('test-data.p', 'wb'))
+        self.subtract_backgrounds()
+        self.calculate_metrics()
+        self.calculate_reliabilities()
+
+    def subtract_backgrounds(self):
+        for scan in self.scans:
+            scan.subtract_background()
+
+    def calculate_metrics(self):
+        """Force recalculation of all metrics in the map."""
+        for scan in self.scans:
+            scan.cached_data['metric'] = None
+            scan.metric
+
+    def calculate_reliabilities(self):
+        for scan in self.scans:
+            scan.cached_data['reliability'] = None
+            scan.reliability
+
+    def save(self, overwrite=False):
+        """Take cached data and save to disk."""
+        # Prepare dictionary of cached data
+        data = {
+            'diameter': self.diameter,
+            'rows': self.rows,
+            'scans': [scan.data_dict for scan in self.scans],
+        }
+        # Check if file exists
+        filename = "{sample_name}.map".format(sample_name=self.sample_name)
+        if os.path.exists(filename) and not overwrite:
+            msg = "Cowardly, refusing to overwrite existing file {}. Pass overwrite=True to force."
+            raise IOError(msg.format(filename))
+        # Pickle data and write to file
+        with open(filename, 'wb') as saveFile:
+            pickle.dump(data, saveFile)
+
+    def load(self, filename=None):
+        """Load a .map file of previously processed data."""
+        # Generate filename if not supplied
+        if filename is None:
+            filename = "{sample_name}.map".format(sample_name=self.sample_name)
+            # Get the data from disk
+        with open(filename, 'rb') as loadFile:
+            data = pickle.load(loadFile)
+        # Create new Scan objects
+        self.rows = data['rows']
+        self.diameter = data['diameter']
+        self.create_scans()
+        assert len(self.scans) == len(data['scans'])
+        # Restore each scan
+        for idx, dataDict in enumerate(data['scans']):
+            scan = self.scans[idx]
+            scan.data_dict = dataDict
 
     def plot_map_with_image(self, scan=None, alpha=None):
         fig, (map_axes, diffractogram_axes) = pyplot.subplots(1, 2)
@@ -440,8 +491,8 @@ class Map():
         # Add a contribution from each map location
         for scan in self.scans:
             if scan.diffractogram_is_loaded:
-                scan_diffractogram = scan.diffractogram()['counts']
-                corrected_diffractogram = scan_diffractogram * scan.reliability()
+                scan_diffractogram = scan.diffractogram['counts']
+                corrected_diffractogram = scan_diffractogram * scan.reliability
                 scanCount = scanCount + 1
                 bulk_diffractogram = bulk_diffractogram.add(corrected_diffractogram, fill_value=0)
         # Divide by the total number of scans included
@@ -639,11 +690,11 @@ class Map():
         return ax
 
     def plot_histogram(self, ax=None):
-        metrics = [scan.metric() for scan in self.scans]
+        metrics = [scan.metric for scan in self.scans]
         min = self.material.metric_normalizer.vmin
         max = self.material.metric_normalizer.vmax
         metrics = np.clip(metrics, min, max)
-        weights = [scan.reliability() for scan in self.scans]
+        weights = [scan.reliability for scan in self.scans]
         if ax is None:
             figure = pyplot.figure()
             ax = pyplot.gca()
@@ -673,6 +724,29 @@ class MapScan(xrd.XRDScan):
                 filebase=self.filebase,
         )
         return super(MapScan, self).__init__(*args, **kwargs)
+
+    @property
+    def data_dict(self):
+        """Return a dictionary of calculated data, suitable for pickling."""
+        dataDict = {
+            'diffractogram': self.diffractogram,
+            'cube_coords': tuple(self.cube_coords),
+            'filename': self.filename,
+            'filebase': self.filebase,
+            'metric': self.metric,
+            'reliability': self.reliability
+        }
+        return dataDict
+
+    @data_dict.setter
+    def data_dict(self, dataDict):
+        """Restore calulated values from a data dictionary."""
+        self.diffractogram = dataDict['diffractogram']
+        self.cube_coords = Cube(*dataDict['cube_coords'])
+        self.filename = dataDict['filename']
+        self.filebase = dataDict['filebase']
+        self.metric = dataDict['metric']
+        self.reliability = dataDict['reliability']
 
     def xy_coords(self, unit_size=None):
         """Convert internal coordinates to conventional cartesian coords"""
@@ -711,6 +785,7 @@ class MapScan(xrd.XRDScan):
         }
         return pixel_coords
 
+    @property
     def diffractogram(self):
         """Return a diffractogram based on naming scheme for mapping,
         with caching."""
@@ -723,6 +798,10 @@ class MapScan(xrd.XRDScan):
             df = self.load_diffractogram(filename)
         return df
 
+    @diffractogram.setter
+    def diffractogram(self, newDf):
+        self._df = newDf
+
     def load_diffractogram(self, filename):
         # Checking for existance of file allows for partial maps
         if filename is not None and os.path.isfile(filename):
@@ -731,6 +810,7 @@ class MapScan(xrd.XRDScan):
             df = None
         return df
 
+    @property
     def metric(self):
         """
         Check for a cached metric and if none is found, generate a new
@@ -745,19 +825,28 @@ class MapScan(xrd.XRDScan):
                 metric = 0
         return metric
 
+    @metric.setter
+    def metric(self, metric):
+        self.cached_data['metric'] = metric
+
+    @property
     def reliability(self):
         """Serve up cached value or recalculate if necessary."""
         reliability = self.cached_data.get('reliability', None)
         if reliability is None:
-            self.diffractogram()
+            self.diffractogram
             if self.diffractogram_is_loaded:
                 reliability = self.material.mapscan_reliability(scan=self)
+                normalizer = self.material.reliability_normalizer
+                reliability = normalizer(reliability)
                 self.cached_data['reliability'] = reliability
             else:
                 reliability = 0
-        normalizer = self.material.reliability_normalizer
-        reliability = normalizer(reliability)
         return reliability
+
+    @reliability.setter
+    def reliability(self, reliability):
+        self.cached_data['reliability'] = reliability
 
     def plot_hexagon(self, ax):
         """Build and plot a hexagon for display on the mapping routine.
@@ -768,7 +857,7 @@ class MapScan(xrd.XRDScan):
             numVertices=6,
             radius=0.595*self.xrd_map.unit_size,
             linewidth=0,
-            alpha=self.reliability(),
+            alpha=self.reliability,
             color=self.color()
         )
         ax.add_patch(hexagon)
@@ -796,7 +885,7 @@ class MapScan(xrd.XRDScan):
         color = self.cached_data.get('color', None)
         if color is None:
             # Not cached, so recalculate
-            metric = self.metric()
+            metric = self.metric
             cmap = self.xrd_map.get_cmap()
             color = cmap(self.material.metric_normalizer(metric))
             self.cached_data['color'] = color
@@ -808,7 +897,7 @@ class MapScan(xrd.XRDScan):
             i=self.cube_coords[0],
             j=self.cube_coords[1],
             k=self.cube_coords[2],
-            metric=self.metric(),
+            metric=self.metric,
         )
         return title
 

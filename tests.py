@@ -37,15 +37,15 @@ class LMOSolidSolutionTest(unittest.TestCase):
         self.scan.load_diffractogram('test-sample-frames/LMO-sample-data.plt')
 
     def test_metric(self):
-        df = self.scan.diffractogram()
-        metric = self.scan.metric()
+        df = self.scan.diffractogram
+        metric = self.scan.metric
         self.assertEqual(
             metric,
             36.485
         )
 
     def test_reliability_sample(self):
-        reliability = self.scan.reliability()
+        reliability = self.scan.reliability
         self.assertTrue(
             reliability > 0.9,
             'Reliability {} is not > 0.9'.format(reliability)
@@ -53,7 +53,7 @@ class LMOSolidSolutionTest(unittest.TestCase):
 
     def test_reliability_background(self):
         self.scan.load_diffractogram('test-sample-frames/LMO-background.plt')
-        reliability = self.scan.reliability()
+        reliability = self.scan.reliability
         self.assertTrue(
             reliability < 0.1,
             'Reliability {} is not < 0.1'.format(reliability)
@@ -62,7 +62,7 @@ class LMOSolidSolutionTest(unittest.TestCase):
     def test_reliability_noise(self):
         # Check that background noise gives low reliability
         self.scan.load_diffractogram('test-sample-frames/LMO-noise.plt')
-        reliability = self.scan.reliability()
+        reliability = self.scan.reliability
         self.assertTrue(
             reliability < 0.1,
             'Reliability {} is not < 0.1'.format(reliability)
@@ -246,7 +246,7 @@ class XRDScanTest(unittest.TestCase):
     def test_remove_peak_from_df(self):
         xrd_scan = XRDScan(filename='test-sample-frames/map-0.plt')
         peakRange = (35, 40)
-        df = xrd_scan.diffractogram()
+        df = xrd_scan.diffractogram
         peakIndex = df[peakRange[0]:peakRange[1]].index
         remove_peak_from_df(Reflection(peakRange, '000'), df)
         intersection = df.index.intersection(peakIndex)
@@ -369,7 +369,8 @@ class MapScanTest(unittest.TestCase):
     def setUp(self):
         xrdMap = Map(scan_time=10,
                      two_theta_range=(10, 20))
-        self.scan = MapScan(Cube(1, 0, -1), xrd_map=xrdMap, filebase="map-0")
+        self.scan = MapScan(Cube(1, 0, -1), xrd_map=xrdMap, filebase="map-0",
+                            material=materials.CorundumMaterial())
         self.scan.sample = DummyMap(scan_time=10,
                                     two_theta_range=(10, 20))
 
@@ -411,6 +412,46 @@ class MapScanTest(unittest.TestCase):
             self.scan.xy_coords(2),
             (1, math.sqrt(3))
         )
+
+    def test_data_dict(self):
+        scan = self.scan
+        dataDict = scan.data_dict
+        self.assertEqual(
+            dataDict['diffractogram'],
+            scan.diffractogram
+        )
+        self.assertEqual(
+            dataDict['cube_coords'],
+            tuple(scan.cube_coords)
+        )
+        self.assertEqual(
+            dataDict['filename'],
+            scan.filename
+        )
+        self.assertEqual(
+            dataDict['filebase'],
+            scan.filebase
+        )
+        self.assertEqual(
+            dataDict['metric'],
+            scan.metric
+        )
+        self.assertEqual(
+            dataDict['reliability'],
+            scan.reliability
+        )
+
+
+class MapTest(unittest.TestCase):
+    def setUp(self):
+        self.test_map = Map()
+
+    def test_save(self):
+        self.test_map.save()
+        self.assertTrue(
+            os.path.isfile('unknown.map')
+        )
+        os.remove('unknown.map')
 
 class ReflectionTest(unittest.TestCase):
     def test_hkl_to_tuple(self):
