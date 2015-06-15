@@ -440,6 +440,10 @@ class MapScanTest(unittest.TestCase):
             dataDict['reliability'],
             scan.reliability
         )
+        self.assertEqual(
+            dataDict['spline'],
+            scan.spline
+        )
 
 
 class MapTest(unittest.TestCase):

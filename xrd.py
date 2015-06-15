@@ -332,6 +332,7 @@ class XRDScan():
     """
     _df = None # Replaced by load_diffractogram() method
     diffractogram_is_loaded = False
+    spline = None
     filename = None
     def __init__(self, filename=None, material=None, tube='Cu', wavelength=None):
         self.material = material

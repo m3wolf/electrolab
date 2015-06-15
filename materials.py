@@ -243,5 +243,3 @@ class MMOMaterial(TwoPhaseMaterial):
     two_theta_range = (17.5, 37.5)
     phase_list = [mmo_cubic_phase, mmo_tetragonal_phase]
     background_phases = [stainless_steel_phase]
-    discharged_peak = 'tetragonal1'
-    charged_peak = 'cubic'

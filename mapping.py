@@ -4,9 +4,9 @@ import pickle
 import os
 
 import jinja2, math
+import matplotlib
 from matplotlib import pylab, pyplot, figure, collections, patches, colors, cm
 from matplotlib.backends.backend_gtk3agg import FigureCanvasGTK3Agg as FigureCanvas
-# from matplotlib.backends.backend_gtk3cairo import FigureCanvasGTK3Cairo as FigureCanvas
 import numpy as np
 import pandas as pd
 import scipy
@@ -24,6 +24,13 @@ def new_axes():
     fig = pyplot.figure(figsize=(width, height))
     ax = pyplot.gca()
     return ax
+
+def dual_axes():
+    """Two new axes for mapping, side-by-side."""
+    fig, (ax1, ax2) = pyplot.subplots(1, 2)
+    fig.set_figwidth(13.8)
+    fig.set_figheight(5)
+    return (ax1, ax2)
 
 class Cube():
     """Cubic coordinates of a hexagon"""
@@ -434,7 +441,7 @@ class Map():
             scan.cached_data['reliability'] = None
             scan.reliability
 
-    def save(self, overwrite=False):
+    def save(self, filename=None, overwrite=False):
         """Take cached data and save to disk."""
         # Prepare dictionary of cached data
         data = {
@@ -442,8 +449,9 @@ class Map():
             'rows': self.rows,
             'scans': [scan.data_dict for scan in self.scans],
         }
-        # Check if file exists
-        filename = "{sample_name}.map".format(sample_name=self.sample_name)
+        # Compute filename and Check if file exists
+        if filename is None:
+            filename = "{sample_name}.map".format(sample_name=self.sample_name)
         if os.path.exists(filename) and not overwrite:
             msg = "Cowardly, refusing to overwrite existing file {}. Pass overwrite=True to force."
             raise IOError(msg.format(filename))
@@ -470,16 +478,23 @@ class Map():
             scan.data_dict = dataDict
 
     def plot_map_with_image(self, scan=None, alpha=None):
-        fig, (map_axes, diffractogram_axes) = pyplot.subplots(1, 2)
-        fig.set_figwidth(13.8)
-        fig.set_figheight(5)
-        self.plot_map(ax=map_axes, highlightedScan=scan, alpha=alpha)
+        mapAxes, imageAxes = dual_axes()
+        self.plot_map(ax=mapAxes, highlightedScan=scan, alpha=alpha)
         # Plot either the bulk diffractogram or the specific scan requested
         if scan is None:
-            self.plot_composite_image(ax=diffractogram_axes)
+            self.plot_composite_image(ax=imageAxes)
         else:
-            scan.plot_diffractogram(ax=diffractogram_axes)
-        return fig
+            scan.plot_image(ax=imageAxes)
+        return (mapAxes, imageAxes)
+
+    def plot_map_with_diffractogram(self, scan=None):
+        mapAxes, diffractogramAxes = dual_axes()
+        self.plot_map(ax=mapAxes, highlightedScan = scan)
+        if scan is None:
+            self.plot_bulk_diffractogram(ax=diffractogramAxes)
+        else:
+            scan.plot_diffractogram(ax=imageAxes)
+        return (mapAxes, diffractogramAxes)
 
     def bulk_diffractogram(self):
         """
@@ -549,10 +564,13 @@ class Map():
         """
         Create a gtk window with plots and images for interactive data analysis.
         """
+        # Show GTK window
         title = "Maps for sample '{}'".format(self.sample_name)
         window = GtkMapWindow(xrd_map=self, title=title)
         window.show_all()
         Gtk.main()
+        # Close the current blank plot
+        pyplot.close()
 
     def draw_edge(self, ax, color):
         """
@@ -705,7 +723,8 @@ class Map():
         return ax
 
     def __repr__(self):
-        return '<Sample: {name}>'.format(name=self.sample_name)
+        return '<{cls}: {name}>'.format(cls=self.__class__.__name__,
+                                        name=self.sample_name)
 
 
 class MapScan(xrd.XRDScan):
@@ -734,7 +753,8 @@ class MapScan(xrd.XRDScan):
             'filename': self.filename,
             'filebase': self.filebase,
             'metric': self.metric,
-            'reliability': self.reliability
+            'reliability': self.reliability,
+            'spline': self.spline,
         }
         return dataDict
 
@@ -742,11 +762,13 @@ class MapScan(xrd.XRDScan):
     def data_dict(self, dataDict):
         """Restore calulated values from a data dictionary."""
         self.diffractogram = dataDict['diffractogram']
+        self.diffractogram_is_loaded = dataDict['diffractogram'] is not None
         self.cube_coords = Cube(*dataDict['cube_coords'])
         self.filename = dataDict['filename']
         self.filebase = dataDict['filebase']
         self.metric = dataDict['metric']
         self.reliability = dataDict['reliability']
+        self.spline = dataDict['spline']
 
     def xy_coords(self, unit_size=None):
         """Convert internal coordinates to conventional cartesian coords"""
