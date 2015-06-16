@@ -347,6 +347,9 @@ class XRDScan():
             self.filename=filename
             self.load_diffractogram(filename)
 
+    def __repr__(self):
+        return "<{cls}: filename>".format(self.__class__.__name__, self.filename)
+
     @property
     def diffractogram(self, filename=None):
         """Return a pandas dataframe with the X-ray diffractogram for this
@@ -427,7 +430,8 @@ class XRDScan():
         ax.plot(df.index, df.loc[:, 'counts'])
         ax.plot(df.index, self.spline(df.index))
         # Highlight peaks of interest
-        self.material.highlight_peaks(ax=ax)
+        if self.material is not None:
+            self.material.highlight_peaks(ax=ax)
         # Set plot annotations
         ax.set_xlim(left=df.index.min(), right=df.index.max())
         ax.set_ylim(bottom=0)

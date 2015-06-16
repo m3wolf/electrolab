@@ -14,7 +14,8 @@ import PIL
 from sklearn import svm
 from gi.repository import Gtk, Gdk
 
-from electrolab import xrd
+import xrd
+from materials import DummyMaterial
 
 def new_axes():
     """Create a new set of matplotlib axes for plotting"""
@@ -153,10 +154,10 @@ class GtkMapWindow(Gtk.Window):
             self.xrd_map.plot_histogram(ax=self.scanImageAxes)
         # Highlight the hexagon on the map and composite image
         if activeScan:
-            self.map_hexagon = activeScan.highlight_hexagon(ax=self.mapAxes)
-            self.composite_hexagon = activeScan.highlight_hexagon(
+            self.map_hexagon = activeScan.highlight_beam(ax=self.mapAxes)
+            self.composite_hexagon = activeScan.highlight_beam(
                 ax=self.compositeImageAxes)
-            self.image_hexagon = activeScan.highlight_hexagon(
+            self.image_hexagon = activeScan.highlight_beam(
                 ax=self.scanImageAxes)
             self.mapAxes.draw_artist(self.map_hexagon)
         # Force a redraw of the canvas since Gtk won't do it
@@ -202,7 +203,6 @@ class GtkMapWindow(Gtk.Window):
             self.local_mode = False
         self.update_plots()
 
-#     def launch(self):
 
 class Map():
     """
@@ -210,7 +210,7 @@ class Map():
     with center and diameter in millimeters. Collimator size given in mm.
     scan_time determines seconds spent at each detector position.
     """
-    cmap_name = 'summer'
+    cmap_name = 'winter'
     THETA1_MIN=0 # Source limits based on geometry
     THETA1_MAX=50
     THETA2_MIN=0 # Detector limits based on geometry
@@ -219,13 +219,11 @@ class Map():
     frame_step = 20 # How much to move detector by in degrees
     frame_width = 30 # 2-theta coverage of detector face
     scans = []
-    peak_list = {}
-    reliability_peak = None
     hexagon_patches = None # Replaced by cached versions
     def __init__(self, center=(0, 0), diameter=12.7, collimator=0.5,
-                 two_theta_range=None,
-                 scan_time=None, rows=None, sample_name='unknown',
-                 material=None, *args, **kwargs):
+                 two_theta_range=None, coverage=1,
+                 scan_time=None, sample_name='unknown',
+                 material=DummyMaterial()):
         self.center = center
         self.diameter = diameter
         self.material = material
@@ -244,17 +242,24 @@ class Map():
         else:
             # Default value
             self.two_theta_range = (10, 80)
-        # Determine number of rows from collimator size
-        if rows is None:
-            self.rows = math.ceil(diameter/collimator/2)
-        else:
-            self.rows = rows
+        self.coverage = coverage
         self.sample_name = sample_name
         self.create_scans()
 
     @property
+    def rows(self):
+        """Determine number of rows from collimator size and sample diameter.
+        Central spot counts as a row."""
+        rows = self.diameter / self.unit_size / math.sqrt(3)
+        centerDot = 1
+        return math.ceil(rows) + centerDot
+
+    @property
     def unit_size(self):
-        unit_size = self.diameter / self.rows / math.sqrt(3)
+        """Size of a step in the path."""
+        unit_size = math.sqrt(3) * self.collimator / 2
+        # Unit size should be bigger if we're not mapping 100%
+        unit_size = unit_size / math.sqrt(self.coverage)
         return unit_size
 
     def create_scans(self):
@@ -296,7 +301,7 @@ class Map():
         curr_coords = Cube(0, 0, 0)
         yield curr_coords
         # Spiral through each row
-        for row in range(1, rows+1):
+        for row in range(1, rows):
             # Move to next row
             curr_coords += basis_set['NE']
             yield curr_coords
@@ -339,13 +344,28 @@ class Map():
                 f.write(template.render(**context))
         else:
             f.write(template.render(**context))
+        # Print summary info
+        msg = "Running {num} scans. ETA: {time}."
+        print(msg.format(num=context['num_scans'], time=context['total_time']))
+        frameStart = context['frames'][0]['start']
+        frameEnd = context['frames'][-1]['end']
+        msg = "Integration range: {start}° to {end}°"
+        print(msg.format(start=frameStart, end=frameEnd))
         return f
 
     def get_context(self):
         """Convert the object to a dictionary for the templating engine."""
         # Estimate the total time
-        secs = len(self.scans)*self.scan_time
-        total_time = "{0}s ({1:0.1f}h)".format(secs, secs/3600)
+        totalSecs = len(self.scans)*self.scan_time
+        days = math.floor(totalSecs/60/60/24)
+        remainder = totalSecs - days * 60 * 60 * 24
+        hours = math.floor(remainder/60/60)
+        remainder = remainder - hours * 60 * 60
+        mins = math.floor(remainder/60)
+        total_time = "{secs}s ({days}d {hours}h {mins}m)".format(secs=totalSecs,
+                                                                 days=days,
+                                                                 hours=hours,
+                                                                 mins=mins)
         # List of frames to integrate
         frames = []
         for frame_num in range(0, self.get_number_of_frames()):
@@ -467,15 +487,20 @@ class Map():
             # Get the data from disk
         with open(filename, 'rb') as loadFile:
             data = pickle.load(loadFile)
-        # Create new Scan objects
-        self.rows = data['rows']
         self.diameter = data['diameter']
-        self.create_scans()
-        assert len(self.scans) == len(data['scans'])
+        # Create scan list
+        self.scans = []
+        # self.create_scans()
+        # assert len(self.scans) == len(data['scans'])
         # Restore each scan
         for idx, dataDict in enumerate(data['scans']):
-            scan = self.scans[idx]
-            scan.data_dict = dataDict
+            # scan = self.scans[idx]
+            newScan = MapScan(location=dataDict['cube_coords'],
+                              xrd_map=self,
+                              material=self.material,
+                              filebase=dataDict['filebase'])
+            newScan.data_dict = dataDict
+            self.scans.append(newScan)
 
     def plot_map_with_image(self, scan=None, alpha=None):
         mapAxes, imageAxes = dual_axes()
@@ -549,9 +574,10 @@ class Map():
         ax.set_ylabel('mm')
         for scan in self.scans:
             scan.plot_hexagon(ax=ax)
+            scan.plot_beam(ax=ax)
         # If a highlighted scan was given, show it in a different color
         if highlightedScan is not None:
-            highlightedScan.highlight_hexagon(ax=ax)
+            highlightedScan.highlight_beam(ax=ax)
         # Add circle for theoretical edge
         self.draw_edge(ax, color='blue')
         # Add colormap to the side of the axes
@@ -874,23 +900,42 @@ class MapScan(xrd.XRDScan):
         """Build and plot a hexagon for display on the mapping routine.
         Return the hexagon patch object."""
         # Check for cached data
+        radius = 0.595*self.xrd_map.unit_size
         hexagon = patches.RegularPolygon(
             xy=self.xy_coords(),
             numVertices=6,
-            radius=0.595*self.xrd_map.unit_size,
+            radius=radius,
             linewidth=0,
-            alpha=self.reliability,
+            alpha=self.reliability/3,
             color=self.color()
         )
         ax.add_patch(hexagon)
         return hexagon
 
-    def highlight_hexagon(self, ax):
-        """Plots a red hexagon to highlight this specific scan."""
-        hexagon = patches.RegularPolygon(
+    def plot_beam(self, ax):
+        """Build and plot a shape for the actual loaction of the X-ray beam
+        on the mapping routine.
+        Return the patch object."""
+        # Check for cached data
+        diameter = self.xrd_map.collimator
+        ellipse = patches.Ellipse(
             xy=self.xy_coords(),
-            numVertices=6,
-            radius=0.595*self.xrd_map.unit_size,
+            width=diameter,
+            height=diameter,
+            linewidth=0,
+            alpha=self.reliability,
+            color=self.color()
+        )
+        ax.add_patch(ellipse)
+        return ellipse
+
+    def highlight_beam(self, ax):
+        """Plots a red hexagon to highlight this specific scan."""
+        diameter = self.xrd_map.collimator
+        hexagon = patches.Ellipse(
+            xy=self.xy_coords(),
+            width=diameter,
+            height=diameter,
             linewidth=1,
             alpha=1,
             edgecolor='red',
@@ -1007,3 +1052,9 @@ class DummyMap(Map):
         # Read a cached composite image from disk
         image = scipy.misc.imread('{0}/test-composite-image.png'.format(directory))
         return image
+
+    def plot_map(self, *args, **kwargs):
+        # Ensure that "diffractogram is loaded" for each scan
+        for scan in self.scans:
+            scan.diffractogram_is_loaded = True
+        return super(DummyMap, self).plot_map(*args, **kwargs)

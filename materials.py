@@ -3,8 +3,7 @@
 from matplotlib import colors
 import numpy as np
 
-from electrolab import xrd
-from electrolab.xrd import Phase, Reflection
+from xrd import Phase, Reflection, CubicUnitCell, HexagonalUnitCell
 
 class Material():
     """Describes a cathode material that may exist in multiple
@@ -107,10 +106,14 @@ class SolidSolutionMaterial(Material):
 class DummyMaterial(Material):
     def mapscan_metric(self, scan=None):
         # Just return the distance from bottom left to top right
-        p = self.cube_coords[0]
-        rows = self.sample.rows
+        p = scan.cube_coords[0]
+        rows = scan.xrd_map.rows
         r = p/2/rows + 0.5
         return r
+
+    def mapscan_reliability(self, scan=None):
+        # Stub for testing
+        return 1
 
 
 ## Standard material definitions below
@@ -121,7 +124,7 @@ class DummyMaterial(Material):
 ##################################################
 
 lmo_cubic_phase = Phase(
-    unit_cell = xrd.CubicUnitCell(a=8),
+    unit_cell = CubicUnitCell(a=8),
     diagnostic_reflection = '311',
     reflection_list = [
         Reflection((17.5, 19.5), '111'),
@@ -170,7 +173,7 @@ class StainlessSteelMaterial(Material):
 
 # Corundum standard
 corundum_phase = Phase(
-    unit_cell = xrd.HexagonalUnitCell(a=4.75, c=12.982),
+    unit_cell = HexagonalUnitCell(a=4.75, c=12.982),
     name='corundum',
     reflection_list = [
         Reflection((25, 27), '012'),

@@ -89,7 +89,7 @@ class GalvanostatRunTest(unittest.TestCase):
 class SlamFileTest(unittest.TestCase):
 
     def setUp(self):
-        self.sample = Map(center=(0, 0), diameter=12.7, rows=2,
+        self.sample = Map(center=(0, 0), diameter=12.7,
                           sample_name='slamfile-test',
                           scan_time=5, two_theta_range=(10, 20))
         self.sample.two_theta_range = (50, 90)
@@ -106,16 +106,12 @@ class SlamFileTest(unittest.TestCase):
             self.sample.get_number_of_frames
         )
 
-    def test_collimator(self):
+    def test_rows(self):
         # Does passing a collimator diameter set the appropriate number of rows
-        self.sample = Map(center=(0, 0),
-                          diameter=12.7,
-                          collimator=0.5,
-                          scan_time=10,
-                          two_theta_range=(10, 20))
+        self.sample = Map(diameter=12.7, collimator=0.5)
         self.assertEqual(
             self.sample.rows,
-            13
+            18
         )
 
     def test_theta2_start(self):
@@ -159,7 +155,7 @@ class SlamFileTest(unittest.TestCase):
 
     def test_path(self):
         results_list = []
-        for coords in self.sample.path(1):
+        for coords in self.sample.path(2):
             results_list.append(coords)
         self.assertEqual(
             results_list,
@@ -177,18 +173,17 @@ class SlamFileTest(unittest.TestCase):
             Cube(2, 0, -2)
         )
 
+    def test_coverage(self):
+        halfMap = Map(collimator=2, coverage=0.25)
+        self.assertEqual(halfMap.unit_size, 2 * math.sqrt(3))
+
     def test_cell_size(self):
-        sample = Map(center=(0, 0),
-                     diameter=20,
-                     rows=5,
-                     scan_time=10,
-                     two_theta_range=(10, 20))
-        self.assertEqual(sample.unit_size, 4/math.sqrt(3))
+        unitMap = Map(collimator=2)
+        self.assertEqual(unitMap.unit_size, math.sqrt(3))
 
     def test_jinja_context(self):
         sample = Map(center=(-10.5, 20.338),
                      diameter=10,
-                     rows=4,
                      sample_name='LiMn2O4',
                      scan_time=10,
                      two_theta_range=(10, 20))
@@ -404,7 +399,8 @@ class MapScanTest(unittest.TestCase):
     def test_pixel_coords(self):
         self.assertEqual(
             self.scan.pixel_coords(height=1000, width=1000),
-            {'width': 569, 'height': 380},
+            {'width': 553, 'height': 408},
+#             {'width': 569, 'height': 380},
         )
 
     def test_unit_size(self):
