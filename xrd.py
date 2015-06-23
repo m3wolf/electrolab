@@ -322,6 +322,24 @@ class HexagonalUnitCell(UnitCell):
         return d
 
 
+class TetragonalUnitCell(UnitCell):
+    """Unit cell where a=b, α=β=γ=90°."""
+    free_parameters = ('a', 'c')
+    a = UnitCell.ConstrainedLength()
+    b = UnitCell.ConstrainedLength()
+    alpha = UnitCell.FixedAngle(angle=90, name="α")
+    beta = UnitCell.FixedAngle(angle=90, name="β")
+    gamma = UnitCell.FixedAngle(angle=90, name="γ")
+
+    def d_spacing(self, hkl):
+        """Determine d-space for the given hkl plane."""
+        h, k, l = hkl
+        a, c = (self.a, self.c)
+        inverse_d_squared = (h**2 + k**2)/(a**2) + l**2/(c**2)
+        d = math.sqrt(1/inverse_d_squared)
+        return d
+
+
 tube_wavelengths = {
     'Cu': 1.5418
 }
