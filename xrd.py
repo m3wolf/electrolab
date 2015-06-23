@@ -382,7 +382,12 @@ class XRDScan():
             # Unknown file format, guess anyway
             msg = 'Unknown file format {}.'.format(extension)
             raise ValueError(msg)
-        self._df = pd.read_csv(filename, **csvKwargs)
+        df = pd.read_csv(filename, **csvKwargs)
+        # Select only the two-theta range of interest
+        if self.material:
+            rng = self.material.two_theta_range
+            df = df.loc[rng[0]:rng[1]]
+        self._df = df
         self.diffractogram_is_loaded = True
         self.subtract_background()
         return self._df
