@@ -85,6 +85,11 @@ class GalvanostatRunTest(unittest.TestCase):
     def test_import(self):
         run = GalvanostatRun('eclab-test-data.mpt')
 
+    def test_read_mass(self):
+        run = GalvanostatRun('eclab-test-data.mpt')
+        self.assertEqual(
+            run.mass, 0.02253
+        )
 
 class SlamFileTest(unittest.TestCase):
 
