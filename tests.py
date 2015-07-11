@@ -4,13 +4,56 @@ import os.path
 
 import pandas as pd
 
+import electrolab as el
+import xrdpeak
 import materials
 from materials import LMOSolidSolutionMaterial, CorundumMaterial
 from mapping import Map, DummyMap, Cube, MapScan
-from xrd import Phase, hkl_to_tuple, Reflection, XRDScan, remove_peak_from_df
+# from xrd import Phase, hkl_to_tuple, Reflection, XRDScan, remove_peak_from_df
 import xrd
+import unitcell
+import exceptions
 from cycler import GalvanostatRun
 
+
+class ElectrolabTestCase(unittest.TestCase):
+    def assertApproximatelyEqual(self, actual, expected, tolerance=0.01, msg=None):
+        """Assert that 'actual' is within relative 'tolerance' of 'expected'."""
+        diff = abs(actual-expected)
+        acceptable_diff = expected * tolerance
+        if diff > acceptable_diff:
+            msg = "{actual} is not close to {expected}"
+            self.fail(msg=msg.format(actual=actual, expected=expected))
+
+
+class PeakTest(unittest.TestCase):
+    def test_split_parameters(self):
+        peak = xrdpeak.Peak()
+        # Put in some junk data so it will actually split
+        peak.fit_list = ['a', 'b']
+        fullParams = (1, 2, 3, 4, 5, 6)
+        splitParams = peak.split_parameters(fullParams)
+        self.assertEqual(
+            splitParams,
+            [(1, 2, 3), (4, 5, 6)]
+        )
+
+    def test_initial_parameters(self):
+        # Does the class guess reasonable starting values for peak fitting
+        peakScan = el.XRDScan('test-sample-frames/corundum.xye',
+                              material=el.materials.CorundumMaterial())
+        df = peakScan.diffractogram[34:36]
+        peakFit = el.PeakFit()
+        # Returns two peaks for kalpha1 and kalpha2
+        p1, p2 = peakFit.initial_parameters(df.index, df.counts)
+        self.assertEqual(
+            p1,
+            (426.60416666666703, 35.12325845859763, 0.02)
+        )
+        self.assertEqual(
+            p2,
+            (213.30208333333351, 35.22272924095449, 0.02)
+        )
 
 class CubeTest(unittest.TestCase):
     def test_from_xy(self):
@@ -222,7 +265,7 @@ class SlamFileTest(unittest.TestCase):
             'Directory {} already exists, cannot test'.format(directory)
         )
         # Write the slamfile
-        result = self.sample.write_slamfile()
+        result = self.sample.write_slamfile(quiet=True)
         # Test if the correct things were created
         self.assertTrue(os.path.exists(directory))
         # Clean up
@@ -235,15 +278,15 @@ class SlamFileTest(unittest.TestCase):
 
 class XRDScanTest(unittest.TestCase):
     def setUp(self):
-        self.xrd_scan = XRDScan(filename='test-sample-frames/corundum.xye',
-                                material=CorundumMaterial())
+        self.xrd_scan = xrd.XRDScan(filename='test-sample-frames/corundum.xye',
+                                    material=CorundumMaterial())
 
     def test_remove_peak_from_df(self):
-        xrd_scan = XRDScan(filename='test-sample-frames/map-0.plt')
+        xrd_scan = xrd.XRDScan(filename='test-sample-frames/map-0.plt')
         peakRange = (35, 40)
         df = xrd_scan.diffractogram
         peakIndex = df[peakRange[0]:peakRange[1]].index
-        remove_peak_from_df(Reflection(peakRange, '000'), df)
+        xrd.remove_peak_from_df(xrd.Reflection(peakRange, '000'), df)
         intersection = df.index.intersection(peakIndex)
         self.assertEqual(
             len(intersection),
@@ -253,43 +296,29 @@ class XRDScanTest(unittest.TestCase):
 
     def test_filetypes(self):
         # Can the class determine the filetype and load it appropriately
-        scan = XRDScan(filename='test-sample-frames/corundum.xye')
+        scan = xrd.XRDScan(filename='test-sample-frames/corundum.xye')
 
     def test_contains_peak(self):
         """Method for determining if a given two_theta
         range is within the limits of the index."""
         # Completely inside range
         self.assertTrue(
-            self.xrd_scan.contains_peak(peak=(20, 23))
+            self.xrd_scan.contains_peak(two_theta_range=(20, 23))
         )
         # Completely outside range
         self.assertFalse(
-            self.xrd_scan.contains_peak(peak=(2, 3))
+            self.xrd_scan.contains_peak(two_theta_range=(2, 3))
         )
         # Partial overlap
         self.assertTrue(
-            self.xrd_scan.contains_peak(peak=(79, 81))
+            self.xrd_scan.contains_peak(two_theta_range=(79, 81))
         )
 
-    def test_peak_list(self):
-        peak_list = self.xrd_scan.peak_list
-        self.assertEqual(
-            peak_list,
-            set([
-                25.575146738439802,
-                35.151143238879698,
-                37.777643879875498,
-                41.671405530534699,
-                43.347460414282999,
-                52.545322581194299,
-                57.491728457622202
-            ])
-        )
 
 
 class TestUnitCell(unittest.TestCase):
     def test_init(self):
-        unitCell = xrd.UnitCell(a=15, b=3, alpha=45)
+        unitCell = unitcell.UnitCell(a=15, b=3, alpha=45)
         self.assertEqual(unitCell.a, 15)
         self.assertEqual(unitCell.b, 3)
         self.assertEqual(unitCell.alpha, 45)
@@ -297,26 +326,26 @@ class TestUnitCell(unittest.TestCase):
     def test_setattr(self):
         """Does the unitcell give an error when passed crappy values."""
         # Negative unit cell parameter
-        unitCell = xrd.UnitCell()
-        with self.assertRaises(xrd.UnitCellError):
+        unitCell = unitcell.UnitCell()
+        with self.assertRaises(exceptions.UnitCellError):
             unitCell.a = -5
-        with self.assertRaises(xrd.UnitCellError):
+        with self.assertRaises(exceptions.UnitCellError):
             unitCell.alpha = -10
 
 
 class TestCubicUnitCell(unittest.TestCase):
     def setUp(self):
-        self.unit_cell = xrd.CubicUnitCell()
+        self.unit_cell = unitcell.CubicUnitCell()
 
     def test_mutators(self):
         # Due to high symmetry, a=b=c
         self.unit_cell.a = 2
         self.assertEqual(self.unit_cell.b, 2)
         self.assertEqual(self.unit_cell.c, 2)
-        with self.assertRaises(xrd.UnitCellError):
+        with self.assertRaises(exceptions.UnitCellError):
             self.unit_cell.a = -5
         # and alpha=beta=gamma=90
-        with self.assertRaises(xrd.UnitCellError):
+        with self.assertRaises(exceptions.UnitCellError):
             self.unit_cell.alpha = 120
 
     def test_cell_parameters(self):
@@ -331,16 +360,17 @@ class TestCubicUnitCell(unittest.TestCase):
             math.sqrt(1/3)
         )
 
+
 class TestHexagonalUnitCell(unittest.TestCase):
     def setUp(self):
-        self.unit_cell = xrd.HexagonalUnitCell()
+        self.unit_cell = unitcell.HexagonalUnitCell()
 
     def test_mutators(self):
         self.unit_cell.a = 3
         self.assertEqual(self.unit_cell.b, 3)
         self.assertNotEqual(self.unit_cell.c, 3)
         # Angles are fixed
-        with self.assertRaises(xrd.UnitCellError):
+        with self.assertRaises(exceptions.UnitCellError):
             self.unit_cell.alpha = 80
 
     def test_cell_parameters(self):
@@ -455,12 +485,12 @@ class MapTest(unittest.TestCase):
 
 class ReflectionTest(unittest.TestCase):
     def test_hkl_to_tuple(self):
-        newHkl = hkl_to_tuple((1, 1, 1))
+        newHkl = xrd.hkl_to_tuple((1, 1, 1))
         self.assertEqual(
             newHkl,
             (1, 1, 1)
         )
-        newHkl = hkl_to_tuple('315')
+        newHkl = xrd.hkl_to_tuple('315')
         self.assertEqual(
             newHkl,
             (3, 1, 5)
@@ -469,7 +499,7 @@ class ReflectionTest(unittest.TestCase):
 
 class PhaseTest(unittest.TestCase):
     def setUp(self):
-        self.phase = materials.corundum_phase
+        self.phase = materials.CorundumPhase()
         self.corundum = materials.CorundumMaterial()
         self.corundum_scan = xrd.XRDScan(filename='test-sample-frames/corundum.xye',
                                          material=self.corundum)
@@ -483,32 +513,28 @@ class PhaseTest(unittest.TestCase):
 
     def test_peak_list(self):
         phase = self.corundum.phase_list[0]
-        peak_list = phase.actual_peak_positions(scan=self.corundum_scan)
+        phase.fit_peaks(scan=self.corundum_scan)
+        peak_list = phase.peak_list
+        two_theta_list = [peak.center_kalpha for peak in peak_list]
+        hkl_list = [peak.reflection.hkl_string for peak in peak_list]
         self.assertEqual(
-            peak_list,
-            [
-                ('012', 25.575146738439802),
-                ('104', 35.151143238879698),
-                ('110', 37.777643879875498),
-                ('006', 41.671405530534699),
-                ('113', 43.347460414282999),
-                ('024', 52.545322581194299),
-                ('116', 57.491728457622202)
-            ]
+            two_theta_list,
+            [25.599913304005099,
+             35.178250906935716,
+             37.790149818489454,
+             41.709732482339412,
+             43.388610036562113,
+             52.594640340604649,
+             57.54659705350258,
+             61.353393926907451]
         )
-
-    def test_refine_unit_cell(self):
-        # Results take from celref using corundum standard
-        residuals = self.phase.refine_unit_cell(scan=self.corundum_scan,
-                                                quiet=True)
-        self.assertTrue(residuals < 0.00288)
         self.assertEqual(
-            self.phase.unit_cell.cell_parameters,
-            (4.7629683775774989, 13.003960220861639)
+            hkl_list,
+            [reflection.hkl_string for reflection in self.phase.reflection_list]
         )
 
 
-class ExperimentalDataTest(unittest.TestCase):
+class ExperimentalDataTest(ElectrolabTestCase):
     """
     These tests compare results to experimentally determined values.
     """
@@ -520,13 +546,14 @@ class ExperimentalDataTest(unittest.TestCase):
         # Predicted peaks were calculated using celref with the R-3C space group
         predicted_peaks = self.phase.predicted_peak_positions(wavelength=1.5418)
         celref_peaks = [
-                ('012', 3.4746228816945104, 25.637288649553085),
-                ('104', 2.5479680737754244, 35.22223164557721),
-                ('110', 2.375, 37.88141047624646),
-                ('006', 2.1636666666666664, 41.74546075011751),
-                ('113', 2.0820345582756135, 43.46365474219995),
-                ('024', 1.7373114408472552, 52.68443192186963),
-                ('116', 1.5994489779586798, 57.62940019834231)
+            ('012', 3.4746228816945104, 25.637288649553085),
+            ('104', 2.5479680737754244, 35.22223164557721),
+            ('110', 2.375, 37.88141047624646),
+            ('006', 2.1636666666666664, 41.74546075011751),
+            ('113', 2.0820345582756135, 43.46365474219995),
+            ('024', 1.7373114408472552, 52.68443192186963),
+            ('116', 1.5994489779586798, 57.62940019834231),
+            ('117', 1.4617153753449086, 63.6591003395956)
         ]
         self.assertEqual(
             predicted_peaks,
@@ -536,11 +563,33 @@ class ExperimentalDataTest(unittest.TestCase):
     def test_mean_square_error(self):
         scan = xrd.XRDScan(filename='test-sample-frames/corundum.xye',
                            material=self.material)
+        scan.fit_peaks()
         rms_error = self.phase.peak_rms_error(scan=scan)
         # Check that the result is close to the value from celref
         diff = rms_error - 0.10492
         self.assertTrue(
             diff < 0.001
+        )
+
+    def test_refine_corundum(self):
+        # Results take from celref using corundum standard
+        scan = xrd.XRDScan(filename='test-sample-frames/corundum.xye',
+                           material=self.material)
+        residuals = self.phase.refine_unit_cell(scan=scan,
+                                                quiet=True)
+        unit_cell_parameters = self.phase.unit_cell.cell_parameters
+        # Cell parameters taken from 1978a sample CoA
+        self.assertApproximatelyEqual(
+            unit_cell_parameters.a,
+            4.758877,
+        )
+        self.assertApproximatelyEqual(
+            unit_cell_parameters.c,
+            12.992877
+        )
+        self.assertTrue(
+            residuals < 0.00288,
+            'residuals ({}) too high'.format(residuals)
         )
 
 

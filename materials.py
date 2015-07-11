@@ -3,7 +3,8 @@
 from matplotlib import colors
 import numpy as np
 
-from xrd import Phase, Reflection, CubicUnitCell, HexagonalUnitCell
+from xrd import Phase, Reflection
+import unitcell
 
 class Material():
     """Describes a cathode material that may exist in multiple
@@ -15,6 +16,11 @@ class Material():
     background_phases = []
     metric_normalizer = colors.Normalize(0, 1, clip=True)
     reliability_normalizer = colors.Normalize(0, 1, clip=True)
+
+    def __init__(self):
+        # Instantiate each phase
+        self.phase_list = [Phase() for Phase in self.phase_list]
+        self.background_phases = [Phase() for Phase in self.background_phases]
 
     def mapscan_metric(self, scan=None):
         """Contains the specifics of getting one number from each scan.
@@ -29,17 +35,19 @@ class Material():
         # Calculate signals
         for phase in self.phase_list:
             two_theta_range = phase.diagnostic_reflection.two_theta_range
-            if scan.contains_peak(peak=two_theta_range):
+            if scan.contains_peak(two_theta_range=two_theta_range):
                 signal += scan.peak_area(two_theta_range)
         # Calculate background signal
         background = 0
         for phase in self.background_phases:
-            two_theta_range = phase.diagnostic_reflection.two_theta_range
-            background += scan.peak_area(two_theta_range)
+            if phase.diagnostic_reflection is not None:
+                two_theta_range = phase.diagnostic_reflection.two_theta_range
+                background += scan.peak_area(two_theta_range)
         if background == 0:
             # No background peaks available
             reliability = 1
         else:
+            # Compute reliability from signal to background
             totalIntensity = signal + background
             intensityModifier = colors.Normalize(0.15, 0.5, clip=True)(totalIntensity)
             reliability = intensityModifier * signal / (signal+background)
@@ -123,9 +131,9 @@ class DummyMaterial(Material):
 # LiMn_2O_4
 ##################################################
 
-lmo_cubic_phase = Phase(
-    unit_cell = CubicUnitCell(a=8),
-    diagnostic_reflection = '311',
+class LMOCubicPhase(Phase):
+    unit_cell = unitcell.CubicUnitCell(a=8)
+    diagnostic_hkl = '311'
     reflection_list = [
         Reflection((17.5, 19.5), '111'),
         Reflection((35.3, 37), '311'),
@@ -137,19 +145,19 @@ lmo_cubic_phase = Phase(
         Reflection((64, 66), '440'),
         Reflection((67, 69), '531'),
     ]
-)
 
-lmo_tetragonal_phase = Phase(
-    diagnostic_reflection = None,
+
+class LMOTetragonalPhase(Phase):
+    unit_cell = unitcell.TetragonalUnitCell()
+    diagnostic_hkl = None
     reflection_list = [
         Reflection((39.5, 40.5), '000'),
     ]
-)
 
-# Currently not indexed properly
-aluminum_phase = Phase(
+
+class AluminumPhase(Phase):
     name = 'aluminum',
-    diagnostic_reflection = '111',
+    diagnostic_hkl = '111',
     reflection_list = [
         Reflection((37.3, 39), '111'),
         Reflection((43.5, 45), '200'),
@@ -157,24 +165,23 @@ aluminum_phase = Phase(
         Reflection((77, 80), '311'),
         Reflection((81, 84), '222'),
     ]
-)
 
-# 304 Stainless steel. PDF2 card: 00-033-0397
-stainless_steel_phase = Phase(
-    diagnostic_reflection = '111',
-    reflection_list = [
-        Reflection((42, 46), '111'),
-        Reflection((49, 53), '200'),
-        Reflection((72, 78), '220'),
-    ]
-)
-class StainlessSteelMaterial(Material):
-    phase_list = [stainless_steel_phase]
+# # 304 Stainless steel. PDF2 card: 00-033-0397
+# stainless_steel_phase = Phase(
+#     diagnostic_hkl = '111',
+#     reflection_list = [
+#         Reflection((42, 46), '111'),
+#         Reflection((49, 53), '200'),
+#         Reflection((72, 78), '220'),
+#     ]
+# )
+# class StainlessSteelMaterial(Material):
+#     phase_list = [stainless_steel_phase]
 
 # Corundum standard
-corundum_phase = Phase(
-    unit_cell = HexagonalUnitCell(a=4.75, c=12.982),
-    name='corundum',
+class CorundumPhase(Phase):
+    unit_cell = unitcell.HexagonalUnitCell(a=4.75, c=12.982)
+    name='corundum'
     reflection_list = [
         Reflection((25, 27), '012'),
         Reflection((34, 36), '104'),
@@ -183,40 +190,42 @@ corundum_phase = Phase(
         Reflection((42.5, 44), '113'),
         Reflection((52, 54), '024'),
         Reflection((56, 59), '116'),
+        Reflection((61, 62), '117'),
     ]
-)
+
+
 class CorundumMaterial(Material):
-    phase_list = [corundum_phase]
+    phase_list = [CorundumPhase]
 
 
-# Material for mapping LiMn2O4 cathodes using peak position.
+# # Material for mapping LiMn2O4 cathodes using peak position.
 class LMOSolidSolutionMaterial(SolidSolutionMaterial):
     two_theta_range = (30, 50)
     scan_time = 200 # Seconds per frame
-    phase_list = [lmo_cubic_phase]
-    background_phases = [aluminum_phase]
+    phase_list = [LMOCubicPhase]
+    background_phases = [AluminumPhase]
     # Normalization ranges for the 2theta position of the target peak
     metric_normalizer = colors.Normalize(44, 45, clip=True)
     reliability_normalizer = colors.Normalize(0.4, 0.8, clip=True)
 
 
-# Material for mapping LiMn2O4 using peak area (two-phase mechanism)"""
-class LMOTwoPhaseMaterial(TwoPhaseMaterial):
-    metric_normalizer = colors.Normalize(0.8, 1.2, clip=True)
-    reliability_normalizer = colors.Normalize(0, 1, clip=True)
-    phase_list = [lmo_cubic_phase, lmo_tetragonal_phase]
-    background_phases = [aluminum_phase]
+# # Material for mapping LiMn2O4 using peak area (two-phase mechanism)"""
+# class LMOTwoPhaseMaterial(TwoPhaseMaterial):
+#     metric_normalizer = colors.Normalize(0.8, 1.2, clip=True)
+#     reliability_normalizer = colors.Normalize(0, 1, clip=True)
+#     phase_list = [lmo_cubic_phase, lmo_tetragonal_phase]
+#     background_phases = [aluminum_phase]
 
 
-# Sample for mapping LiMn2O4 in the low potential region from
-# Li_1Mn_2O_4 to Mn_2O_4.
-class LMOLowVMaterial(TwoPhaseMaterial):
-    two_theta_range = (30, 50),
-    phase_list = [lmo_cubic_phase, lmo_tetragonal_phase],
-    background_phases = [aluminum_phase],
-    discharged_peak = 'tetragonal',
-    charged_peak = '400',
-    reliability_peak = '400',
+# # Sample for mapping LiMn2O4 in the low potential region from
+# # Li_1Mn_2O_4 to Mn_2O_4.
+# class LMOLowVMaterial(TwoPhaseMaterial):
+#     two_theta_range = (30, 50),
+#     phase_list = [lmo_cubic_phase, lmo_tetragonal_phase],
+#     background_phases = [aluminum_phase],
+#     discharged_peak = 'tetragonal',
+#     charged_peak = '400',
+#     reliability_peak = '400',
 
 
 ##################################################
@@ -224,25 +233,25 @@ class LMOLowVMaterial(TwoPhaseMaterial):
 # MgMn_2O_4
 ##################################################
 
-mmo_tetragonal_phase = Phase(
-    diagnostic_reflection = '000',
-    reflection_list = [
-        Reflection((28.3, 29.7), '000'),
-        Reflection((32, 33.5), '000'),
-    ]
-)
+# mmo_tetragonal_phase = Phase(
+#     diagnostic_hkl = '000',
+#     reflection_list = [
+#         Reflection((28.3, 29.7), '000'),
+#         Reflection((32, 33.5), '000'),
+#     ]
+# )
 
-mmo_cubic_phase = Phase(
-    diagnostic_reflection = '000',
-    reflection_list = [
-        Reflection((17.75, 19), '101'),
-        Reflection((30, 31.5), '000'),
-        Reflection((34, 37.5), '000'),
-    ]
-)
+# mmo_cubic_phase = Phase(
+#     diagnostic_hkl = '000',
+#     reflection_list = [
+#         Reflection((17.75, 19), '101'),
+#         Reflection((30, 31.5), '000'),
+#         Reflection((34, 37.5), '000'),
+#     ]
+# )
 
-class MMOMaterial(TwoPhaseMaterial):
-    scan_time = 2400
-    two_theta_range = (17.5, 37.5)
-    phase_list = [mmo_cubic_phase, mmo_tetragonal_phase]
-    background_phases = [stainless_steel_phase]
+# class MMOMaterial(TwoPhaseMaterial):
+#     scan_time = 2400
+#     two_theta_range = (17.5, 37.5)
+#     phase_list = [mmo_cubic_phase, mmo_tetragonal_phase]
+#     background_phases = [stainless_steel_phase]

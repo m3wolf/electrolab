@@ -323,7 +323,7 @@ class Map():
     def xy_lim(self):
         return self.diameter/2*1.5
 
-    def write_slamfile(self, f=None):
+    def write_slamfile(self, f=None, quiet=False):
         """
         Format the sample into a slam file that GADDS can process.
         """
@@ -345,12 +345,13 @@ class Map():
         else:
             f.write(template.render(**context))
         # Print summary info
-        msg = "Running {num} scans. ETA: {time}."
-        print(msg.format(num=context['num_scans'], time=context['total_time']))
-        frameStart = context['frames'][0]['start']
-        frameEnd = context['frames'][-1]['end']
-        msg = "Integration range: {start}° to {end}°"
-        print(msg.format(start=frameStart, end=frameEnd))
+        if not quiet:
+            msg = "Running {num} scans. ETA: {time}."
+            print(msg.format(num=context['num_scans'], time=context['total_time']))
+            frameStart = context['frames'][0]['start']
+            frameEnd = context['frames'][-1]['end']
+            msg = "Integration range: {start}° to {end}°"
+            print(msg.format(start=frameStart, end=frameEnd))
         return f
 
     def get_context(self):

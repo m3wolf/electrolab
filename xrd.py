@@ -10,6 +10,9 @@ import scipy
 from scipy.interpolate import UnivariateSpline
 from matplotlib import pyplot
 
+from xrdpeak import tubes, Peak
+import exceptions
+
 
 def hkl_to_tuple(hkl_input):
     """If hkl_input is a string, extract the hkl values and
@@ -95,16 +98,17 @@ class Reflection():
 
 class Phase():
     """A crystallographic phase that can be found in a Material."""
-    reflection_list = []
-    def __init__(self, reflection_list=[], diagnostic_reflection=None, unit_cell=None, name="phase", space_group=None):
-        self.reflection_list = reflection_list
-        self.name = name
-        self.unit_cell = unit_cell
-        self.space_group = space_group
-        if diagnostic_reflection is not None:
-            self.diagnostic_reflection = self.reflection_by_hkl(diagnostic_reflection)
-        else:
-            self.diagnostic_reflection = Reflection()
+    reflection_list = [] # Predicted peaks by crystallography
+    # def __init__(self, reflection_list=[], diagnostic_reflection=None,
+    #              unit_cell=None, name="phase", space_group=None):
+    #     self.reflection_list = reflection_list
+    #     self.name = name
+    #     self.unit_cell = unit_cell
+    #     self.space_group = space_group
+    #     if diagnostic_reflection is not None:
+    #         self.diagnostic_reflection = self.reflection_by_hkl(diagnostic_reflection)
+    #     else:
+    #         self.diagnostic_reflection = Reflection()
 
     def __repr__(self):
         return "<{}: {}>".format(self.__class__.__name__, self.name)
@@ -113,6 +117,11 @@ class Phase():
         for reflection in self.reflection_list:
             if reflection.hkl == hkl_to_tuple(hkl_input):
                 return reflection
+
+    @property
+    def diagnostic_reflection(self):
+        reflection = self.reflection_by_hkl(self.diagnostic_hkl)
+        return reflection
 
     def refine_unit_cell(self, scan, quiet=False):
         """Residual least squares refinement of the unit-cell
@@ -127,6 +136,8 @@ class Phase():
             residuals = self.peak_rms_error(scan=scan,
                                             unit_cell=unit_cell)
             return residuals
+        # Fit peaks to Gaussian/Cauchy functions using least squares refinement
+        self.fit_peaks(scan=scan)
         # Now minimize it
         initial_parameters = self.unit_cell.cell_parameters
         result = scipy.optimize.minimize(fun=objective,
@@ -159,27 +170,66 @@ class Phase():
             )
         return predicted_peaks
 
-    def actual_peak_positions(self, scan):
-        ActualPeak = namedtuple('ActualPeak', ('hkl', 'two_theta'))
-        df = scan.diffractogram
+    # def actual_peak_positions(self, scan):
+    #     self.peak_
+        # ActualPeak = namedtuple('ActualPeak', ('hkl', 'two_theta'))
+        # df = scan.diffractogram
         # Make a list of all reflections
-        reflection_list = self.reflection_list
+        # reflection_list = self.reflection_list
         # Find two_theta of each reflection
-        peak_list = []
-        for reflection in reflection_list:
-            peakPosition = scan.peak_position(reflection.two_theta_range)
-            peak_list.append(ActualPeak(reflection.hkl_string, peakPosition))
+        # peak_list = []
+        # for reflection in reflection_list:
+        #     peakPosition = scan.peak_position(reflection.two_theta_range)
+        #     peak_list.append(ActualPeak(reflection.hkl_string, peakPosition))
+        # return peak_list
+
+    @property
+    def peak_list(self):
+        peak_list = getattr(self, '_peak_list', None)
+        if peak_list is None:
+            # Peak fitting has not been performed, raise and error
+            msg = 'Peak fitting has not been performed. Please run {cls}.fit_peaks method'
+            raise exceptions.PeakFitError(msg.format(cls=self.__class__.__name__))
         return peak_list
+
+    def fit_peaks(self, scan):
+        """
+        Use least squares refinement to fit gaussian/Cauchy/etc functions
+        to the predicted reflections.
+        """
+        self._peak_list = []
+        fitMethods = ['pseudo-voigt', 'gaussian', 'cauchy', 'estimated']
+        for reflection in self.reflection_list:
+            if scan.contains_peak(reflection.two_theta_range):
+                newPeak = Peak(reflection=reflection)
+                df = scan.diffractogram.loc[
+                    reflection.two_theta_range[0]:reflection.two_theta_range[1]
+                ]
+                # Try each fit method until one works
+                for method in fitMethods:
+                    try:
+                        newPeak.fit(df.index, df.subtracted, method=method)
+                    except exceptions.PeakFitError:
+                        # Try next fit
+                        continue
+                    else:
+                        # Fit was succesful
+                        self._peak_list.append(newPeak)
+                        break
+                else:
+                    # No sucessful fit could be found.
+                    msg = "peak could not be fit for {}.".format(reflection)
+                    print(msg)
+        return self.peak_list
 
     def peak_rms_error(self, scan, unit_cell=None):
         diffs = []
         wavelength = scan.wavelength
-        actual_peaks = self.actual_peak_positions(scan=scan)
         predicted_peaks = self.predicted_peak_positions(wavelength=wavelength,
                                                         unit_cell=unit_cell)
         # Prepare list of peak position differences
-        for idx, actual_peak in enumerate(actual_peaks):
-            actual = actual_peak.two_theta
+        for idx, actual_peak in enumerate(self.peak_list):
+            actual = actual_peak.center_kalpha
             predicted = predicted_peaks[idx].two_theta
             diffs.append(actual-predicted)
         # Calculate mean-square-difference
@@ -189,160 +239,6 @@ class Phase():
         rms_error = math.sqrt(running_total/len(diffs))
         return rms_error
 
-
-class UnitCellError(ValueError):
-    pass
-
-class RefinementError(Exception):
-    pass
-
-class UnitCell():
-    """Describes a crystallographic unit cell for XRD Refinement. Composed
-    of up to three lengths (a, b and c) in angstroms and three angles
-    (alpha, beta, gamma) in degrees. Subclasses with high symmetry
-    with have less than six parameters.
-    """
-    free_parameters = ('a', 'b', 'c', 'alpha', 'beta', 'gamma')
-    a = 1
-    b = 1
-    c = 1
-    constrained_length = 1
-    alpha = 90
-    beta = 90
-    gamma = 90
-    def __init__(self, a=None, b=None, c=None,
-                 alpha=None, beta=None, gamma=None):
-        # Set initial cell parameters.
-        # This method avoids setting constrained values to defaults
-        for attr in ['a', 'b', 'c', 'alpha', 'beta', 'gamma']:
-            value = locals()[attr]
-            if value is not None:
-                self.__setattr__(attr, value)
-
-    def __setattr__(self, name, value):
-        """Check for reasonable value for crystallography parameters"""
-        # Unit cell lengths
-        if name in ['a', 'b', 'c'] and value <= 0:
-            msg = 'unit-cell dimensions must be greater than 0 ({}={})'
-            raise UnitCellError(msg.format(name, value))
-        # Unit cell angles
-        elif name in ['alpha', 'beta', 'gamma'] and not (0 < value < 180):
-            msg = 'unit-cell angles must be between 0° and 180° ({}={}°)'
-            raise UnitCellError(msg.format(name, value))
-        # No problems, so set the attribute as normal
-        else:
-            super(UnitCell, self).__setattr__(name, value)
-
-    def __repr__(self):
-        name = '<{cls}: a={a}, b={b}, c={c}, α={alpha}, β={beta}, γ={gamma}>'
-        name = name.format(cls=self.__class__.__name__,
-                           a=self.a, b=self.b, c=self.c,
-                           alpha=self.alpha, beta=self.beta, gamma=self.gamma)
-        return name
-
-    @property
-    def cell_parameters(self):
-        """Named tuple of the cell parameters that aren't fixed."""
-        params = self.free_parameters
-        CellParameters = namedtuple('CellParameters', params)
-        paramArgs = {param: getattr(self, param) for param in params}
-        parameters = CellParameters(**paramArgs)
-        return parameters
-
-    def set_cell_parameters_from_list(self, parameters_list):
-        """
-        Accept a list of parameters and assumes they are in the order of
-        self.free_parameters. This is a shaky assumption and should not be
-        used if avoidable. This method was created for use in cell refinement
-        where scipy.optimize.minimize passes a numpy array.
-        """
-        for idx, key in enumerate(self.free_parameters):
-            setattr(self, key, parameters_list[idx])
-
-    class FixedAngle():
-        """A Unit-cell angle that cannot change for that unit cell"""
-        def __init__(self, angle, name='angle'):
-            self.angle = angle
-            self.name = name
-
-        def __get__(self, obj, objtype):
-            return self.angle
-
-        def __set__(self, obj, value):
-            msg = "{name} must equal {angle}° for {cls}"
-            msg = msg.format(name=self.name,
-                             angle=self.angle,
-                             cls=obj.__class__.__name__)
-            raise UnitCellError(msg)
-
-    class ConstrainedLength():
-        """
-        Unit-cell angle that is tied to another length in the cell. Eg. a=b
-        """
-        def __get__(self, obj, objtype):
-            return obj.constrained_length
-
-        def __set__(self, obj, value):
-            obj.constrained_length = value
-
-
-class CubicUnitCell(UnitCell):
-    """Unit cell where a=b=c and α=β=γ=90°"""
-    free_parameters = ('a', )
-    # Descriptors for unit-cell lengths, since a=b=c
-    a = UnitCell.ConstrainedLength()
-    b = UnitCell.ConstrainedLength()
-    c = UnitCell.ConstrainedLength()
-    alpha = UnitCell.FixedAngle(90, name="α")
-    beta = UnitCell.FixedAngle(90, name="β")
-    gamma = UnitCell.FixedAngle(90, name="γ")
-
-    def d_spacing(self, hkl):
-        """Determine d-space for the given hkl plane."""
-        h, k, l = hkl
-        inverse_d_squared = (h**2 + k**2 + l**2)/(self.a**2)
-        d = math.sqrt(1/inverse_d_squared)
-        return d
-
-class HexagonalUnitCell(UnitCell):
-    """Unit cell where a=b, α=β=90°, γ=120°."""
-    free_parameters = ('a', 'c')
-    a = UnitCell.ConstrainedLength()
-    b = UnitCell.ConstrainedLength()
-    alpha = UnitCell.FixedAngle(angle=90, name="α")
-    beta = UnitCell.FixedAngle(angle=90, name="β")
-    gamma = UnitCell.FixedAngle(angle=120, name="γ")
-
-    def d_spacing(self, hkl):
-        """Determine d-space for the given hkl plane."""
-        h, k, l = hkl
-        a, c = (self.a, self.c)
-        inverse_d_squared = 4*(h**2 + h*k + k**2)/(3*a**2) + l**2/(c**2)
-        d = math.sqrt(1/inverse_d_squared)
-        return d
-
-
-class TetragonalUnitCell(UnitCell):
-    """Unit cell where a=b, α=β=γ=90°."""
-    free_parameters = ('a', 'c')
-    a = UnitCell.ConstrainedLength()
-    b = UnitCell.ConstrainedLength()
-    alpha = UnitCell.FixedAngle(angle=90, name="α")
-    beta = UnitCell.FixedAngle(angle=90, name="β")
-    gamma = UnitCell.FixedAngle(angle=90, name="γ")
-
-    def d_spacing(self, hkl):
-        """Determine d-space for the given hkl plane."""
-        h, k, l = hkl
-        a, c = (self.a, self.c)
-        inverse_d_squared = (h**2 + k**2)/(a**2) + l**2/(c**2)
-        d = math.sqrt(1/inverse_d_squared)
-        return d
-
-
-tube_wavelengths = {
-    'Cu': 1.5418
-}
 
 class XRDScan():
     """
@@ -356,10 +252,8 @@ class XRDScan():
         self.material = material
         self.cached_data = {}
         # Determine wavelength from tube type
-        if wavelength is None:
-            self.wavelength = tube_wavelengths[tube]
-        else:
-            self.wavelength = wavelength
+        self.tube = tubes[tube]
+        self.wavelength = self.tube.kalpha
         # Load diffractogram from file
         if filename is not None:
             self.filename=filename
@@ -455,6 +349,11 @@ class XRDScan():
         # Highlight peaks of interest
         if self.material is not None:
             self.material.highlight_peaks(ax=ax)
+        # Plot fitted peaks
+        if self.material is not None:
+            for phase in self.material.phase_list:
+                for peak in phase.peak_list:
+                    peak.plot_fit(ax=ax, background=self.spline)
         # Set plot annotations
         ax.set_xlim(left=df.index.min(), right=df.index.max())
         ax.set_ylim(bottom=0)
@@ -470,13 +369,13 @@ class XRDScan():
             title = self.filename
         return title
 
-    def contains_peak(self, peak):
+    def contains_peak(self, two_theta_range):
         """Does this instance have the given peak within its two_theta_range?"""
         df = self.diffractogram
         two_theta_max = df.index.max()
         two_theta_min = df.index.min()
-        isInRange = (two_theta_min < peak[0] < two_theta_max
-                     or two_theta_min < peak[1] < two_theta_max)
+        isInRange = (two_theta_min < two_theta_range[0] < two_theta_max
+                     or two_theta_min < two_theta_range[1] < two_theta_max)
         return isInRange
 
     @property
@@ -486,8 +385,7 @@ class XRDScan():
         peak_list = []
         # Look through phases and collect peaks
         for phase in self.material.phase_list:
-            for peak in phase.actual_peak_positions(scan=self):
-                peak_list.append(peak.two_theta)
+            peak_list += phase.peak_list
         return set(peak_list)
 
     def peak_area(self, two_theta_range):
@@ -513,6 +411,10 @@ class XRDScan():
         ]
         twotheta = peakDF.argmax()
         return twotheta
+
+    def fit_peaks(self):
+        for phase in self.material.phase_list:
+            phase.fit_peaks(scan=self)
 
     def refine_unit_cells(self):
         """Residual least-squares refinement of the unit cell for each
