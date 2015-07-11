@@ -15,3 +15,6 @@ from xrd import XRDScan, align_scans, plot_scans
 from mapping import Cube, Map, DummyMap
 
 import materials
+
+# Electrochemistry methods and classes
+from cycler import GalvanostatRun, Cycle
