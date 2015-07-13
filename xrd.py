@@ -10,9 +10,10 @@ import scipy
 from scipy.interpolate import UnivariateSpline
 from matplotlib import pyplot
 
+from filters import fourier_transform, LowPassFilter, HighPassFilter
 from xrdpeak import tubes, Peak
+import plots
 import exceptions
-
 
 def hkl_to_tuple(hkl_input):
     """If hkl_input is a string, extract the hkl values and
@@ -341,9 +342,8 @@ class XRDScan():
         unless supplied by the `ax` keyword.
         """
         df = self.diffractogram
-        if not ax:
-            fig = pyplot.figure()
-            ax = pyplot.gca()
+        if ax is None:
+            ax = plots.big_axes()
         ax.plot(df.index, df.loc[:, 'counts'])
         ax.plot(df.index, self.spline(df.index))
         # Highlight peaks of interest
@@ -368,6 +368,40 @@ class XRDScan():
         else:
             title = self.filename
         return title
+
+    def plot_fourier_transform(self, ax=None):
+        """Perform a fourier transform on the origina data and plot"""
+        if ax is None:
+            ax = plots.new_axes()
+        df = self.diffractogram
+        # Perform fourier transform
+        newData = fourier_transform(pd.Series(data=df.counts, index=df.index))
+        # Plot results
+        ax.plot(newData.index, newData.values,
+                marker='.', linestyle='None')
+        ax.set_xscale('log')
+        ax.set_ylabel('Amplitude')
+        ax.set_xlabel('$Frequency\ /deg^{-1}$')
+        ax.set_title('Fourier Transform of {}'.format(self.axes_title()))
+        ax.set_xlim(right=newData.index.max())
+        return ax
+
+    def plot_noise_reduction(self, noise_filter):
+        # Generate data
+        originalData = self.diffractogram.counts
+        newData = noise_filter.apply(originalData)
+        diff = noise_filter.difference(originalData)
+        # Plot data
+        fig, axArray = pyplot.subplots(3, sharex=True)
+        ax1, ax2, ax3 = axArray
+        ax1.plot(originalData)
+        ax1.set_title('Original Diffractogram')
+        ax2.plot(newData)
+        ax2.set_title('New Diffractogram')
+        ax3.plot(diff)
+        ax3.set_title('Difference')
+        # axMin, axMax = ax2.get_ylim()
+        # ax3.set_ylim(-(axMax-axMin)/2,(axMax-axMin)/2)
 
     def contains_peak(self, two_theta_range):
         """Does this instance have the given peak within its two_theta_range?"""

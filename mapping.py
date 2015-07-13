@@ -17,22 +17,6 @@ from gi.repository import Gtk, Gdk
 import xrd
 from materials import DummyMaterial
 
-def new_axes():
-    """Create a new set of matplotlib axes for plotting"""
-    height = 5 # in inches
-    # Adjust width to accomodate colorbar
-    width = height/0.8
-    fig = pyplot.figure(figsize=(width, height))
-    ax = pyplot.gca()
-    return ax
-
-def dual_axes():
-    """Two new axes for mapping, side-by-side."""
-    fig, (ax1, ax2) = pyplot.subplots(1, 2)
-    fig.set_figwidth(13.8)
-    fig.set_figheight(5)
-    return (ax1, ax2)
-
 class Cube():
     """Cubic coordinates of a hexagon"""
     @staticmethod

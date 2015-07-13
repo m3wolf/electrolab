@@ -10,6 +10,10 @@ from xrdpeak import Peak, PeakFit
 
 from unitcell import CubicUnitCell, HexagonalUnitCell, TetragonalUnitCell
 
+from plots import new_axes, big_axes, dual_axes
+
+import filters
+
 from xrd import XRDScan, align_scans, plot_scans
 
 from mapping import Cube, Map, DummyMap
