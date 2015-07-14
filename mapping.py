@@ -192,7 +192,8 @@ class Map():
     """
     A physical sample that gets mapped by XRD, presumed to be circular
     with center and diameter in millimeters. Collimator size given in mm.
-    scan_time determines seconds spent at each detector position.
+    scan_time determines seconds spent at each detector position. Detector
+    distance given in cm, frame_size in pixels.
     """
     cmap_name = 'winter'
     THETA1_MIN=0 # Source limits based on geometry
@@ -207,11 +208,14 @@ class Map():
     def __init__(self, center=(0, 0), diameter=12.7, collimator=0.5,
                  two_theta_range=None, coverage=1,
                  scan_time=None, sample_name='unknown',
+                 detector_distance=20, frame_size=1024,
                  material=DummyMaterial()):
         self.center = center
         self.diameter = diameter
         self.material = material
         self.collimator = collimator
+        self.detector_distance=detector_distance
+        self.frame_size=frame_size
         if scan_time is not None:
             self.scan_time = scan_time # Seconds at each detector angle
         elif material is not None:
@@ -362,6 +366,16 @@ class Map():
                 'number': frame_num,
             }
             frames.append(frame)
+        # Generate flood and spatial reference files to load
+        floodFilename = "{framesize:04d}_{distance:03d}._FL".format(
+            distance=self.detector_distance,
+            framesize=self.frame_size
+        )
+        spatialFilename = "{framesize:04d}_{distance:03d}._ix".format(
+            distance=self.detector_distance,
+            framesize=self.frame_size
+        )
+        # Prepare context dictionary
         context = {
             'scans': [],
             'num_scans': len(self.scans),
@@ -375,7 +389,9 @@ class Map():
             'aux': self.camera_zoom,
             'scan_time': self.scan_time,
             'total_time': total_time,
-            'sample_name': self.sample_name
+            'sample_name': self.sample_name,
+            'flood_file': floodFilename,
+            'spatial_file': spatialFilename,
         }
         for idx, scan in enumerate(self.scans):
             # Prepare scan-specific details

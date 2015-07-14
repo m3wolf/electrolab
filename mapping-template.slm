@@ -10,6 +10,10 @@ LOGFILE /NEW logfile._lg
 ! Set generator to full power
 GONIOMETER /GENERATOR 40.000 40.000 /WAIT
 
+! Load flood and spatial calibration files
+FLOOD \LOAD {{ flood_file }}
+SPATIAL \LOAD {{ spatial_file }}
+
 {% for scan in scans %}
 ! Scanning
 SCAN /SINGLERUN {{ number_of_frames }} &

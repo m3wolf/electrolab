@@ -261,6 +261,15 @@ class SlamFileTest(unittest.TestCase):
             context['yoffset'],
             20.338
         )
+        # Flood and spatial files to load
+        self.assertEqual(
+            context['flood_file'],
+            '1024_020._FL'
+        )
+        self.assertEqual(
+            context['spatial_file'],
+            '1024_020._ix'
+        )
 
     def test_write_slamfile(self):
         directory = '{}-frames'.format(self.sample.sample_name)
