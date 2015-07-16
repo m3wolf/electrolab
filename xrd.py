@@ -100,18 +100,9 @@ class Reflection():
 class Phase():
     """A crystallographic phase that can be found in a Material."""
     reflection_list = [] # Predicted peaks by crystallography
-    # def __init__(self, reflection_list=[], diagnostic_reflection=None,
-    #              unit_cell=None, name="phase", space_group=None):
-    #     self.reflection_list = reflection_list
-    #     self.name = name
-    #     self.unit_cell = unit_cell
-    #     self.space_group = space_group
-    #     if diagnostic_reflection is not None:
-    #         self.diagnostic_reflection = self.reflection_by_hkl(diagnostic_reflection)
-    #     else:
-    #         self.diagnostic_reflection = Reflection()
 
     def __repr__(self):
+        print(self.name.__class__)
         return "<{}: {}>".format(self.__class__.__name__, self.name)
 
     def reflection_by_hkl(self, hkl_input):
@@ -171,26 +162,15 @@ class Phase():
             )
         return predicted_peaks
 
-    # def actual_peak_positions(self, scan):
-    #     self.peak_
-        # ActualPeak = namedtuple('ActualPeak', ('hkl', 'two_theta'))
-        # df = scan.diffractogram
-        # Make a list of all reflections
-        # reflection_list = self.reflection_list
-        # Find two_theta of each reflection
-        # peak_list = []
-        # for reflection in reflection_list:
-        #     peakPosition = scan.peak_position(reflection.two_theta_range)
-        #     peak_list.append(ActualPeak(reflection.hkl_string, peakPosition))
-        # return peak_list
-
     @property
     def peak_list(self):
         peak_list = getattr(self, '_peak_list', None)
         if peak_list is None:
             # Peak fitting has not been performed, raise and error
             msg = 'Peak fitting has not been performed. Please run {cls}.fit_peaks method'
-            raise exceptions.PeakFitError(msg.format(cls=self.__class__.__name__))
+            print(msg.format(cls=self.__class__.__name__))
+            # raise exceptions.PeakFitError(msg.format(cls=self.__class__.__name__))
+            peak_list = []
         return peak_list
 
     def fit_peaks(self, scan):
@@ -209,12 +189,11 @@ class Phase():
                 # Try each fit method until one works
                 for method in fitMethods:
                     try:
-                        newPeak.fit(df.index, df.subtracted, method=method)
+                        residual = newPeak.fit(df.index, df.subtracted, method=method)
                     except exceptions.PeakFitError:
                         # Try next fit
                         continue
                     else:
-                        # Fit was succesful
                         self._peak_list.append(newPeak)
                         break
                 else:
@@ -261,7 +240,8 @@ class XRDScan():
             self.load_diffractogram(filename)
 
     def __repr__(self):
-        return "<{cls}: filename>".format(self.__class__.__name__, self.filename)
+        return "<{cls}: {filename}>".format(cls=self.__class__.__name__,
+                                            filename=self.filename)
 
     @property
     def diffractogram(self, filename=None):
@@ -353,7 +333,7 @@ class XRDScan():
         if self.material is not None:
             for phase in self.material.phase_list:
                 for peak in phase.peak_list:
-                    peak.plot_fit(ax=ax, background=self.spline)
+                    peak.plot_overall_fit(ax=ax, background=self.spline)
         # Set plot annotations
         ax.set_xlim(left=df.index.min(), right=df.index.max())
         ax.set_ylim(bottom=0)

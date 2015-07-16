@@ -156,8 +156,8 @@ class LMOTetragonalPhase(Phase):
 
 
 class AluminumPhase(Phase):
-    name = 'aluminum',
-    diagnostic_hkl = '111',
+    name = 'aluminum'
+    diagnostic_hkl = '111'
     reflection_list = [
         Reflection((37.3, 39), '111'),
         Reflection((43.5, 45), '200'),
@@ -190,7 +190,6 @@ class CorundumPhase(Phase):
         Reflection((42.5, 44), '113'),
         Reflection((52, 54), '024'),
         Reflection((56, 59), '116'),
-        Reflection((61, 62), '117'),
     ]
 
 

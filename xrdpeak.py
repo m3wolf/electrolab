@@ -12,6 +12,8 @@ import exceptions
 # kalpha2 is half the intensity of kalpha1
 KALPHA2_RATIO = 0.5
 
+BASE_PENALTY = 300
+
 class XrdTube():
     def __init__(self, kalpha1, kalpha2):
         self.kalpha1 = kalpha1
@@ -61,9 +63,19 @@ class PeakFit():
         """Evaluate this fitted subpeak at given x values."""
         return self.kernel(x, **self.parameters.__dict__)
 
+    def penalty(self, params):
+        """Rules for contraining the fitting algorithm. 0 means no penalty."""
+        penalty = 0
+        # Penalize negative peak heights
+        if params.height < 0:
+                penalty += BASE_PENALTY
+        if params.width < 0:
+                penalty += BASE_PENALTY
+        return penalty
+
     def initial_parameters(self, xdata, ydata, tube=tubes['Cu']):
         # Determine center of mass for the peak (plus correction for lower k-alpha2 weights)
-        mean_center = np.average(xdata, weights=ydata)
+        mean_center = np.average(xdata, weights=ydata**2)
         # Determine centers for k-alpha1 and k-alpha2
         center1, center2 = tube.split_angle_by_kalpha(mean_center)
         # Determine maximum peak height
@@ -118,13 +130,21 @@ class PseudoVoigtFit(PeakFit):
     height_g = 450
     height_c = 450
     center = 35.15
-    width_g = 0.2
-    width_c = 0.2
+    width_g = 0.01
+    width_c = 0.01
     eta = 0.5
     Parameters = namedtuple('PseudoVoigtParameters', ('height_g', 'height_c',
                                                       'center',
                                                       'width_g', 'width_c',
                                                       'eta'))
+
+    @property
+    def height(self):
+        return self.height_g + self.height_c
+
+    @property
+    def width(self):
+        return self.width_g + self.width_c
 
     @property
     def parameters(self):
@@ -145,9 +165,27 @@ class PseudoVoigtFit(PeakFit):
         self.width_c = params.width_c
         self.eta = params.eta
 
+    def penalty(self, params):
+        penalty = 0
+        # Prepare parameters for penalty from parent class
+        parent = super(PseudoVoigtFit, self)
+        gParams = parent.Parameters(height=params.height_g,
+                                    center=params.center,
+                                    width=params.width_g)
+        penalty += parent.penalty(gParams)
+        cParams = parent.Parameters(height=params.height_c,
+                                    center=params.center,
+                                    width=params.width_c)
+        penalty += parent.penalty(cParams)
+        # Check for eta between zero and 1
+        if not( 0 < params.eta < 1):
+            penalty += BASE_PENALTY
+        return penalty
+
     def initial_parameters(self, xdata, ydata, tube=tubes['Cu']):
         # Determine center of mass for the peak (plus correction for lower k-alpha2 weights)
-        mean_center = np.average(xdata, weights=ydata)
+        weights = ydata**2
+        mean_center = np.average(xdata, weights=weights)
         # Determine centers for k-alpha1 and k-alpha2
         center1, center2 = tube.split_angle_by_kalpha(mean_center)
         # Determine maximum peak height
@@ -261,28 +299,46 @@ class Peak():
                 y = fit.kernel(two_theta, *paramGroups[idx])
                 result += y
             return result
+        # Error function, penalizes values out of range
+        def residual_error(obj_params):
+            penalty = 0
+            # Calculate dual peak penalties
+            params1, params2 = self.split_parameters(obj_params)
+            params1 = FitClass.Parameters(*params1)
+            params2 = FitClass.Parameters(*params2)
+            # if not (params1.height*0.4 < params2.height < params1.height*0.6):
+            #     penalty += BASE_PENALTY
+            for fit, paramTuple in zip(self.fit_list, [params1, params2]):
+                # Calculate single peak penalties
+                penalty += fit.penalty(paramTuple)
+            result = objective(two_theta, *obj_params)
+            return (intensity-result)**2+penalty
         # Compute initial parameters
         initialParameters = FitClass().initial_parameters(xdata=two_theta,
                                                           ydata=intensity)
         initialParameters = initialParameters[0] + initialParameters[1]
         # Minimize the residual least squares
         try:
-            popt, pcov = optimize.curve_fit(objective,
-                                            xdata=two_theta,
-                                            ydata=intensity,
-                                            p0=initialParameters)
+            # popt, pcov = optimize.curve_fit(objective,
+            #                                 xdata=two_theta,
+            #                                 ydata=intensity,
+            #                                 p0=initialParameters)
+            result = optimize.leastsq(residual_error, x0=initialParameters,
+                                      full_output=True)
         except RuntimeError as e:
             # Could not find optimum fit
             angle = (self.two_theta_range[0]+self.two_theta_range[1])/2
             msg = "Peak ~{angle:.1f}°: {error}".format(angle=angle, error=e)
             raise exceptions.PeakFitError(msg)
         else:
+            popt = result[0]
+            residual = result[2]['fvec'].sum()
             # Split optimized parameters by number of fits
             paramsList = self.split_parameters(popt)
             # Save optimized parameters for each fit
             for idx, fit in enumerate(self.fit_list):
                 fit.parameters = paramsList[idx]
-            return pcov
+            return residual
 
     def x_range(self):
         """Return a range of x values over which this fit is reasonably defined."""

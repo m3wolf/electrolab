@@ -15,6 +15,7 @@ from sklearn import svm
 from gi.repository import Gtk, Gdk
 
 import xrd
+from plots import dual_axes, new_axes
 from materials import DummyMaterial
 
 class Cube():
@@ -467,6 +468,7 @@ class Map():
         # Prepare dictionary of cached data
         data = {
             'diameter': self.diameter,
+            'coverage': self.coverage,
             'rows': self.rows,
             'scans': [scan.data_dict for scan in self.scans],
         }
@@ -489,6 +491,7 @@ class Map():
         with open(filename, 'rb') as loadFile:
             data = pickle.load(loadFile)
         self.diameter = data['diameter']
+        self.coverage = data['coverage']
         # Create scan list
         self.scans = []
         # self.create_scans()
