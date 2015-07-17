@@ -44,13 +44,13 @@ def plot_scans(scan_list, step_size=1):
     """Plot a series of XRDScans as a waterfall."""
     fig = pyplot.figure(figsize=(16, 9))
     ax = pyplot.gca()
-    filenames = []
+    scannames = []
     for idx, scan in enumerate(scan_list):
         df = scan.diffractogram
         df.counts = df.counts + step_size * idx
         ax.plot(df.index, df.counts)
-        filenames.append(scan.filename)
-    ax.legend(filenames)
+        scannames.append(scan.name)
+    ax.legend(scannames)
     # Decorate
     ax.set_xlabel(r'$2\theta$')
     ax.set_ylabel('counts')

@@ -146,6 +146,21 @@ class LMOCubicPhase(Phase):
         Reflection((67, 69), '531'),
     ]
 
+class LMOCubicPhaseHighV(Phase):
+    unit_cell = unitcell.CubicUnitCell(a=8)
+    diagnostic_hkl = '311'
+    reflection_list = [
+        Reflection((17.5, 19.5), '111'),
+        Reflection((35.3, 37), '311'),
+        Reflection((37.3, 38), '222'),
+        Reflection((43.3, 45), '400'),
+        Reflection((48, 49), '331'),
+        Reflection((57, 60), '333'),
+        Reflection((57, 60), '511'),
+        Reflection((64, 66), '440'),
+        Reflection((67, 69), '531'),
+    ]
+
 
 class LMOTetragonalPhase(Phase):
     unit_cell = unitcell.TetragonalUnitCell()
@@ -209,11 +224,13 @@ class LMOSolidSolutionMaterial(SolidSolutionMaterial):
 
 
 # # Material for mapping LiMn2O4 using peak area (two-phase mechanism)"""
-# class LMOTwoPhaseMaterial(TwoPhaseMaterial):
-#     metric_normalizer = colors.Normalize(0.8, 1.2, clip=True)
-#     reliability_normalizer = colors.Normalize(0, 1, clip=True)
-#     phase_list = [lmo_cubic_phase, lmo_tetragonal_phase]
-#     background_phases = [aluminum_phase]
+class LMOTwoPhaseMaterial(TwoPhaseMaterial):
+    two_theta_range = (33, 73)
+    scan_time = 200 # Seconds per frame
+    phase_list = [LMOCubicPhase, LMOCubicPhaseHighV]
+    background_phases = [AluminumPhase]
+    metric_normalizer = colors.Normalize(0.8, 1.2, clip=True)
+    reliability_normalizer = colors.Normalize(0, 1, clip=True)
 
 
 # # Sample for mapping LiMn2O4 in the low potential region from

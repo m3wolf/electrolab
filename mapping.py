@@ -203,7 +203,7 @@ class Map():
     THETA2_MAX=55
     camera_zoom = 6
     frame_step = 20 # How much to move detector by in degrees
-    frame_width = 30 # 2-theta coverage of detector face
+    frame_width = 20 # 2-theta coverage of detector face
     scans = []
     hexagon_patches = None # Replaced by cached versions
     def __init__(self, center=(0, 0), diameter=12.7, collimator=0.5,
@@ -335,8 +335,10 @@ class Map():
             f.write(template.render(**context))
         # Print summary info
         if not quiet:
-            msg = "Running {num} scans. ETA: {time}."
-            print(msg.format(num=context['num_scans'], time=context['total_time']))
+            msg = "Running {num} scans ({frames} frames each). ETA: {time}."
+            print(msg.format(num=context['num_scans'],
+                             time=context['total_time'],
+                             frames=context['number_of_frames']))
             frameStart = context['frames'][0]['start']
             frameEnd = context['frames'][-1]['end']
             msg = "Integration range: {start}° to {end}°"
@@ -346,7 +348,7 @@ class Map():
     def get_context(self):
         """Convert the object to a dictionary for the templating engine."""
         # Estimate the total time
-        totalSecs = len(self.scans)*self.scan_time
+        totalSecs = len(self.scans)*self.scan_time*self.get_number_of_frames()
         days = math.floor(totalSecs/60/60/24)
         remainder = totalSecs - days * 60 * 60 * 24
         hours = math.floor(remainder/60/60)
@@ -359,7 +361,7 @@ class Map():
         # List of frames to integrate
         frames = []
         for frame_num in range(0, self.get_number_of_frames()):
-            start = self.two_theta_range[0] + 2.5 + frame_num*self.frame_step
+            start = self.two_theta_range[0] + frame_num*self.frame_step
             end = start + self.frame_step
             frame = {
                 'start': start,
@@ -420,7 +422,8 @@ class Map():
         # Assuming that theta1 starts at highest possible range
         theta1 = self.get_theta1()
         theta2_bottom = self.two_theta_range[0] - theta1
-        theta2_start = theta2_bottom - self.frame_width/8 + self.frame_width/2
+        # theta2_start = theta2_bottom - self.frame_width/8 + self.frame_width/2
+        theta2_start = theta2_bottom + self.frame_width/2
         return theta2_start
 
     def get_theta1(self):

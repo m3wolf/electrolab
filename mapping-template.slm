@@ -11,8 +11,8 @@ LOGFILE /NEW logfile._lg
 GONIOMETER /GENERATOR 40.000 40.000 /WAIT
 
 ! Load flood and spatial calibration files
-FLOOD \LOAD {{ flood_file }}
-SPATIAL \LOAD {{ spatial_file }}
+! FLOOD \LOAD {{ flood_file }}
+! SPATIAL \LOAD {{ spatial_file }}
 
 {% for scan in scans %}
 ! Scanning
