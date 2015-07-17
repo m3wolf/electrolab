@@ -8,3 +8,6 @@ class RefinementError(Exception):
 
 class PeakFitError(RefinementError):
     pass
+
+class FileFormatError(ValueError):
+    pass

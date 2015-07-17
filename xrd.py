@@ -14,6 +14,7 @@ from filters import fourier_transform, LowPassFilter, HighPassFilter
 from xrdpeak import tubes, Peak
 import plots
 import exceptions
+import adapters
 
 def hkl_to_tuple(hkl_input):
     """If hkl_input is a string, extract the hkl values and
@@ -228,13 +229,15 @@ class XRDScan():
     diffractogram_is_loaded = False
     spline = None
     filename = None
-    def __init__(self, filename=None, material=None, tube='Cu', wavelength=None):
+    def __init__(self, filename=None, name=None,
+                 material=None, tube='Cu', wavelength=None):
         self.material = material
         self.cached_data = {}
         # Determine wavelength from tube type
         self.tube = tubes[tube]
         self.wavelength = self.tube.kalpha
         # Load diffractogram from file
+        self.name = name
         if filename is not None:
             self.filename=filename
             self.load_diffractogram(filename)
@@ -257,25 +260,22 @@ class XRDScan():
     def load_diffractogram(self, filename):
         # Determine file type from extension
         fileBase, extension = os.path.splitext(filename)
-        if extension == '.xye':
-            csvKwargs = {
-                'sep': ' ',
-                'index_col': 0,
-                'names': ['2theta', 'counts', 'error'],
-                'comment': "'",
-            }
-        elif extension == '.plt':
-            csvKwargs = {
-                'sep': ' ',
-                'index_col': 0,
-                'names': ['2theta', 'counts'],
-                'comment': '!',
-            }
-        else:
-            # Unknown file format, guess anyway
+        # Prepare adapter for importing the file
+        ADAPTERS = {
+            '.plt': adapters.BrukerPltFile,
+            '.xye': adapters.BrukerXyeFile,
+            '.brml': adapters.BrukerBrmlFile
+        }
+        try:
+            Adapter = ADAPTERS[extension]
+        except KeyError:
+            # Unknown file format, raise exception
             msg = 'Unknown file format {}.'.format(extension)
-            raise ValueError(msg)
-        df = pd.read_csv(filename, **csvKwargs)
+            raise exceptions.FileFormatError(msg)
+        else:
+            adapter = Adapter(filename)
+        df = adapter.dataframe
+        self.name = adapter.sample_name
         # Select only the two-theta range of interest
         if self.material:
             rng = self.material.two_theta_range
@@ -343,10 +343,12 @@ class XRDScan():
         return ax
 
     def axes_title(self):
-        if self.filename is None:
-            title = "XRD Diffractogram"
-        else:
+        if self.name is not None:
+            title = self.name
+        elif self.filename is not None:
             title = self.filename
+        else:
+            title = "XRD Diffractogram"
         return title
 
     def plot_fourier_transform(self, ax=None):

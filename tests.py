@@ -15,6 +15,8 @@ import xrdpeak
 import unitcell
 import exceptions
 from cycler import GalvanostatRun
+from adapters.bruker_raw_file import BrukerRawFile
+from adapters.bruker_brml_file import BrukerBrmlFile
 
 
 class ElectrolabTestCase(unittest.TestCase):
@@ -626,6 +628,47 @@ class ExperimentalDataTest(ElectrolabTestCase):
         self.assertTrue(
             residuals < 0.03,
             'residuals ({}) too high'.format(residuals)
+        )
+
+
+# Unit tests for opening various XRD file formats
+class XRDFileTestCase(unittest.TestCase):
+    pass
+
+class BrukerRawTestCase(XRDFileTestCase):
+    """
+    For data taken from Bruker instruments and save in various RAW
+    file formats.
+    """
+    def setUp(self):
+        self.adapter = BrukerRawFile('test-sample-frames/corundum.raw')
+
+    def test_bad_file(self):
+        badFile = 'test-sample-frames/corundum.xye'
+        with self.assertRaises(exceptions.FileFormatError):
+            adapter = BrukerRawFile(badFile)
+    @unittest.expectedFailure
+    def test_sample_name(self):
+        self.assertEqual(
+            self.adapter.sample_name,
+            'Format'
+        )
+
+
+class BrukerBrmlTestCase(unittest.TestCase):
+    def setUp(self):
+        self.adapter = BrukerBrmlFile('test-sample-frames/corundum.brml')
+
+    def test_sample_name(self):
+        self.assertEqual(
+            self.adapter.sample_name,
+            'Corundum (new Safety Board)'
+        )
+
+    def test_diffractogram(self):
+        importedDf = self.adapter.dataframe
+        self.assertTrue(
+            'counts' in importedDf.columns
         )
 
 

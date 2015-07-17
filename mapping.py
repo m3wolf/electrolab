@@ -494,8 +494,6 @@ class Map():
         self.coverage = data['coverage']
         # Create scan list
         self.scans = []
-        # self.create_scans()
-        # assert len(self.scans) == len(data['scans'])
         # Restore each scan
         for idx, dataDict in enumerate(data['scans']):
             # scan = self.scans[idx]
