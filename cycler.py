@@ -143,9 +143,12 @@ class Cycle():
         min_capacity = self.df['capacity'][min_idx]
         return max_capacity - min_capacity
 
-    def plot_cycle(self, xcolumn, ycolumn, ax):
+    def plot_cycle(self, xcolumn, ycolumn, ax, label=None):
+        # Default label for plot
+        if label is None:
+            label = "Cycle {}".format(self.number)
         # Drop missing data
         df = self.df.dropna(subset=[xcolumn, ycolumn])
         # Plot remaining values
-        ax.plot(df[xcolumn], df[ycolumn])
+        ax.plot(df[xcolumn], df[ycolumn], label=label)
         return ax

@@ -103,7 +103,6 @@ class Phase():
     reflection_list = [] # Predicted peaks by crystallography
 
     def __repr__(self):
-        print(self.name.__class__)
         return "<{}: {}>".format(self.__class__.__name__, self.name)
 
     def reflection_by_hkl(self, hkl_input):
@@ -167,9 +166,9 @@ class Phase():
     def peak_list(self):
         peak_list = getattr(self, '_peak_list', None)
         if peak_list is None:
-            # Peak fitting has not been performed, raise and error
-            msg = 'Peak fitting has not been performed. Please run {cls}.fit_peaks method'
-            print(msg.format(cls=self.__class__.__name__))
+            # Peak fitting has not been performed, raise an error
+            # msg = 'Peak fitting has not been performed. Please run {cls}.fit_peaks method'
+            # print(msg.format(cls=self.__class__.__name__))
             # raise exceptions.PeakFitError(msg.format(cls=self.__class__.__name__))
             peak_list = []
         return peak_list

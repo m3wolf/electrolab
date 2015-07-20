@@ -233,6 +233,30 @@ class LMOTwoPhaseMaterial(TwoPhaseMaterial):
     reliability_normalizer = colors.Normalize(0, 1, clip=True)
 
 
+### Material definition for LiMn_2O_4 material. Made at Argonne
+### national lab, it has a stronger two-phase transition around 4.15V.
+class NEILowV(Phase):
+    unit_cell = unitcell.CubicUnitCell(a=8)
+    diagnostic_hkl = '333'
+    reflection_list = [
+        Reflection((58.5, 59.25), '333'),
+    ]
+
+class NEIHighV(Phase):
+    unit_cell = unitcell.CubicUnitCell(a=8)
+    diagnostic_hkl = '333'
+    reflection_list = [
+        Reflection((59.25, 60), '333'),
+    ]
+
+class LmoNeiMaterial(TwoPhaseMaterial):
+    two_theta_range = (55, 70)
+    scan_time = 300 # Seconds per frame
+    phase_list = [NEILowV, NEIHighV]
+    metric_normalizer = colors.Normalize(0, 1, clip=True)
+    reliability_normalizer = colors.Normalize(0, 1, clip=True)
+
+
 # # Sample for mapping LiMn2O4 in the low potential region from
 # # Li_1Mn_2O_4 to Mn_2O_4.
 # class LMOLowVMaterial(TwoPhaseMaterial):
