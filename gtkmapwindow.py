@@ -27,11 +27,12 @@ class GtkMapWindow(Gtk.Window):
         self.set_icon_from_file(image)
         self.set_default_size(1000, 1000)
         # Prepare layout box
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
         self.add(box)
         # Prepare numerical text summary area
-        label = Gtk.Label('hello, world')
-        box.pack_start(label, False, False, 0)
+        self.dataSummary = DataSummaryBox(orientation=Gtk.Orientation.VERTICAL)
+        box.pack_start(self.dataSummary, False, False, 10)
+        self.dataSummary.set_default_data()
         # Set up the matplotlib features
         fig = figure.Figure(figsize=(13.8, 10))
         self.fig = fig
@@ -42,13 +43,11 @@ class GtkMapWindow(Gtk.Window):
         canvas.set_size_request(400,400)
         box.pack_start(sw, True, True, 0)
         sw.add(canvas)
-        # sw.add_with_viewport(canvas)
         self.draw_plots()
         # Connect to keypress event for changing position
         self.connect('key_press_event', self.on_key_press)
         # Connect to mouse click event
         fig.canvas.mpl_connect('button_press_event', self.click_callback)
-        # canvas.add(label)
         return return_val
 
     def draw_plots(self, scan=None):
@@ -127,6 +126,7 @@ class GtkMapWindow(Gtk.Window):
         if scan:
             self.currentScan = scan
         self.update_plots()
+        self.update_details()
 
     def click_callback(self, event):
         """Detect and then update which scan is active."""
@@ -144,6 +144,131 @@ class GtkMapWindow(Gtk.Window):
             # Reset local_mode
             self.local_mode = False
         self.update_plots()
+        self.update_details()
+
+    def update_details(self):
+        """Set the sidebar text details."""
+        if self.local_mode == True:
+            self.dataSummary.update_data(self.currentScan)
+        else:
+            self.dataSummary.set_default_data()
 
     def main(self):
         Gtk.main()
+
+
+class LeftLabel(Gtk.Label):
+    """Label with text left aligned."""
+    def __init__(self, *args, **kwargs):
+        kwargs['xalign'] = 0
+        return super(LeftLabel, self).__init__(*args, **kwargs)
+
+
+class DetailBox(Gtk.Box):
+    def __init__(self, *args, heading=None, **kwargs):
+        kwargs['orientation'] = Gtk.Orientation.VERTICAL
+        retVal = super(DetailBox, self).__init__(*args, **kwargs)
+        # Create section heading
+        self.headingLabel = Gtk.Label(xalign=0)
+        markup = '<b><big>{text}</big></b>'.format(text=heading)
+        self.headingLabel.set_markup(markup)
+        self.pack_start(self.headingLabel, False, False, 0)
+        # Prepare labels for populating later
+        self.prepare_labels()
+        return retVal
+
+
+class ValueBox(DetailBox):
+    """Box shows a raw and normalized value, plus a space for other notes."""
+    def prepare_labels(self):
+        # Label for raw value
+        box = Gtk.Box()
+        self.pack_start(box, False, False, 0)
+        box.pack_start(LeftLabel("Raw: "), False, False, 0)
+        self.rawLabel = LeftLabel("0")
+        box.pack_start(self.rawLabel, False, False, 0)
+        # Label for normalized value
+        box = Gtk.Box()
+        self.pack_start(box, False, False, 0)
+        box.pack_start(LeftLabel("Normalized: "), False, False, 0)
+        self.normLabel = LeftLabel()
+        box.pack_start(self.normLabel, False, False, 0)
+        # Label for other info
+        box = Gtk.Box()
+        self.pack_start(box, False, False, 0)
+        box.pack_start(LeftLabel("Other: "), False, False, 0)
+        self.otherLabel = LeftLabel()
+        self.otherLabel.set_line_wrap(True)
+        box.pack_start(self.otherLabel, False, False, 0)
+
+    def set_default_labels(self):
+        # Set default values
+        self.rawLabel.set_text("N/A")
+        self.normLabel.set_text("N/A")
+        self.otherLabel.set_text("N/A")
+
+
+class LocationBox(DetailBox):
+    def prepare_labels(self):
+        # Label for XY coords
+        box = Gtk.Box()
+        self.pack_start(box, False, False, 0)
+        box.pack_start(LeftLabel("XY: "), False, False, 0)
+        self.xyLabel = LeftLabel("0")
+        box.pack_start(self.xyLabel, False, False, 0)
+        # Label for Cube coords
+        box = Gtk.Box()
+        self.pack_start(box, False, False, 0)
+        box.pack_start(LeftLabel("Cube: "), False, False, 0)
+        self.cubeLabel = LeftLabel("0")
+        box.pack_start(self.cubeLabel, False, False, 0)
+
+    def update_labels(self, scan):
+        xyCoords = scan.xy_coords()
+        xyStr = "({x:.02f}, {y:0.2f})".format(x=xyCoords[0], y=xyCoords[1])
+        self.xyLabel.set_text(xyStr)
+        self.cubeLabel.set_text(str(scan.cube_coords))
+
+    def set_default_labels(self):
+        self.xyLabel.set_text("N/A")
+        self.cubeLabel.set_text("N/A")
+
+
+class MetricBox(ValueBox):
+    def update_labels(self, scan):
+        # Set values from scan
+        self.rawLabel.set_text("{:.03f}".format(scan.metric))
+        self.normLabel.set_text("{:.03f}".format(scan.metric_normalized))
+
+
+class ReliabilityBox(ValueBox):
+    def update_labels(self, scan):
+        # Set values from scan
+        self.normLabel.set_text("{:.03f}".format(scan.reliability))
+
+
+class DataSummaryBox(Gtk.Box):
+    """Three-column box that shows a summary of data for a Scan."""
+    padding = 10
+    def __init__(self, *args, **kwargs):
+        retVal = super(DataSummaryBox, self).__init__(*args, **kwargs)
+        # Prepare Location box
+        self.locBox = LocationBox(heading="Location")
+        self.pack_start(self.locBox, False, False, self.padding)
+        # Prepare Metric box
+        self.metricBox = MetricBox(heading="Metric")
+        self.pack_start(self.metricBox, False, False, self.padding)
+        # Prepare Reliability box
+        self.reliabilityBox = ReliabilityBox(heading="Reliability")
+        self.pack_start(self.reliabilityBox, False, False, self.padding)
+        return retVal
+
+    def update_data(self, scan):
+        self.locBox.update_labels(scan=scan)
+        self.metricBox.update_labels(scan=scan)
+        self.reliabilityBox.update_labels(scan=scan)
+
+    def set_default_data(self):
+        self.locBox.set_default_labels()
+        self.metricBox.set_default_labels()
+        self.reliabilityBox.set_default_labels()

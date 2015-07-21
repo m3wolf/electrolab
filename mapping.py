@@ -697,6 +697,11 @@ class MapScan(xrd.XRDScan):
         return df
 
     @property
+    def metric_normalized(self):
+        """Return the metric between 0 and 1."""
+        return self.material.metric_normalizer(self.metric)
+
+    @property
     def metric(self):
         """
         Check for a cached metric and if none is found, generate a new
@@ -803,7 +808,7 @@ class MapScan(xrd.XRDScan):
 
     def axes_title(self):
         """Determine diffractogram axes title from cube coordinates."""
-        title = 'XRD Diffractogram at ({i}, {j}, {k}). Metric={metric}'.format(
+        title = 'XRD Diffractogram at ({i}, {j}, {k})'.format(
             i=self.cube_coords[0],
             j=self.cube_coords[1],
             k=self.cube_coords[2],
