@@ -24,8 +24,12 @@ class Material():
 
     def mapscan_metric(self, scan=None):
         """Contains the specifics of getting one number from each scan.
-        To be overridden by actual Sample subclasses."""
+        To be overridden by real Material subclasses."""
         raise NotImplementedError
+
+    def metric_details(self, scan):
+        """Returns a string describing how the metric was calculated."""
+        return "No additional info"
 
     def mapscan_reliability(self, scan):
         """
@@ -79,13 +83,45 @@ class TwoPhaseMaterial(Material):
         charged material.
         """
         # Integrate peaks
-        chargedPeak = self.phase_list[0].diagnostic_reflection.two_theta_range
-        areaCharged = scan.peak_area(chargedPeak)
-        dischargedPeak = self.phase_list[1].diagnostic_reflection.two_theta_range
-        areaDischarged = scan.peak_area(dischargedPeak)
+        # chargedPeak = self.phase_list[0].diagnostic_reflection.two_theta_range
+        # areaCharged = scan.peak_area(chargedPeak)
+        area1 = self._phase_signal(scan=scan, phase=self.phase_list[0])
+        area2 = self._phase_signal(scan=scan, phase=self.phase_list[1])
+        # dischargedPeak = self.phase_list[1].diagnostic_reflection.two_theta_range
+        # areaDischarged = scan.peak_area(dischargedPeak)
         # Compare areas of the two peaks
-        ratio = areaCharged/(areaCharged+areaDischarged)
+        ratio = area1/(area1+area2)
         return ratio
+
+    def mapscan_reliability(self, scan):
+        """Determine the maximum total intensity of signal peaks."""
+        area1 = self._phase_signal(scan=scan, phase=self.phase_list[0])
+        area2 = self._phase_signal(scan=scan, phase=self.phase_list[1])
+        return area1+area2
+
+    def _phase_signal(self, scan, phase):
+        peak = phase.diagnostic_reflection.two_theta_range
+        area = scan.peak_area(peak)
+        return area
+
+    def _peak_position(self, scan, phase):
+        peak = phase.diagnostic_reflection.two_theta_range
+        angle = scan.peak_position(peak)
+        return angle
+
+    def metric_details(self, scan):
+        """
+        Return a string with the measured areas of the two peaks.
+        """
+        area1 = self._phase_signal(scan=scan, phase=self.phase_list[0])
+        angle1 = self._peak_position(scan=scan, phase=self.phase_list[0])
+        area2 = self._phase_signal(scan=scan, phase=self.phase_list[1])
+        angle2 = self._peak_position(scan=scan, phase=self.phase_list[1])
+        template = "Area 1 ({angle1:.02f}°): {area1:.03f}\nArea 2 ({angle2:.02f}°): {area2:.03f}\nSum: {total:.03f}"
+        msg = template.format(area1=area1, angle1=angle1,
+                              area2=area2, angle2=angle2,
+                              total=area1+area2)
+        return msg
 
 class IORMaterial(TwoPhaseMaterial):
     """One-off material for submitting an image of the Image of Research
@@ -235,26 +271,30 @@ class LMOTwoPhaseMaterial(TwoPhaseMaterial):
 
 ### Material definition for LiMn_2O_4 material. Made at Argonne
 ### national lab, it has a stronger two-phase transition around 4.15V.
-class NEILowV(Phase):
+class NeiLowV(Phase):
     unit_cell = unitcell.CubicUnitCell(a=8)
     diagnostic_hkl = '333'
     reflection_list = [
         Reflection((58.5, 59.25), '333'),
+        Reflection((64.2, 65.1), '440'),
+        Reflection((67.7, 68.5), '531'),
     ]
 
-class NEIHighV(Phase):
+class NeiHighV(Phase):
     unit_cell = unitcell.CubicUnitCell(a=8)
     diagnostic_hkl = '333'
     reflection_list = [
         Reflection((59.25, 60), '333'),
+        Reflection((65.1, 66), '440'),
+        Reflection((68.5, 69.3), '531'),
     ]
 
 class LmoNeiMaterial(TwoPhaseMaterial):
     two_theta_range = (55, 70)
     scan_time = 300 # Seconds per frame
-    phase_list = [NEILowV, NEIHighV]
-    metric_normalizer = colors.Normalize(0, 1, clip=True)
-    reliability_normalizer = colors.Normalize(0, 1, clip=True)
+    phase_list = [NeiLowV, NeiHighV]
+    metric_normalizer = colors.Normalize(0.3, 0.9, clip=True)
+    reliability_normalizer = colors.Normalize(0.7, 2, clip=True)
 
 
 # # Sample for mapping LiMn2O4 in the low potential region from

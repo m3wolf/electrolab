@@ -178,36 +178,6 @@ class DetailBox(Gtk.Box):
         return retVal
 
 
-class ValueBox(DetailBox):
-    """Box shows a raw and normalized value, plus a space for other notes."""
-    def prepare_labels(self):
-        # Label for raw value
-        box = Gtk.Box()
-        self.pack_start(box, False, False, 0)
-        box.pack_start(LeftLabel("Raw: "), False, False, 0)
-        self.rawLabel = LeftLabel("0")
-        box.pack_start(self.rawLabel, False, False, 0)
-        # Label for normalized value
-        box = Gtk.Box()
-        self.pack_start(box, False, False, 0)
-        box.pack_start(LeftLabel("Normalized: "), False, False, 0)
-        self.normLabel = LeftLabel()
-        box.pack_start(self.normLabel, False, False, 0)
-        # Label for other info
-        box = Gtk.Box()
-        self.pack_start(box, False, False, 0)
-        box.pack_start(LeftLabel("Other: "), False, False, 0)
-        self.otherLabel = LeftLabel()
-        self.otherLabel.set_line_wrap(True)
-        box.pack_start(self.otherLabel, False, False, 0)
-
-    def set_default_labels(self):
-        # Set default values
-        self.rawLabel.set_text("N/A")
-        self.normLabel.set_text("N/A")
-        self.otherLabel.set_text("N/A")
-
-
 class LocationBox(DetailBox):
     def prepare_labels(self):
         # Label for XY coords
@@ -234,16 +204,46 @@ class LocationBox(DetailBox):
         self.cubeLabel.set_text("N/A")
 
 
+class ValueBox(DetailBox):
+    """Box shows a raw and normalized value, plus a space for other notes."""
+    def prepare_labels(self):
+        # Label for raw value
+        box = Gtk.Box()
+        self.pack_start(box, False, False, 0)
+        box.pack_start(LeftLabel("Raw: "), False, False, 0)
+        self.rawLabel = LeftLabel("0")
+        box.pack_start(self.rawLabel, False, False, 0)
+        # Label for normalized value
+        box = Gtk.Box()
+        self.pack_start(box, False, False, 0)
+        box.pack_start(LeftLabel("Normalized: "), False, False, 0)
+        self.normLabel = LeftLabel()
+        box.pack_start(self.normLabel, False, False, 0)
+        # Label for additional info
+        self.otherLabel = LeftLabel()
+        self.otherLabel.set_line_wrap(True)
+        self.pack_start(self.otherLabel, False, False, 0)
+
+    def set_default_labels(self):
+        # Set default values
+        self.rawLabel.set_text("N/A")
+        self.normLabel.set_text("N/A")
+        self.otherLabel.hide()
+
+
 class MetricBox(ValueBox):
     def update_labels(self, scan):
         # Set values from scan
         self.rawLabel.set_text("{:.03f}".format(scan.metric))
         self.normLabel.set_text("{:.03f}".format(scan.metric_normalized))
+        self.otherLabel.set_text(scan.metric_details)
+        self.otherLabel.show()
 
 
 class ReliabilityBox(ValueBox):
     def update_labels(self, scan):
         # Set values from scan
+        self.rawLabel.set_text("{:.03f}".format(scan.reliability_raw))
         self.normLabel.set_text("{:.03f}".format(scan.reliability))
 
 

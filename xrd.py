@@ -115,6 +115,10 @@ class Phase():
         reflection = self.reflection_by_hkl(self.diagnostic_hkl)
         return reflection
 
+    @diagnostic_reflection.setter
+    def diagnostic_reflection(self, new_hkl):
+        self.diagnostic_hkl = new_hkl
+
     def refine_unit_cell(self, scan, quiet=False):
         """Residual least squares refinement of the unit-cell
         parameters. Returns the residual root-mean-square error between

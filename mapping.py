@@ -721,15 +721,27 @@ class MapScan(xrd.XRDScan):
         self.cached_data['metric'] = metric
 
     @property
+    def metric_details(self):
+        """Text string describing how the metric was calculated."""
+        msg = self.material.metric_details(scan=self)
+        return msg
+
+    @property
+    def reliability_raw(self):
+        """Acquire un-normalized reliability."""
+        reliability = self.material.mapscan_reliability(scan=self)
+        return reliability
+
+    @property
     def reliability(self):
         """Serve up cached value or recalculate if necessary."""
         reliability = self.cached_data.get('reliability', None)
         if reliability is None:
             self.diffractogram
             if self.diffractogram_is_loaded:
-                reliability = self.material.mapscan_reliability(scan=self)
+                raw = self.reliability_raw
                 normalizer = self.material.reliability_normalizer
-                reliability = normalizer(reliability)
+                reliability = normalizer(raw)
                 self.cached_data['reliability'] = reliability
             else:
                 reliability = 0
