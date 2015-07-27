@@ -573,15 +573,17 @@ class Map():
 
     def plot_histogram(self, ax=None):
         metrics = [scan.metric for scan in self.scans]
-        min = self.material.metric_normalizer.vmin
-        max = self.material.metric_normalizer.vmax
-        metrics = np.clip(metrics, min, max)
+        minimum = self.material.metric_normalizer.vmin
+        # minimum = min(metrics)
+        maximum = self.material.metric_normalizer.vmax
+        # maximum = max(metrics)
+        metrics = np.clip(metrics, minimum, maximum)
         weights = [scan.reliability for scan in self.scans]
         if ax is None:
             figure = pyplot.figure()
             ax = pyplot.gca()
         ax.hist(metrics, bins=100, weights=weights)
-        ax.set_xlim(min, max)
+        ax.set_xlim(minimum, maximum)
         ax.set_xlabel('Metric')
         ax.set_ylabel('Occurrences')
         return ax

@@ -292,8 +292,8 @@ class NeiHighV(Phase):
 class LmoNeiMaterial(TwoPhaseMaterial):
     two_theta_range = (55, 70)
     scan_time = 300 # Seconds per frame
-    phase_list = [NeiLowV, NeiHighV]
-    metric_normalizer = colors.Normalize(0.3, 0.9, clip=True)
+    phase_list = [NeiHighV, NeiLowV]
+    metric_normalizer = colors.Normalize(0, 0.7, clip=True)
     reliability_normalizer = colors.Normalize(0.7, 2, clip=True)
 
 

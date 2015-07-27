@@ -3,7 +3,7 @@
 import os
 
 from gi.repository import Gtk, Gdk
-from matplotlib import figure
+from matplotlib import figure, axes
 from matplotlib.backends.backend_gtk3agg import FigureCanvasGTK3Agg as FigureCanvas
 
 from coordinates import Cube
@@ -88,11 +88,12 @@ class GtkMapWindow(Gtk.Window):
         else:
             self.xrd_map.plot_bulk_diffractogram(ax=self.diffractogramAxes)
         # Draw individual scan's image or histogram
-        self.scanImageAxes.cla()
+        self.scanImageAxes.clear()
         if activeScan:
             activeScan.plot_image(ax=self.scanImageAxes)
         else:
             self.xrd_map.plot_histogram(ax=self.scanImageAxes)
+            self.scanImageAxes.set_aspect('auto')
         # Highlight the hexagon on the map and composite image
         if activeScan:
             self.map_hexagon = activeScan.highlight_beam(ax=self.mapAxes)

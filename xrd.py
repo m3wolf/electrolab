@@ -354,21 +354,25 @@ class XRDScan():
             title = "XRD Diffractogram"
         return title
 
+    def fourier_transform(self):
+        df = self.diffractogram
+        newData = fourier_transform(pd.Series(data=df.counts, index=df.index))
+        return newData
+
     def plot_fourier_transform(self, ax=None):
         """Perform a fourier transform on the origina data and plot"""
         if ax is None:
             ax = plots.new_axes()
-        df = self.diffractogram
         # Perform fourier transform
-        newData = fourier_transform(pd.Series(data=df.counts, index=df.index))
+        fData = self.fourier_transform()
         # Plot results
-        ax.plot(newData.index, newData.values,
+        ax.plot(fData.index, fData.values,
                 marker='.', linestyle='None')
         ax.set_xscale('log')
         ax.set_ylabel('Amplitude')
         ax.set_xlabel('$Frequency\ /deg^{-1}$')
         ax.set_title('Fourier Transform of {}'.format(self.axes_title()))
-        ax.set_xlim(right=newData.index.max())
+        ax.set_xlim(right=fData.index.max())
         return ax
 
     def plot_noise_reduction(self, noise_filter):
