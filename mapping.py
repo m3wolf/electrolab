@@ -9,8 +9,6 @@ from matplotlib import pylab, pyplot, figure, collections, patches, colors, cm
 import numpy as np
 import pandas as pd
 import scipy
-import PIL
-from sklearn import svm
 
 import xrd
 from plots import dual_axes, new_axes
@@ -515,54 +513,6 @@ class Map():
             compositeImage = compositeImage - 1
             # Save a cached version
             self._numpy_image = compositeImage
-        return compositeImage
-
-    def composite_image_with_pillow(self):
-        """
-        Combine all the individual photos from the diffractometer and
-        merge them into one image. This method uses the pillow library
-        instead of numpy arrays.
-        """
-        # Check for a cached image to return
-        compositeImage = getattr(self, '_pillow_image', None)
-        if compositeImage is None: # No cached image
-            # dpm taken from camera calibration using quadratic regression
-            regression = lambda x: 3.640*x**2 + 13.869*x + 31.499
-            dots_per_mm = regression(self.camera_zoom)
-            size = (
-                int(2 * self.xy_lim() * dots_per_mm),
-                int(2 * self.xy_lim() * dots_per_mm)
-            )
-            compositeImage = PIL.Image.new(size=size, mode='RGBA', color='white')
-            centerX = size[0]/2
-            centerY = size[1]/2
-            # Step through each scan
-            for scan in self.scans:
-                filename = '{dir}/{file_base}_01.jpg'.format(
-                    dir=self.directory(),
-                    file_base=scan.filebase
-                )
-                rawImage = PIL.Image.open(filename)
-                rawImage = rawImage.rotate(180)
-                # Create a single frame to average with the current composite
-                sampleImage = PIL.Image.new(size=size, mode='RGBA', color=(256, 256, 0, 0))
-                pixel_coords = (
-                    scan.xy_coords()[0] * dots_per_mm,
-                    scan.xy_coords()[1] * dots_per_mm
-                )
-                center = (
-                    size[0]/2 - pixel_coords[0],
-                    size[1]/2 + pixel_coords[1]
-                )
-                box = (
-                    int(center[0] - rawImage.size[0]/2),
-                    int(center[1] - rawImage.size[1]/2),
-                )
-                sampleImage.paste(rawImage, box=box)
-                # Apply this scan's image to the composite
-                compositeImage.paste(rawImage, box=box)
-            # Save a cached version
-            self._pillow_image = compositeImage
         return compositeImage
 
     def plot_composite_image(self, ax=None):
