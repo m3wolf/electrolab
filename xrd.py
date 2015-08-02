@@ -51,6 +51,10 @@ def plot_scans(scan_list, step_size=1):
         ax.plot(df.index, df.counts)
         scannames.append(scan.name)
     ax.legend(scannames)
+    # Set axes limits
+    xMax = scan_list[0].diffractogram.index.max()
+    xMax = max([scan.diffractogram.index.max() for scan in scan_list])
+    ax.set_xlim(right=xMax)
     # Decorate
     ax.set_xlabel(r'$2\theta$')
     ax.set_ylabel('counts')

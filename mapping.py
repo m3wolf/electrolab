@@ -280,6 +280,7 @@ class Map():
         self.subtract_backgrounds()
         self.calculate_metrics()
         self.calculate_reliabilities()
+        self.calculate_colors()
 
     def subtract_backgrounds(self):
         for scan in self.scans:
@@ -295,6 +296,11 @@ class Map():
         for scan in self.scans:
             scan.cached_data['reliability'] = None
             scan.reliability
+
+    def calculate_colors(self):
+        for scan in self.scans:
+            scan.cached_data['color'] = None
+            scan.color()
 
     def save(self, filename=None, overwrite=False):
         """Take cached data and save to disk."""
@@ -353,8 +359,14 @@ class Map():
         if scan is None:
             self.plot_bulk_diffractogram(ax=diffractogramAxes)
         else:
-            scan.plot_diffractogram(ax=imageAxes)
+            scan.plot_diffractogram(ax=diffractogramAxes)
         return (mapAxes, diffractogramAxes)
+
+    def plot_map_with_histogram(self):
+        mapAxes, histogramAxes = dual_axes()
+        self.plot_map(ax=mapAxes)
+        self.plot_histogram(ax=histogramAxes)
+        return (mapAxes, histogramAxes)
 
     def bulk_diffractogram(self):
         """
