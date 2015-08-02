@@ -275,7 +275,7 @@ class Map():
         """
         Perform initial calculations on mapping data and save results to file.
         """
-        self.subtract_backgrounds()
+        # self.subtract_backgrounds()
         self.calculate_metrics()
         self.calculate_reliabilities()
         self.calculate_colors()

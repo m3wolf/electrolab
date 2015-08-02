@@ -287,9 +287,12 @@ class XRDScan():
         if self.material:
             rng = self.material.two_theta_range
             df = df.loc[rng[0]:rng[1]]
+        # Store dataframe and set flags
         self._df = df
         self.diffractogram_is_loaded = True
-        self.subtract_background()
+        # Subtract background
+        if self.material is not None:
+            self.subtract_background()
         return self._df
 
     def subtract_background(self):
@@ -317,6 +320,14 @@ class XRDScan():
         self._df['subtracted'] = self._df.counts - self._df.background
         return self._df
 
+    @property
+    def has_background(self):
+        """Returns true if the background has been fit and subtracted in the
+        dataframe.
+        """
+        hasBackground = 'background' in self.diffractogram.columns
+        return hasBackground
+
     def shift_diffractogram(self, offset):
         """Slide the whole diffractogram to the right by offset."""
         df = self.diffractogram
@@ -332,7 +343,8 @@ class XRDScan():
         if ax is None:
             ax = plots.big_axes()
         ax.plot(df.index, df.loc[:, 'counts'])
-        ax.plot(df.index, self.spline(df.index))
+        if self.has_background:
+            ax.plot(df.index, self.spline(df.index))
         # Highlight peaks of interest
         if self.material is not None:
             self.material.highlight_peaks(ax=ax)

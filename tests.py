@@ -190,7 +190,7 @@ class SlamFileTest(unittest.TestCase):
     def test_theta2_start(self):
         self.assertEqual(
             self.sample.get_theta2_start(),
-            11.25
+            10
         )
 
     def test_theta1(self):
@@ -223,7 +223,7 @@ class SlamFileTest(unittest.TestCase):
         )
         self.assertEqual(
             self.sample.get_theta2_start(),
-            11.25
+            10
         )
 
     def test_path(self):
