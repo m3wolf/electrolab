@@ -315,7 +315,7 @@ class SlamFileTest(unittest.TestCase):
         os.rmdir(directory)
 
 
-class XRDScanTest(unittest.TestCase):
+class XRDScanTest(ElectrolabTestCase):
     def setUp(self):
         self.xrd_scan = xrd.XRDScan(filename='test-sample-frames/corundum.xye',
                                     material=CorundumMaterial())
@@ -353,6 +353,13 @@ class XRDScanTest(unittest.TestCase):
             self.xrd_scan.contains_peak(two_theta_range=(79, 81))
         )
 
+    def test_peak_fwhm(self):
+        """Method for computing full-width at half max of a peak."""
+        result = self.xrd_scan.peak_fwhm((52.4, 52.6))
+        self.assertApproximatelyEqual(
+            result,
+            0.0594
+        )
 
 
 class TestUnitCell(unittest.TestCase):

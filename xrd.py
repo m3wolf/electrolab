@@ -451,6 +451,41 @@ class XRDScan():
         twotheta = peakDF.argmax()
         return twotheta
 
+    def peak_fwhm(self, two_theta_range):
+        """Calculate the full-width half max."""
+        fullDF = self.diffractogram
+        peakDF = fullDF.loc[
+            two_theta_range[0]:two_theta_range[1],
+            'subtracted'
+        ]
+        maxIdx = peakDF.argmax()
+        maxCounts = peakDF[maxIdx]
+        # Split dataframe into left and right
+        leftDF = peakDF.loc[two_theta_range[0]:maxIdx]
+        rightDF = peakDF.loc[maxIdx:two_theta_range[1]]
+        # Find the data points around the half-max
+        def half_max(df, maximum):
+            """Return index of half-maximum of dataframe."""
+            halfMax = maximum/2
+            upperDf = df[df > halfMax]
+            lowerDf = df[df < halfMax]
+            if upperDf.empty or lowerDf.empty:
+                print("Cannot compute FWHM at {}".format(self.cube_coords))
+                newIdx = df.argmax()
+            else:
+                upperIdx = df[df > halfMax].argmin()
+                upperVal = df[upperIdx]
+                lowerIdx = df[df < halfMax].argmax()
+                lowerVal = df[lowerIdx]
+                # Interpolate between the two data points
+                slope = (upperVal - lowerVal)/(upperIdx - lowerIdx)
+                newIdx = (halfMax - lowerVal)/slope + lowerIdx
+            return newIdx
+        leftIdx = half_max(leftDF, maxCounts)
+        rightIdx = half_max(rightDF, maxCounts)
+        fullWidth = rightIdx - leftIdx
+        return fullWidth
+
     def fit_peaks(self):
         for phase in self.material.phase_list:
             phase.fit_peaks(scan=self)

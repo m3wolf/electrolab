@@ -123,6 +123,18 @@ class TwoPhaseMaterial(Material):
                               total=area1+area2)
         return msg
 
+
+class FwhmMaterial(Material):
+    def mapscan_metric(self, scan):
+        """
+        Return the full-width half-max of the diagnostic peak in the first
+        phase.
+        """
+        peak_range = self.phase_list[0].diagnostic_reflection.two_theta_range
+        fwhm = scan.peak_fwhm(peak_range)
+        return fwhm
+
+
 class IORMaterial(TwoPhaseMaterial):
     """One-off material for submitting an image of the Image of Research
     competition at UIC."""
@@ -275,7 +287,7 @@ class NeiLowV(Phase):
     unit_cell = unitcell.CubicUnitCell(a=8)
     diagnostic_hkl = '333'
     reflection_list = [
-        Reflection((58.5, 59.25), '333'),
+        Reflection((58.5, 59.3), '333'),
         Reflection((64.2, 65.1), '440'),
         Reflection((67.7, 68.5), '531'),
     ]
@@ -284,7 +296,7 @@ class NeiHighV(Phase):
     unit_cell = unitcell.CubicUnitCell(a=8)
     diagnostic_hkl = '333'
     reflection_list = [
-        Reflection((59.25, 60), '333'),
+        Reflection((59.3, 59.9), '333'),
         Reflection((65.1, 66), '440'),
         Reflection((68.5, 69.3), '531'),
     ]
