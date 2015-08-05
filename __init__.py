@@ -14,6 +14,8 @@ from plots import new_axes, big_axes, dual_axes
 
 import filters
 
+from refinement import FullProfProfileRefinement
+
 from xrd import XRDScan, align_scans, plot_scans
 
 from mapping import Cube, Map, DummyMap
