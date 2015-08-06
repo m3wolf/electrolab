@@ -9,6 +9,7 @@ from matplotlib import pylab, pyplot, figure, collections, patches, colors, cm
 import numpy as np
 import pandas as pd
 import scipy
+import scipy.misc
 
 import xrd
 from plots import dual_axes, new_axes

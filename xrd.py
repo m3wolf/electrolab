@@ -40,17 +40,22 @@ def remove_peak_from_df(reflection, df):
     peak = reflection.two_theta_range
     df.drop(df[peak[0]:peak[1]].index, inplace=True)
 
-def plot_scans(scan_list, step_size=1):
-    """Plot a series of XRDScans as a waterfall."""
-    fig = pyplot.figure(figsize=(16, 9))
-    ax = pyplot.gca()
+def plot_scans(scan_list, step_size=1, ax=None):
+    """
+    Plot a series of XRDScans as a waterfall. step_size controls how
+    far apart the waterfall stacking is. Optional keyword arg 'ax' plots
+    on a specific Axes.
+    """
+    if ax is None:
+        ax = plots.big_axes()
     scannames = []
+    lines = []
     for idx, scan in enumerate(scan_list):
-        df = scan.diffractogram
+        df = scan.diffractogram.copy()
         df.counts = df.counts + step_size * idx
-        ax.plot(df.index, df.counts)
+        lines.append(ax.plot(df.index, df.counts)[0])
         scannames.append(scan.name)
-    ax.legend(scannames)
+    ax.legend(reversed(lines), reversed(scannames))
     # Set axes limits
     xMax = scan_list[0].diffractogram.index.max()
     xMax = max([scan.diffractogram.index.max() for scan in scan_list])
@@ -444,9 +449,11 @@ class XRDScan():
 
     def peak_position(self, twotheta_range):
         fullDF = self.diffractogram
+        if self.has_background: column = 'subtracted'
+        else: column = 'counts'
         peakDF = fullDF.loc[
             twotheta_range[0]:twotheta_range[1],
-            'subtracted'
+            column
         ]
         twotheta = peakDF.argmax()
         return twotheta
