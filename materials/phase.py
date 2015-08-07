@@ -59,7 +59,7 @@ class Phase():
             return residual_error
         else:
             # Optimization failed for some reason
-            raise RefinementError(result.message)
+            raise exceptions.RefinementError(result.message)
 
     def predicted_peak_positions(self, wavelength, unit_cell=None):
         # Use current unit_cell if none is given
@@ -104,7 +104,7 @@ class Phase():
                 # Try each fit method until one works
                 for method in fitMethods:
                     try:
-                        residual = newPeak.fit(df.index, df.subtracted, method=method)
+                        newPeak.fit(df.index, df.subtracted, method=method)
                     except exceptions.PeakFitError:
                         # Try next fit
                         continue

@@ -3,10 +3,10 @@
 import os
 
 from gi.repository import Gtk, Gdk
-from matplotlib import figure, axes
+from matplotlib import figure
 from matplotlib.backends.backend_gtk3agg import FigureCanvasGTK3Agg as FigureCanvas
 
-from coordinates import Cube
+from mapping.coordinates import Cube
 
 class GtkMapWindow(Gtk.Window):
     """
@@ -23,7 +23,7 @@ class GtkMapWindow(Gtk.Window):
         self.connect('delete-event', Gtk.main_quit)
         # Load icon
         directory = os.path.dirname(os.path.realpath(__file__))
-        image = '{0}/images/icon.png'.format(directory)
+        image = '{0}/../images/icon.png'.format(directory)
         self.set_icon_from_file(image)
         self.set_default_size(1000, 1000)
         # Prepare layout box

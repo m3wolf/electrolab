@@ -3,7 +3,7 @@
 from collections import namedtuple
 import math
 
-from exceptions import UnitCellError, RefinementError
+from exceptions import UnitCellError
 
 class UnitCell():
     """Describes a crystallographic unit cell for XRD Refinement. Composed

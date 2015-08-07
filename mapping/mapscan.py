@@ -3,7 +3,14 @@
 import os
 import math
 
+import numpy
+import scipy
+import pandas
+from matplotlib import patches
+
 from xrd.scan import XRDScan
+from mapping.coordinates import Cube
+from plots import new_axes
 
 class MapScan(XRDScan):
     """
@@ -281,7 +288,7 @@ class MapScan(XRDScan):
         height and width.
         """
         if image is None:
-            image = self.image().astype(np.uint16)
+            image = self.image().astype(numpy.uint16)
             # Add a bias that will be removed after the image is composited
             image = image + 1
         # Calculate padding
@@ -291,7 +298,7 @@ class MapScan(XRDScan):
         padTop = int(center['height'] - self.IMAGE_HEIGHT/2)
         padBottom = int(height - center['height'] - self.IMAGE_HEIGHT/2)
         # Apply padding
-        paddedImage = np.pad(
+        paddedImage = numpy.pad(
             image,
             ((padTop, padBottom), (padLeft, padRight), (0, 0)),
             mode='constant'
@@ -316,14 +323,14 @@ class DummyMapScan(MapScan):
     """
 
     def spline(self, xdata):
-        random = np.random.rand(len(xdata))
+        random = numpy.random.rand(len(xdata))
         return random
 
     @property
     def diffractogram(self):
-        twoTheta = np.linspace(10, 80, 700)
-        counts = np.random.rand(len(twoTheta))
-        df = pd.DataFrame(counts, index=twoTheta, columns=['counts'])
+        twoTheta = numpy.linspace(10, 80, 700)
+        counts = numpy.random.rand(len(twoTheta))
+        df = pandas.DataFrame(counts, index=twoTheta, columns=['counts'])
         return df
 
     def image(self):

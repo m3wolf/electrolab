@@ -4,7 +4,12 @@ import os
 
 import numpy as np
 from scipy.interpolate import UnivariateSpline
+import pandas as pd
+from matplotlib import pyplot
 
+import exceptions
+import plots
+from filters import fourier_transform
 from xrd.tube import tubes
 from xrd.peak import remove_peak_from_df
 import adapters

@@ -16,12 +16,12 @@ import filters
 
 from refinement.refinement import FullProfProfileRefinement
 
+from materials import material as materials
+
 from xrd.scan import XRDScan, align_scans
 
 from mapping.coordinates import Cube
 from mapping.map import Map, DummyMap
-
-import materials
 
 # Electrochemistry methods and classes
 from electrochem.galvanostatrun import GalvanostatRun

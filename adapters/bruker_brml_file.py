@@ -3,8 +3,6 @@
 from xml.etree import ElementTree
 import zipfile
 
-from io import StringIO
-
 import pandas as pd
 
 class BrukerBrmlFile():

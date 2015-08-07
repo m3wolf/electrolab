@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 
 from matplotlib import colors
-import numpy as np
 
 from materials.phase import Phase
 from xrd.reflection import Reflection

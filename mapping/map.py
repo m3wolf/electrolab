@@ -5,10 +5,16 @@ import os
 import pickle
 
 import jinja2
+from matplotlib import pyplot, cm, patches
+import numpy
+import pandas
+import scipy
 
 from mapping.coordinates import Cube
 from mapping.mapscan import MapScan, DummyMapScan
+from mapping.gtkmapwindow import GtkMapWindow
 from materials.material import DummyMaterial
+from plots import new_axes, dual_axes
 
 class Map():
     """
@@ -225,7 +231,6 @@ class Map():
         return context
 
     def get_number_of_frames(self):
-        theta1 = self.get_theta1()
         num_frames = math.ceil(
             (self.two_theta_range[1]-self.two_theta_range[0])/self.frame_step
         )
@@ -364,7 +369,7 @@ class Map():
         Calculate the bulk diffractogram by averaging each scan weighted
         by reliability.
         """
-        bulk_diffractogram = pd.Series()
+        bulk_diffractogram = pandas.Series()
         scanCount = 0
         # Add a contribution from each map location
         for scan in self.scans:
@@ -423,7 +428,7 @@ class Map():
         self.draw_edge(ax, color='blue')
         # Add colormap to the side of the axes
         mappable = cm.ScalarMappable(norm=self.material.metric_normalizer, cmap=cmap)
-        mappable.set_array(np.arange(0, 2))
+        mappable.set_array(numpy.arange(0, 2))
         pyplot.colorbar(mappable, ax=ax)
         return ax
 
@@ -476,12 +481,11 @@ class Map():
             compositeHeight = compositeWidth
             # Create a new numpy array to hold the composited image
             # (it is unsigned int 16 to not overflow when images are added)
-            dtype = np.uint16
-            dtypeMax = 65535
-            compositeImage = np.ndarray((compositeHeight, compositeWidth, 3),
+            dtype = numpy.uint16
+            compositeImage = numpy.ndarray((compositeHeight, compositeWidth, 3),
                                         dtype=dtype)
             # This array keeps track of how many images contribute to each pixel
-            counterArray = np.ndarray((compositeHeight, compositeWidth, 3),
+            counterArray = numpy.ndarray((compositeHeight, compositeWidth, 3),
                                       dtype=dtype)
             # Set to white by default
             compositeImage.fill(0)
@@ -500,7 +504,7 @@ class Map():
             # Divide by the total count for each pixel
             compositeImage = compositeImage / counterArray
             # Convert back to a uint8 array for displaying
-            compositeImage = compositeImage.astype(np.uint8)
+            compositeImage = compositeImage.astype(numpy.uint8)
             # Roll over pixels to force white background
             # (bias was added in padded_image method)
             compositeImage = compositeImage - 1
@@ -532,10 +536,10 @@ class Map():
         # minimum = min(metrics)
         maximum = self.material.metric_normalizer.vmax
         # maximum = max(metrics)
-        metrics = np.clip(metrics, minimum, maximum)
+        metrics = numpy.clip(metrics, minimum, maximum)
         weights = [scan.reliability for scan in self.scans]
         if ax is None:
-            figure = pyplot.figure()
+            pyplot.figure()
             ax = pyplot.gca()
         ax.hist(metrics, bins=100, weights=weights)
         ax.set_xlim(minimum, maximum)
@@ -554,16 +558,18 @@ class DummyMap(Map):
     """
     def bulk_diffractogram(self):
         # Return some random data
-        twoTheta = np.linspace(10, 80, num=700)
-        counts = np.random.rand(len(twoTheta))
-        intensity = pd.DataFrame(counts, index=twoTheta, columns=['counts'])
+        twoTheta = numpy.linspace(10, 80, num=700)
+        counts = numpy.random.rand(len(twoTheta))
+        intensity = pandas.DataFrame(counts, index=twoTheta, columns=['counts'])
         return intensity
 
     def composite_image_with_numpy(self):
         # Stub image to show for layout purposes
         directory = os.path.dirname(os.path.realpath(__file__))
         # Read a cached composite image from disk
-        image = scipy.misc.imread('{0}/images/test-composite-image.png'.format(directory))
+        image = scipy.misc.imread(
+            '{0}/../images/test-composite-image.png'.format(directory)
+        )
         return image
 
     def plot_map(self, *args, **kwargs):

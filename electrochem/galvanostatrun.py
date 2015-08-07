@@ -5,6 +5,7 @@ import re
 import pandas as pd
 
 from electrochem.cycle import Cycle
+from plots import new_axes
 
 def axis_label(key):
     axis_labels = {
@@ -37,10 +38,7 @@ class GalvanostatRun():
             self.mass = self.mass_from_file()
         self._df.loc[:,'capacity'] = self._df.loc[:,'(Q-Qo)/mA.h']/self.mass
         # Split the data into cycles, except the initial resting phase
-        if 'cycle number' in self._df.columns:
-            cycles = list(self._df.groupby('cycle number'))
-        else:
-            cycles = [(0, all_cycles)]
+        cycles = list(self._df.groupby('cycle number'))
         # Create Cycle objects for each cycle
         for cycle in cycles:
             new_cycle = Cycle(cycle[0], cycle[1])

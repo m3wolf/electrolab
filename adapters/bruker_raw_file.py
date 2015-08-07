@@ -60,7 +60,6 @@ class BrukerRawFile():
             yield(result)
 
     def parse_header(self):
-        currentPos = 0
         self.header = {}
         for field in self.byte_fields(HEADER_BYTES):
             self.header[field.name] = field.value

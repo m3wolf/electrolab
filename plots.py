@@ -7,7 +7,7 @@ def new_axes(height=5, width=None):
     # Adjust width to accomodate colorbar
     if width is None:
         width = height/0.8
-    fig = pyplot.figure(figsize=(width, height))
+    pyplot.figure(figsize=(width, height))
     ax = pyplot.gca()
     return ax
 
@@ -28,7 +28,7 @@ def plot_scans(scan_list, step_size=1, ax=None):
     on a specific Axes.
     """
     if ax is None:
-        ax = plots.big_axes()
+        ax = big_axes()
     scannames = []
     lines = []
     for idx, scan in enumerate(scan_list):

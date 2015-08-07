@@ -1,8 +1,5 @@
 import math, unittest
-from io import StringIO
 import os.path
-
-import pandas as pd
 
 import exceptions
 import electrolab as el
@@ -105,7 +102,7 @@ class LMOSolidSolutionTest(unittest.TestCase):
         self.scan.load_diffractogram('test-sample-frames/LMO-sample-data.plt')
 
     def test_metric(self):
-        df = self.scan.diffractogram
+        self.scan.diffractogram
         metric = self.scan.metric
         self.assertEqual(
             metric,
@@ -152,7 +149,7 @@ class CycleTest(unittest.TestCase):
 class GalvanostatRunTest(unittest.TestCase):
     # Currently just tests import statement
     def test_import(self):
-        run = GalvanostatRun('electrochem/eclab-test-data.mpt')
+        GalvanostatRun('electrochem/eclab-test-data.mpt')
 
     def test_read_mass(self):
         run = GalvanostatRun('electrochem/eclab-test-data.mpt')
@@ -305,7 +302,7 @@ class SlamFileTest(unittest.TestCase):
             'Directory {} already exists, cannot test'.format(directory)
         )
         # Write the slamfile
-        result = self.sample.write_slamfile(quiet=True)
+        self.sample.write_slamfile(quiet=True)
         # Test if the correct things were created
         self.assertTrue(os.path.exists(directory))
         # Clean up
@@ -336,7 +333,7 @@ class XRDScanTest(ElectrolabTestCase):
 
     def test_filetypes(self):
         # Can the class determine the filetype and load it appropriately
-        scan = XRDScan(filename='test-sample-frames/corundum.xye')
+        XRDScan(filename='test-sample-frames/corundum.xye')
 
     def test_contains_peak(self):
         """Method for determining if a given two_theta
@@ -654,7 +651,7 @@ class BrukerRawTestCase(XRDFileTestCase):
     def test_bad_file(self):
         badFile = 'test-sample-frames/corundum.xye'
         with self.assertRaises(exceptions.FileFormatError):
-            adapter = BrukerRawFile(badFile)
+            BrukerRawFile(badFile)
     @unittest.expectedFailure
     def test_sample_name(self):
         self.assertEqual(
