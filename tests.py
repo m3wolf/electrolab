@@ -4,17 +4,17 @@ import os.path
 
 import pandas as pd
 
-import electrolab as el
-import xrdpeak
-import materials
-from materials import LMOSolidSolutionMaterial, CorundumMaterial
-from mapping import Map, DummyMap, Cube, MapScan
-# from xrd import Phase, hkl_to_tuple, Reflection, XRDScan, remove_peak_from_df
-import xrd
-import xrdpeak
-import unitcell
 import exceptions
-from cycler import GalvanostatRun
+import electrolab as el
+from materials.material import LMOSolidSolutionMaterial, CorundumMaterial, CorundumPhase
+from materials.unitcell import UnitCell, CubicUnitCell, HexagonalUnitCell
+from mapping.map import Map, DummyMap
+from mapping.coordinates import Cube
+from mapping.mapscan import MapScan
+from xrd.scan import XRDScan
+from xrd.peak import XRDPeak, PeakFit, remove_peak_from_df
+from xrd.reflection import Reflection, hkl_to_tuple
+from electrochem.galvanostatrun import GalvanostatRun
 from adapters.bruker_raw_file import BrukerRawFile
 from adapters.bruker_brml_file import BrukerBrmlFile
 
@@ -36,7 +36,7 @@ class ElectrolabTestCase(unittest.TestCase):
 
 class PeakTest(ElectrolabTestCase):
     def test_split_parameters(self):
-        peak = xrdpeak.Peak()
+        peak = XRDPeak()
         # Put in some junk data so it will actually split
         peak.fit_list = ['a', 'b']
         fullParams = (1, 2, 3, 4, 5, 6)
@@ -49,9 +49,9 @@ class PeakTest(ElectrolabTestCase):
     def test_initial_parameters(self):
         # Does the class guess reasonable starting values for peak fitting
         peakScan = el.XRDScan('test-sample-frames/corundum.xye',
-                              material=el.materials.CorundumMaterial())
+                              material=CorundumMaterial())
         df = peakScan.diffractogram[34:36]
-        peakFit = el.PeakFit()
+        peakFit = PeakFit()
         # Returns two peaks for kalpha1 and kalpha2
         p1, p2 = peakFit.initial_parameters(df.index, df.counts)
         tolerance = 0.001
@@ -64,9 +64,9 @@ class PeakTest(ElectrolabTestCase):
 
     def test_peak_fit(self):
         """This particular peak was not fit properly. Let's see why."""
-        peak = xrdpeak.Peak(reflection=xrd.Reflection((37, 39), '110'))
-        peakScan = xrd.XRDScan('test-sample-frames/corundum.xye',
-                              material=materials.CorundumMaterial())
+        peak = XRDPeak(reflection=Reflection((37, 39), '110'))
+        peakScan = XRDScan('test-sample-frames/corundum.xye',
+                              material=CorundumMaterial())
         df = peakScan.diffractogram[37:39]
         peak.fit(two_theta=df.index, intensity=df.subtracted, method='gaussian')
         fit_kalpha1 = peak.fit_list[0]
@@ -139,7 +139,8 @@ class LMOSolidSolutionTest(unittest.TestCase):
 class CycleTest(unittest.TestCase):
     def setUp(self):
         # self.df = pd.read_csv()
-        self.run = GalvanostatRun('eclab-test-data.mpt', mass=0.022563)
+        self.run = GalvanostatRun('electrochem/eclab-test-data.mpt',
+                                  mass=0.022563)
         self.cycle = self.run.cycles[0]
 
     def test_discharge_capacity(self):
@@ -151,10 +152,10 @@ class CycleTest(unittest.TestCase):
 class GalvanostatRunTest(unittest.TestCase):
     # Currently just tests import statement
     def test_import(self):
-        run = GalvanostatRun('eclab-test-data.mpt')
+        run = GalvanostatRun('electrochem/eclab-test-data.mpt')
 
     def test_read_mass(self):
-        run = GalvanostatRun('eclab-test-data.mpt')
+        run = GalvanostatRun('electrochem/eclab-test-data.mpt')
         self.assertEqual(
             run.mass, 0.02253
         )
@@ -317,15 +318,15 @@ class SlamFileTest(unittest.TestCase):
 
 class XRDScanTest(ElectrolabTestCase):
     def setUp(self):
-        self.xrd_scan = xrd.XRDScan(filename='test-sample-frames/corundum.xye',
-                                    material=CorundumMaterial())
+        self.xrd_scan = XRDScan(filename='test-sample-frames/corundum.xye',
+                                material=CorundumMaterial())
 
     def test_remove_peak_from_df(self):
-        xrd_scan = xrd.XRDScan(filename='test-sample-frames/map-0.plt')
+        xrd_scan = XRDScan(filename='test-sample-frames/map-0.plt')
         peakRange = (35, 40)
         df = xrd_scan.diffractogram
         peakIndex = df[peakRange[0]:peakRange[1]].index
-        xrd.remove_peak_from_df(xrd.Reflection(peakRange, '000'), df)
+        remove_peak_from_df(Reflection(peakRange, '000'), df)
         intersection = df.index.intersection(peakIndex)
         self.assertEqual(
             len(intersection),
@@ -335,7 +336,7 @@ class XRDScanTest(ElectrolabTestCase):
 
     def test_filetypes(self):
         # Can the class determine the filetype and load it appropriately
-        scan = xrd.XRDScan(filename='test-sample-frames/corundum.xye')
+        scan = XRDScan(filename='test-sample-frames/corundum.xye')
 
     def test_contains_peak(self):
         """Method for determining if a given two_theta
@@ -364,7 +365,7 @@ class XRDScanTest(ElectrolabTestCase):
 
 class TestUnitCell(unittest.TestCase):
     def test_init(self):
-        unitCell = unitcell.UnitCell(a=15, b=3, alpha=45)
+        unitCell = UnitCell(a=15, b=3, alpha=45)
         self.assertEqual(unitCell.a, 15)
         self.assertEqual(unitCell.b, 3)
         self.assertEqual(unitCell.alpha, 45)
@@ -372,7 +373,7 @@ class TestUnitCell(unittest.TestCase):
     def test_setattr(self):
         """Does the unitcell give an error when passed crappy values."""
         # Negative unit cell parameter
-        unitCell = unitcell.UnitCell()
+        unitCell = UnitCell()
         with self.assertRaises(exceptions.UnitCellError):
             unitCell.a = -5
         with self.assertRaises(exceptions.UnitCellError):
@@ -381,7 +382,7 @@ class TestUnitCell(unittest.TestCase):
 
 class TestCubicUnitCell(unittest.TestCase):
     def setUp(self):
-        self.unit_cell = unitcell.CubicUnitCell()
+        self.unit_cell = CubicUnitCell()
 
     def test_mutators(self):
         # Due to high symmetry, a=b=c
@@ -409,7 +410,7 @@ class TestCubicUnitCell(unittest.TestCase):
 
 class TestHexagonalUnitCell(unittest.TestCase):
     def setUp(self):
-        self.unit_cell = unitcell.HexagonalUnitCell()
+        self.unit_cell = HexagonalUnitCell()
 
     def test_mutators(self):
         self.unit_cell.a = 3
@@ -441,7 +442,7 @@ class MapScanTest(unittest.TestCase):
         xrdMap = Map(scan_time=10,
                      two_theta_range=(10, 20))
         self.scan = MapScan(Cube(1, 0, -1), xrd_map=xrdMap, filebase="map-0",
-                            material=materials.CorundumMaterial())
+                            material=CorundumMaterial())
         self.scan.sample = DummyMap(scan_time=10,
                                     two_theta_range=(10, 20))
 
@@ -531,12 +532,12 @@ class MapTest(unittest.TestCase):
 
 class ReflectionTest(unittest.TestCase):
     def test_hkl_to_tuple(self):
-        newHkl = xrd.hkl_to_tuple((1, 1, 1))
+        newHkl = hkl_to_tuple((1, 1, 1))
         self.assertEqual(
             newHkl,
             (1, 1, 1)
         )
-        newHkl = xrd.hkl_to_tuple('315')
+        newHkl = hkl_to_tuple('315')
         self.assertEqual(
             newHkl,
             (3, 1, 5)
@@ -545,10 +546,10 @@ class ReflectionTest(unittest.TestCase):
 
 class PhaseTest(ElectrolabTestCase):
     def setUp(self):
-        self.phase = materials.CorundumPhase()
-        self.corundum = materials.CorundumMaterial()
-        self.corundum_scan = xrd.XRDScan(filename='test-sample-frames/corundum.xye',
-                                         material=self.corundum)
+        self.phase = CorundumPhase()
+        self.corundum = CorundumMaterial()
+        self.corundum_scan = XRDScan(filename='test-sample-frames/corundum.xye',
+                                     material=self.corundum)
 
     def test_peak_by_hkl(self):
         reflection = self.phase.reflection_by_hkl('110')
@@ -585,7 +586,7 @@ class ExperimentalDataTest(ElectrolabTestCase):
     These tests compare results to experimentally determined values.
     """
     def setUp(self):
-        self.material = materials.CorundumMaterial()
+        self.material = CorundumMaterial()
         self.phase = self.material.phase_list[0]
 
     def test_predicted_peak_positions(self):
@@ -606,7 +607,7 @@ class ExperimentalDataTest(ElectrolabTestCase):
         )
 
     def test_mean_square_error(self):
-        scan = xrd.XRDScan(filename='test-sample-frames/corundum.xye',
+        scan = XRDScan(filename='test-sample-frames/corundum.xye',
                            material=self.material)
         scan.fit_peaks()
         rms_error = self.phase.peak_rms_error(scan=scan)
@@ -618,7 +619,7 @@ class ExperimentalDataTest(ElectrolabTestCase):
 
     def test_refine_corundum(self):
         # Results take from celref using corundum standard
-        scan = xrd.XRDScan(filename='test-sample-frames/corundum.xye',
+        scan = XRDScan(filename='test-sample-frames/corundum.xye',
                            material=self.material)
         residuals = self.phase.refine_unit_cell(scan=scan,
                                                 quiet=True)

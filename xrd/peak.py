@@ -8,35 +8,16 @@ from scipy import optimize
 from matplotlib import pyplot
 
 import exceptions
+from xrd.tube import tubes, KALPHA2_RATIO
 
-# kalpha2 is half the intensity of kalpha1
-KALPHA2_RATIO = 0.5
-
+# How strongly to penalize negative peak heights, etc
 BASE_PENALTY = 300
 
-class XrdTube():
-    def __init__(self, kalpha1, kalpha2):
-        self.kalpha1 = kalpha1
-        self.kalpha2 = kalpha2
-
-    @property
-    def kalpha(self):
-        wavelength = (self.kalpha1 + KALPHA2_RATIO*self.kalpha2)/(1+KALPHA2_RATIO)
-        return wavelength
-
-    def split_angle_by_kalpha(self, angle):
-        """Predict kα1/kα2 splitting at the given 2θ angle."""
-        theta1 = math.degrees(
-            math.asin(self.kalpha1*math.sin(math.radians(angle))/self.kalpha)
-        )
-        theta2 = math.degrees(
-            math.asin(self.kalpha2*math.sin(math.radians(angle))/self.kalpha)
-        )
-        return (theta1, theta2)
-
-tubes = {
-    'Cu': XrdTube(kalpha1=1.5406, kalpha2=1.5444),
-}
+def remove_peak_from_df(reflection, df):
+    """Accept an xrd scan dataframe and remove the given reflection's peak from
+    the data."""
+    peak = reflection.two_theta_range
+    df.drop(df[peak[0]:peak[1]].index, inplace=True)
 
 class PeakFit():
     Parameters = namedtuple('Parameters', ('height', 'center', 'width'))
@@ -222,7 +203,7 @@ class PseudoVoigtFit(PeakFit):
         return y
 
 
-class Peak():
+class XRDPeak():
     """
     A peak in an X-ray diffractogram. May be composed of multiple
     overlapping subpeaks from different wavelengths.

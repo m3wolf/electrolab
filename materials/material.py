@@ -3,8 +3,9 @@
 from matplotlib import colors
 import numpy as np
 
-from xrd import Phase, Reflection
-import unitcell
+from materials.phase import Phase
+from xrd.reflection import Reflection
+from materials.unitcell import CubicUnitCell, TetragonalUnitCell, HexagonalUnitCell
 
 class Material():
     """Describes a cathode material that may exist in multiple
@@ -180,7 +181,7 @@ class DummyMaterial(Material):
 ##################################################
 
 class LMOCubicPhase(Phase):
-    unit_cell = unitcell.CubicUnitCell(a=8)
+    unit_cell = CubicUnitCell(a=8)
     diagnostic_hkl = '311'
     reflection_list = [
         Reflection((17.5, 19.5), '111'),
@@ -195,7 +196,7 @@ class LMOCubicPhase(Phase):
     ]
 
 class LMOCubicPhaseHighV(Phase):
-    unit_cell = unitcell.CubicUnitCell(a=8)
+    unit_cell = CubicUnitCell(a=8)
     diagnostic_hkl = '311'
     reflection_list = [
         Reflection((17.5, 19.5), '111'),
@@ -211,7 +212,7 @@ class LMOCubicPhaseHighV(Phase):
 
 
 class LMOTetragonalPhase(Phase):
-    unit_cell = unitcell.TetragonalUnitCell()
+    unit_cell = TetragonalUnitCell()
     diagnostic_hkl = None
     reflection_list = [
         Reflection((39.5, 40.5), '000'),
@@ -243,7 +244,7 @@ class AluminumPhase(Phase):
 
 # Corundum standard
 class CorundumPhase(Phase):
-    unit_cell = unitcell.HexagonalUnitCell(a=4.75, c=12.982)
+    unit_cell = HexagonalUnitCell(a=4.75, c=12.982)
     name='corundum'
     reflection_list = [
         Reflection((25, 27), '012'),
@@ -284,7 +285,7 @@ class LMOTwoPhaseMaterial(TwoPhaseMaterial):
 ### Material definition for LiMn_2O_4 material. Made at Argonne
 ### national lab, it has a stronger two-phase transition around 4.15V.
 class NeiLowV(Phase):
-    unit_cell = unitcell.CubicUnitCell(a=8)
+    unit_cell = CubicUnitCell(a=8)
     diagnostic_hkl = '333'
     reflection_list = [
         Reflection((58.5, 59.3), '333'),
@@ -293,7 +294,7 @@ class NeiLowV(Phase):
     ]
 
 class NeiHighV(Phase):
-    unit_cell = unitcell.CubicUnitCell(a=8)
+    unit_cell = CubicUnitCell(a=8)
     diagnostic_hkl = '333'
     reflection_list = [
         Reflection((59.3, 59.9), '333'),

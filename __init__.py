@@ -5,22 +5,24 @@ import sys
 import os
 sys.path.append(os.path.dirname(__file__))
 
-import xrdpeak
-from xrdpeak import Peak, PeakFit
+from xrd.peak import XRDPeak
+# from xrdpeak import PeakFit
 
-from unitcell import CubicUnitCell, HexagonalUnitCell, TetragonalUnitCell
+from materials.unitcell import CubicUnitCell, HexagonalUnitCell, TetragonalUnitCell
 
-from plots import new_axes, big_axes, dual_axes
+from plots import new_axes, big_axes, dual_axes, plot_scans
 
 import filters
 
-from refinement import FullProfProfileRefinement
+from refinement.refinement import FullProfProfileRefinement
 
-from xrd import XRDScan, align_scans, plot_scans
+from xrd.scan import XRDScan, align_scans
 
-from mapping import Cube, Map, DummyMap
+from mapping.coordinates import Cube
+from mapping.map import Map, DummyMap
 
 import materials
 
 # Electrochemistry methods and classes
-from cycler import GalvanostatRun, Cycle
+from electrochem.galvanostatrun import GalvanostatRun
+from electrochem.cycle import Cycle

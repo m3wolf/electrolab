@@ -1,7 +1,10 @@
-from matplotlib import pyplot
-import numpy as np
-import pandas as pd
+# -*- coding: utf-8 -*-
+
 import re
+
+import pandas as pd
+
+from electrochem.cycle import Cycle
 
 def axis_label(key):
     axis_labels = {
@@ -10,16 +13,6 @@ def axis_label(key):
     }
     # Look for label translation or return original key
     return axis_labels.get(key, key)
-
-def new_axes():
-    """Create a new set of matplotlib axes for plotting"""
-    fig = pyplot.figure(figsize=(10, 6))
-    ax = pyplot.gca()
-    return ax
-
-def mass_from_file(filename):
-    """"""
-    pass
 
 class GalvanostatRun():
     """
@@ -121,34 +114,3 @@ class GalvanostatRun():
         ax2.set_ylim(0, 100)
         ax2.set_ylabel('Discharge efficiency (%)')
         return ax, ax2
-
-
-class Cycle():
-    """Data from one charge-discharge cycle."""
-    def __init__(self, number, df):
-        self.number = number
-        self.df = df
-
-    def charge_capacity(self):
-        """Calculate difference between discharged and charged state"""
-        max_capacity = np.max(self.df['capacity'])
-        min_idx = self.df['capacity'].first_valid_index()
-        min_capacity = self.df['capacity'][min_idx]
-        return max_capacity - min_capacity
-
-    def discharge_capacity(self):
-        """Calculate the difference between charged and discharged state"""
-        max_capacity = np.max(self.df['capacity'])
-        min_idx = self.df['capacity'].last_valid_index()
-        min_capacity = self.df['capacity'][min_idx]
-        return max_capacity - min_capacity
-
-    def plot_cycle(self, xcolumn, ycolumn, ax, label=None):
-        # Default label for plot
-        if label is None:
-            label = "Cycle {}".format(self.number)
-        # Drop missing data
-        df = self.df.dropna(subset=[xcolumn, ycolumn])
-        # Plot remaining values
-        ax.plot(df[xcolumn], df[ycolumn], label=label)
-        return ax
