@@ -35,6 +35,7 @@ SCAN /SINGLERUN {{ number_of_frames }} &
   /FILENAME={{ scan.filename }}.plt /FORMAT=PLOTSO &
   {% if not loop.first %}/APPEND {% endif %}/SCALE=1.0
 {% endfor %}
+
 {% endfor %}
 
 menumode

@@ -32,6 +32,7 @@ class Map():
     THETA2_MIN=0 # Detector limits based on geometry
     THETA2_MAX=55
     camera_zoom = 6
+    two_theta_range = (10, 80)
     frame_step = 20 # How much to move detector by in degrees
     frame_width = 20 # 2-theta coverage of detector face
     scan_time = 300 # In seconds
@@ -65,7 +66,7 @@ class Map():
         # else:
         #     # Default value
         #     self.scan_time = 60
-        self.two_theta_range = two_theta_range
+        if two_theta_range is not None: self.two_theta_range = two_theta_range
         # if two_theta_range is not None:
         #     self.two_theta_range = two_theta_range
         # elif material is not None:
@@ -266,6 +267,10 @@ class Map():
             raise ValueError(msg)
         return num_frames
 
+    # @property
+    # def two_theta_range(self):
+    #     return self._two_theta_range
+
     def get_theta2_start(self):
         # Assuming that theta1 starts at highest possible range
         theta1 = self.get_theta1()
@@ -384,13 +389,16 @@ class Map():
         self.diameter = data['diameter']
         self.coverage = data['coverage']
         # Create scan list
-        self.scans = []
+        self.create_scans()
         # Restore each scan
         for idx, dataDict in enumerate(data['scans']):
-            newScan = MapScan(location=dataDict['cube_coords'],
-                              xrd_map=self,
-                              filebase=dataDict['filebase'],
-                              refinement=self.refinement)
+            newScan = self.scans[idx]
+            # newScan = MapScan(location=dataDict['cube_coords'],
+            #                   xrd_map=self,
+            #                   phases=[Phase() for Phase in self.phases],
+            #                   background_phases=[Phase() for Phase in self.background_phases],
+            #                   filebase=dataDict['filebase'],
+            #                   refinement=self.refinement)
             newScan.data_dict = dataDict
             self.scans.append(newScan)
 
