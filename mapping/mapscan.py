@@ -120,7 +120,7 @@ class MapScan(XRDScan):
     @property
     def metric_normalized(self):
         """Return the metric between 0 and 1."""
-        return self.material.metric_normalizer(self.metric)
+        return self.xrd_map.metric_normalizer(self.metric)
 
     @property
     def metric(self):
@@ -131,7 +131,7 @@ class MapScan(XRDScan):
         metric = self.cached_data.get('metric', None)
         if metric is None:
             if self.diffractogram_is_loaded:
-                metric = self.material.mapscan_metric(scan=self)
+                metric = self.xrd_map.mapscan_metric(scan=self)
                 self.cached_data['metric'] = metric
             else:
                 metric = 0
@@ -143,14 +143,13 @@ class MapScan(XRDScan):
 
     @property
     def metric_details(self):
-        """Text string describing how the metric was calculated."""
-        msg = self.material.metric_details(scan=self)
-        return msg
+        """Returns a string describing how the metric was calculated."""
+        return "No additional info"
 
     @property
     def reliability_raw(self):
         """Acquire un-normalized reliability."""
-        reliability = self.material.mapscan_reliability(scan=self)
+        reliability = self.xrd_map.mapscan_reliability(scan=self)
         return reliability
 
     @property
@@ -161,7 +160,7 @@ class MapScan(XRDScan):
             self.diffractogram
             if self.diffractogram_is_loaded:
                 raw = self.reliability_raw
-                normalizer = self.material.reliability_normalizer
+                normalizer = self.xrd_map.reliability_normalizer
                 reliability = normalizer(raw)
                 self.cached_data['reliability'] = reliability
             else:
@@ -235,7 +234,7 @@ class MapScan(XRDScan):
             # Not cached, so recalculate
             metric = self.metric
             cmap = self.xrd_map.get_cmap()
-            color = cmap(self.material.metric_normalizer(metric))
+            color = cmap(self.xrd_map.metric_normalizer(metric))
             self.cached_data['color'] = color
         return color
 
@@ -338,7 +337,7 @@ class DummyMapScan(MapScan):
         Retrieve a dummy image file taken by the diffractometer.
         """
         directory = os.path.dirname(os.path.realpath(__file__))
-        filename = '{dir}/images/sample-electrode-image.jpg'.format(dir=directory)
+        filename = '{dir}/../images/sample-electrode-image.jpg'.format(dir=directory)
         imageArray = scipy.misc.imread(filename)
         # Rotate to align with sample coords
         imageArray = scipy.misc.imrotate(imageArray, 180)

@@ -1,11 +1,16 @@
+# -*- coding: utf-8 -*-
+
 import math, unittest
 import os.path
 
+from matplotlib import colors
+
 import exceptions
 import electrolab as el
-from materials.material import LMOSolidSolutionMaterial, CorundumMaterial, CorundumPhase
-from materials.unitcell import UnitCell, CubicUnitCell, HexagonalUnitCell
-from mapping.map import Map, DummyMap
+from phases.standards import Corundum, Aluminum
+from phases.lmo import CubicLMO
+from phases.unitcell import UnitCell, CubicUnitCell, HexagonalUnitCell
+from mapping.map import Map, DummyMap, PeakPositionMap
 from mapping.coordinates import Cube
 from mapping.mapscan import MapScan
 from xrd.scan import XRDScan
@@ -46,7 +51,7 @@ class PeakTest(ElectrolabTestCase):
     def test_initial_parameters(self):
         # Does the class guess reasonable starting values for peak fitting
         peakScan = el.XRDScan('test-sample-frames/corundum.xye',
-                              material=CorundumMaterial())
+                              phase=Corundum())
         df = peakScan.diffractogram[34:36]
         peakFit = PeakFit()
         # Returns two peaks for kalpha1 and kalpha2
@@ -63,7 +68,7 @@ class PeakTest(ElectrolabTestCase):
         """This particular peak was not fit properly. Let's see why."""
         peak = XRDPeak(reflection=Reflection((37, 39), '110'))
         peakScan = XRDScan('test-sample-frames/corundum.xye',
-                              material=CorundumMaterial())
+                           phase=Corundum())
         df = peakScan.diffractogram[37:39]
         peak.fit(two_theta=df.index, intensity=df.subtracted, method='gaussian')
         fit_kalpha1 = peak.fit_list[0]
@@ -93,12 +98,13 @@ class CubeTest(unittest.TestCase):
 
 class LMOSolidSolutionTest(unittest.TestCase):
     def setUp(self):
-        self.material = LMOSolidSolutionMaterial()
-        self.map = Map(scan_time=10,
-                  two_theta_range=(10, 20))
-        self.scan = MapScan(location=(0, 0), material=self.material,
-                            xrd_map=self.map,
-                            filebase="map-0")
+        self.phase = CubicLMO()
+        self.map = PeakPositionMap(scan_time=10,
+                                   two_theta_range=(30, 55),
+                                   phases=[CubicLMO],
+                                   background_phases=[Aluminum])
+        self.map.reliability_normalizer = colors.Normalize(0.4, 0.8, clip=True)
+        self.scan = self.map.scans[0]
         self.scan.load_diffractogram('test-sample-frames/LMO-sample-data.plt')
 
     def test_metric(self):
@@ -135,7 +141,6 @@ class LMOSolidSolutionTest(unittest.TestCase):
 
 class CycleTest(unittest.TestCase):
     def setUp(self):
-        # self.df = pd.read_csv()
         self.run = GalvanostatRun('electrochem/eclab-test-data.mpt',
                                   mass=0.022563)
         self.cycle = self.run.cycles[0]
@@ -316,7 +321,7 @@ class SlamFileTest(unittest.TestCase):
 class XRDScanTest(ElectrolabTestCase):
     def setUp(self):
         self.xrd_scan = XRDScan(filename='test-sample-frames/corundum.xye',
-                                material=CorundumMaterial())
+                                phase=Corundum)
 
     def test_remove_peak_from_df(self):
         xrd_scan = XRDScan(filename='test-sample-frames/map-0.plt')
@@ -439,7 +444,7 @@ class MapScanTest(unittest.TestCase):
         xrdMap = Map(scan_time=10,
                      two_theta_range=(10, 20))
         self.scan = MapScan(Cube(1, 0, -1), xrd_map=xrdMap, filebase="map-0",
-                            material=CorundumMaterial())
+                            phase=Corundum())
         self.scan.sample = DummyMap(scan_time=10,
                                     two_theta_range=(10, 20))
 
@@ -543,10 +548,9 @@ class ReflectionTest(unittest.TestCase):
 
 class PhaseTest(ElectrolabTestCase):
     def setUp(self):
-        self.phase = CorundumPhase()
-        self.corundum = CorundumMaterial()
         self.corundum_scan = XRDScan(filename='test-sample-frames/corundum.xye',
-                                     material=self.corundum)
+                                     phase=Corundum())
+        self.phase = Corundum()
 
     def test_peak_by_hkl(self):
         reflection = self.phase.reflection_by_hkl('110')
@@ -556,9 +560,8 @@ class PhaseTest(ElectrolabTestCase):
         )
 
     def test_peak_list(self):
-        phase = self.corundum.phase_list[0]
-        phase.fit_peaks(scan=self.corundum_scan)
-        peak_list = phase.peak_list
+        self.phase.fit_peaks(scan=self.corundum_scan)
+        peak_list = self.phase.peak_list
         two_theta_list = [peak.center_kalpha for peak in peak_list]
         hkl_list = [peak.reflection.hkl_string for peak in peak_list]
         self.assertApproximatelyEqual(
@@ -583,8 +586,7 @@ class ExperimentalDataTest(ElectrolabTestCase):
     These tests compare results to experimentally determined values.
     """
     def setUp(self):
-        self.material = CorundumMaterial()
-        self.phase = self.material.phase_list[0]
+        self.phase = Corundum()
 
     def test_predicted_peak_positions(self):
         # Predicted peaks were calculated using celref with the R-3C space group
@@ -605,7 +607,7 @@ class ExperimentalDataTest(ElectrolabTestCase):
 
     def test_mean_square_error(self):
         scan = XRDScan(filename='test-sample-frames/corundum.xye',
-                           material=self.material)
+                       phase=self.phase)
         scan.fit_peaks()
         rms_error = self.phase.peak_rms_error(scan=scan)
         # Check that the result is close to the value from celref
@@ -617,7 +619,7 @@ class ExperimentalDataTest(ElectrolabTestCase):
     def test_refine_corundum(self):
         # Results take from celref using corundum standard
         scan = XRDScan(filename='test-sample-frames/corundum.xye',
-                           material=self.material)
+                       phase=Corundum())
         residuals = self.phase.refine_unit_cell(scan=scan,
                                                 quiet=True)
         unit_cell_parameters = self.phase.unit_cell.cell_parameters

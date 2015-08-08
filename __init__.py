@@ -8,20 +8,20 @@ sys.path.append(os.path.dirname(__file__))
 from xrd.peak import XRDPeak
 # from xrdpeak import PeakFit
 
-from materials.unitcell import CubicUnitCell, HexagonalUnitCell, TetragonalUnitCell
+from phases.unitcell import CubicUnitCell, HexagonalUnitCell, TetragonalUnitCell
+from phases import standards, lmo
 
 from plots import new_axes, big_axes, dual_axes, plot_scans
 
 import filters
 
-from refinement.refinement import FullProfProfileRefinement
+from refinement.fullprof import ProfileMatch
 
-from materials import material as materials
-
+from xrd.reflection import Reflection
 from xrd.scan import XRDScan, align_scans
 
 from mapping.coordinates import Cube
-from mapping.map import Map, DummyMap
+from mapping.map import Map, DummyMap, PeakPositionMap, PhaseRatioMap, FwhmMap
 
 # Electrochemistry methods and classes
 from electrochem.galvanostatrun import GalvanostatRun

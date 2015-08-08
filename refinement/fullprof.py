@@ -4,7 +4,7 @@ import pandas as pd
 
 import plots
 
-class FullProfProfileRefinement():
+class ProfileMatch():
 
     def __init__(self, filename):
         self.filename = filename

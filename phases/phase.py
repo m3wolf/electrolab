@@ -14,7 +14,8 @@ class Phase():
     reflection_list = [] # Predicted peaks by crystallography
 
     def __repr__(self):
-        return "<{}: {}>".format(self.__class__.__name__, self.name)
+        name = getattr(self, 'name', '[blank]')
+        return "<{}: {}>".format(self.__class__.__name__, name)
 
     def reflection_by_hkl(self, hkl_input):
         for reflection in self.reflection_list:
@@ -82,8 +83,8 @@ class Phase():
         peak_list = getattr(self, '_peak_list', None)
         if peak_list is None:
             # Peak fitting has not been performed, raise an error
-            # msg = 'Peak fitting has not been performed. Please run {cls}.fit_peaks method'
-            # print(msg.format(cls=self.__class__.__name__))
+            msg = 'Peak fitting has not been performed. Please run {cls}.fit_peaks method'
+            print(msg.format(cls=self.__class__.__name__))
             # raise exceptions.PeakFitError(msg.format(cls=self.__class__.__name__))
             peak_list = []
         return peak_list
@@ -116,6 +117,15 @@ class Phase():
                     msg = "peak could not be fit for {}.".format(reflection)
                     print(msg)
         return self.peak_list
+
+    def highlight_peaks(self, ax, color='green'):
+        """Highlight the expected peak corresponding to this phase."""
+        alpha = 0.15
+        # Highlight each peak in this phase
+        for reflection in self.reflection_list:
+            two_theta = reflection.two_theta_range
+            ax.axvspan(two_theta[0], two_theta[1], color=color, alpha=alpha)
+        return ax
 
     def peak_rms_error(self, scan, unit_cell=None):
         diffs = []

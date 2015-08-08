@@ -3,7 +3,6 @@
 import os
 
 import numpy as np
-from scipy.interpolate import UnivariateSpline
 import pandas as pd
 from matplotlib import pyplot
 
@@ -11,7 +10,8 @@ import exceptions
 import plots
 from filters import fourier_transform
 from xrd.tube import tubes
-from xrd.peak import remove_peak_from_df
+from refinement.native import NativeRefinement
+from refinement.fullprof import ProfileMatch as ProfileMatch
 import adapters
 
 def align_scans(scan_list, peak):
@@ -26,6 +26,11 @@ def align_scans(scan_list, peak):
         scan.shift_diffractogram(offset)
     return scan_list
 
+refinements = {
+    'native': NativeRefinement,
+    'fullprof': ProfileMatch,
+}
+
 class XRDScan():
     """
     A set of data collected on an x-ray diffractometer, 2theta dispersive.
@@ -35,9 +40,17 @@ class XRDScan():
     spline = None
     filename = None
     def __init__(self, filename=None, name=None,
-                 material=None, tube='Cu', wavelength=None):
-        self.material = material
+                 phases=[], phase=None, background_phases=[],
+                 tube='Cu', wavelength=None,
+                 refinement='native', two_theta_range=None):
+        self.phases = phases
+        if phase is not None:
+            self.phases.append(phase)
+        self.background_phases = background_phases
         self.cached_data = {}
+        Refinement = refinements[refinement]
+        self.refinement = Refinement(scan=self)
+        self._two_theta_range = two_theta_range
         # Determine wavelength from tube type
         self.tube = tubes[tube]
         self.wavelength = self.tube.kalpha
@@ -82,40 +95,15 @@ class XRDScan():
         df = adapter.dataframe
         self.name = adapter.sample_name
         # Select only the two-theta range of interest
-        if self.material:
-            rng = self.material.two_theta_range
+        if self._two_theta_range is not None:
+            rng = self._two_theta_range
             df = df.loc[rng[0]:rng[1]]
         # Store dataframe and set flags
         self._df = df
         self.diffractogram_is_loaded = True
-        # Subtract background
-        if self.material is not None:
-            self.subtract_background()
-        return self._df
-
-    def subtract_background(self):
-        """
-        Calculate the baseline for the diffractogram and generate a
-        background correction.
-        """
-        background = self.diffractogram.copy()
-        # Remove pre-indexed peaks for background fitting
-        if self.material is not None:
-            phase_list = self.material.phase_list + self.material.background_phases
-            for phase in phase_list:
-                for reflection in phase.reflection_list:
-                    remove_peak_from_df(reflection, background)
-        # Determine a background line from the noise without peaks
-        self.spline = UnivariateSpline(
-            x=background.index,
-            y=background.counts,
-            s=len(background.index)*25,
-            k=4
-        )
-        # Extrapolate the background for the whole spectrum
-        x = self._df.index
-        self._df['background'] = self.spline(x)
-        self._df['subtracted'] = self._df.counts - self._df.background
+        # Subtract background (only if peaks are within range)
+        if len(self.phases) > 0 or len(self.background_phases) > 0:
+            self.refinement.refine_background()
         return self._df
 
     @property
@@ -141,16 +129,14 @@ class XRDScan():
         if ax is None:
             ax = plots.big_axes()
         ax.plot(df.index, df.loc[:, 'counts'])
-        if self.has_background:
-            ax.plot(df.index, self.spline(df.index))
-        # Highlight peaks of interest
-        if self.material is not None:
-            self.material.highlight_peaks(ax=ax)
+        # Plot refinement
+        self.refinement.plot(ax=ax)
+        # if self.has_background:
+        #     ax.plot(df.index, df.background)
         # Plot fitted peaks
-        if self.material is not None:
-            for phase in self.material.phase_list:
-                for peak in phase.peak_list:
-                    peak.plot_overall_fit(ax=ax, background=self.spline)
+        for phase in self.phases:
+            for peak in phase.peak_list:
+                peak.plot_overall_fit(ax=ax, background=self.spline)
         # Set plot annotations
         ax.set_xlim(left=df.index.min(), right=df.index.max())
         ax.set_ylim(bottom=0)
@@ -287,7 +273,7 @@ class XRDScan():
         return fullWidth
 
     def fit_peaks(self):
-        for phase in self.material.phase_list:
+        for phase in self.phases:
             phase.fit_peaks(scan=self)
 
     def refine_unit_cells(self):

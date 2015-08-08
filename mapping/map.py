@@ -5,7 +5,7 @@ import os
 import pickle
 
 import jinja2
-from matplotlib import pyplot, cm, patches
+from matplotlib import pyplot, cm, patches, colors
 import numpy
 import pandas
 import scipy
@@ -13,8 +13,8 @@ import scipy
 from mapping.coordinates import Cube
 from mapping.mapscan import MapScan, DummyMapScan
 from mapping.gtkmapwindow import GtkMapWindow
-from materials.material import DummyMaterial
 from plots import new_axes, dual_axes
+from xrd.scan import refinements
 
 class Map():
     """
@@ -22,6 +22,9 @@ class Map():
     with center and diameter in millimeters. Collimator size given in mm.
     scan_time determines seconds spent at each detector position. Detector
     distance given in cm, frame_size in pixels.
+
+    The parameter 'phases' is a list of *uninitialized* Phase
+    classes. These will be initialized separately for each scan.
     """
     cmap_name = 'winter'
     THETA1_MIN=0 # Source limits based on geometry
@@ -31,33 +34,45 @@ class Map():
     camera_zoom = 6
     frame_step = 20 # How much to move detector by in degrees
     frame_width = 20 # 2-theta coverage of detector face
+    scan_time = 300 # In seconds
     scans = []
     hexagon_patches = None # Replaced by cached versions
+    metric_normalizer = colors.Normalize(0, 1, clip=True)
+    reliability_normalizer = colors.Normalize(0, 1, clip=True)
+    phases = []
+    background_phases = []
     def __init__(self, center=(0, 0), diameter=12.7, collimator=0.5,
                  two_theta_range=None, coverage=1,
                  scan_time=None, sample_name='unknown',
                  detector_distance=20, frame_size=1024,
-                 material=DummyMaterial()):
+                 phases=[], background_phases=[],
+                 refinement='native'):
         self.center = center
         self.diameter = diameter
-        self.material = material
         self.collimator = collimator
         self.detector_distance=detector_distance
         self.frame_size=frame_size
-        if scan_time is not None:
-            self.scan_time = scan_time # Seconds at each detector angle
-        elif material is not None:
-            self.scan_time = material.scan_time
-        else:
-            # Default value
-            self.scan_time = 60
-        if two_theta_range is not None:
-            self.two_theta_range = two_theta_range
-        elif material is not None:
-            self.two_theta_range = material.two_theta_range
-        else:
-            # Default value
-            self.two_theta_range = (10, 80)
+        if len(phases) > 0:
+            self.phases = phases
+        if len(background_phases) > 0:
+            self.background_phases = background_phases
+        if scan_time is not None: self.scan_time = scan_time
+        self.refinement = refinement
+        # if scan_time is not None:
+        #     self.scan_time = scan_time # Seconds at each detector angle
+        # elif material is not None:
+        #     self.scan_time = material.scan_time
+        # else:
+        #     # Default value
+        #     self.scan_time = 60
+        self.two_theta_range = two_theta_range
+        # if two_theta_range is not None:
+        #     self.two_theta_range = two_theta_range
+        # elif material is not None:
+        #     self.two_theta_range = material.two_theta_range
+        # else:
+        #     # Default value
+        #     self.two_theta_range = (10, 80)
         self.coverage = coverage
         self.sample_name = sample_name
         self.create_scans()
@@ -84,8 +99,15 @@ class Map():
         for idx, coords in enumerate(self.path(self.rows)):
             # Try and determine filename from the sample name
             fileBase = "map-{n:x}".format(n=idx)
-            new_scan = MapScan(location=coords, xrd_map=self,
-                               material=self.material, filebase=fileBase)
+            # Initialize list of crystallographic phases
+            phases = [Phase() for Phase in self.phases]
+            background_phases = [Phase() for Phase in self.background_phases]
+            # Create XRD Scan object
+            new_scan = MapScan(location=coords, xrd_map=self, filebase=fileBase,
+                               phases=phases,
+                               background_phases=background_phases,
+                               two_theta_range=self.two_theta_range,
+                               refinement=self.refinement)
             self.scans.append(new_scan)
 
     def scan(self, cube):
@@ -282,6 +304,40 @@ class Map():
         for scan in self.scans:
             scan.subtract_background()
 
+    def mapscan_metric(self, scan):
+        """
+        Calculate a mapping value from a MapScan. Should be implemented by
+        subclasses.
+        """
+        raise NotImplementedError
+
+    def mapscan_reliability(self, scan):
+        """
+        Use phase intensities to determine how likely a scan is to be
+        target material (versus background)."""
+        signal = 0
+        # Calculate signals
+        for phase in scan.phases:
+            two_theta_range = phase.diagnostic_reflection.two_theta_range
+            if scan.contains_peak(two_theta_range=two_theta_range):
+                signal += scan.peak_area(two_theta_range)
+        # Calculate background signal
+        background = 0
+        for Phase in self.background_phases:
+            phase = Phase()
+            if phase.diagnostic_reflection is not None:
+                two_theta_range = phase.diagnostic_reflection.two_theta_range
+                background += scan.peak_area(two_theta_range)
+        if background == 0:
+            # No background peaks available
+            reliability = 1
+        else:
+            # Compute reliability from signal to background
+            totalIntensity = signal + background
+            intensityModifier = colors.Normalize(0.15, 0.5, clip=True)(totalIntensity)
+            reliability = intensityModifier * signal / (signal+background)
+        return reliability
+
     def calculate_metrics(self):
         """Force recalculation of all metrics in the map."""
         for scan in self.scans:
@@ -331,11 +387,10 @@ class Map():
         self.scans = []
         # Restore each scan
         for idx, dataDict in enumerate(data['scans']):
-            # scan = self.scans[idx]
             newScan = MapScan(location=dataDict['cube_coords'],
                               xrd_map=self,
-                              material=self.material,
-                              filebase=dataDict['filebase'])
+                              filebase=dataDict['filebase'],
+                              refinement=self.refinement)
             newScan.data_dict = dataDict
             self.scans.append(newScan)
 
@@ -391,7 +446,8 @@ class Map():
             bulk_diffractogram.plot(ax=ax)
         else:
             print("No bulk diffractogram data to plot")
-        self.material.highlight_peaks(ax=ax)
+        # Highlight peaks
+        self.scans[0].refinement.highlight_peaks(ax=ax)
         ax.set_xlabel(r'$2\theta$')
         ax.set_ylabel('counts')
         ax.set_title('Bulk diffractogram')
@@ -427,7 +483,7 @@ class Map():
         # Add circle for theoretical edge
         self.draw_edge(ax, color='blue')
         # Add colormap to the side of the axes
-        mappable = cm.ScalarMappable(norm=self.material.metric_normalizer, cmap=cmap)
+        mappable = cm.ScalarMappable(norm=self.metric_normalizer, cmap=cmap)
         mappable.set_array(numpy.arange(0, 2))
         pyplot.colorbar(mappable, ax=ax)
         return ax
@@ -532,9 +588,9 @@ class Map():
 
     def plot_histogram(self, ax=None):
         metrics = [scan.metric for scan in self.scans]
-        minimum = self.material.metric_normalizer.vmin
+        minimum = self.metric_normalizer.vmin
         # minimum = min(metrics)
-        maximum = self.material.metric_normalizer.vmax
+        maximum = self.metric_normalizer.vmax
         # maximum = max(metrics)
         metrics = numpy.clip(metrics, minimum, maximum)
         weights = [scan.reliability for scan in self.scans]
@@ -572,6 +628,13 @@ class DummyMap(Map):
         )
         return image
 
+    def mapscan_metric(self, scan):
+        # Just return the distance from bottom left to top right
+        p = scan.cube_coords[0]
+        rows = scan.xrd_map.rows
+        r = p/2/rows + 0.5
+        return r
+
     def plot_map(self, *args, **kwargs):
         # Ensure that "diffractogram is loaded" for each scan
         for scan in self.scans:
@@ -585,5 +648,88 @@ class DummyMap(Map):
             # Try and determine filename from the sample name
             fileBase = "map-{n:x}".format(n=idx)
             new_scan = DummyMapScan(location=coords, xrd_map=self,
-                                    material=self.material, filebase=fileBase)
+                                    filebase=fileBase)
             self.scans.append(new_scan)
+
+
+class PeakPositionMap(Map):
+    """A map based on the two-theta position of the diagnostic reflection
+    in the first phase.
+    """
+
+    def mapscan_metric(self, scan):
+        """
+        Return the 2θ difference of self.peak1 and self.peak2. Peak
+        difference is used to overcome errors caused by shifter
+        patterns.
+        """
+        main_phase = scan.phases[0]
+        two_theta_range = main_phase.diagnostic_reflection.two_theta_range
+        metric = scan.peak_position(two_theta_range)
+        return metric
+
+class PhaseRatioMap(Map):
+    def mapscan_metric(self, scan):
+        """
+        Compare the ratio of two peaks, one for discharged and one for
+        charged material.
+        """
+        # Integrate peaks
+        area1 = self._phase_signal(scan=scan, phase=scan.phases[0])
+        area2 = self._phase_signal(scan=scan, phase=scan.phases[1])
+        # Compare areas of the two peaks
+        ratio = area1/(area1+area2)
+        return ratio
+
+    def mapscan_reliability(self, scan):
+        """Determine the maximum total intensity of signal peaks."""
+        area1 = self._phase_signal(scan=scan, phase=scan.phases[0])
+        area2 = self._phase_signal(scan=scan, phase=scan.phases[1])
+        return area1+area2
+
+    def _phase_signal(self, scan, phase):
+        peak = phase.diagnostic_reflection.two_theta_range
+        area = scan.peak_area(peak)
+        return area
+
+    def _peak_position(self, scan, phase):
+        peak = phase.diagnostic_reflection.two_theta_range
+        angle = scan.peak_position(peak)
+        return angle
+
+    def metric_details(self, scan):
+        """
+       Return a string with the measured areas of the two peaks.
+       """
+        area1 = self._phase_signal(scan=scan, phase=self.phase_list[0])
+        angle1 = self._peak_position(scan=scan, phase=self.phase_list[0])
+        area2 = self._phase_signal(scan=scan, phase=self.phase_list[1])
+        angle2 = self._peak_position(scan=scan, phase=self.phase_list[1])
+        template = "Area 1 ({angle1:.02f}°): {area1:.03f}\nArea 2 ({angle2:.02f}°): {area2:.03f}\nSum: {total:.03f}"
+        msg = template.format(area1=area1, angle1=angle1,
+                              area2=area2, angle2=angle2,
+                              total=area1+area2)
+        return msg
+
+
+class FwhmMap(Map):
+    def mapscan_metric(self, scan):
+        """
+        Return the full-width half-max of the diagnostic peak in the first
+        phase.
+        """
+        peak_range = self.phase_list[0].diagnostic_reflection.two_theta_range
+        fwhm = scan.peak_fwhm(peak_range)
+        return fwhm
+
+class IORMap(Map):
+    """One-off material for submitting an image of the Image of Research
+    competition at UIC."""
+    metric_normalizer = colors.Normalize(0, 1, clip=True)
+    reliability_normalizer = colors.Normalize(2.3, 4.5, clip=True)
+    charged_peak = '331'
+    discharged_peak = '400'
+    reliability_peak = '400'
+    def mapscan_metric(self, scan):
+        area = self.peak_area(scan, self.peak_list[self.charged_peak])
+        return area
