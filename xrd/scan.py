@@ -43,9 +43,10 @@ class XRDScan():
                  phases=[], phase=None, background_phases=[],
                  tube='Cu', wavelength=None,
                  refinement='native', two_theta_range=None):
-        self.phases = phases
         if phase is not None:
-            self.phases.append(phase)
+            self.phases = [phase]
+        else:
+            self.phases = phases
         self.background_phases = background_phases
         self.cached_data = {}
         Refinement = refinements[refinement]
@@ -213,17 +214,7 @@ class XRDScan():
 
     def peak_area(self, two_theta_range):
         """Integrated area for the given peak."""
-        fullDF = self.diffractogram
-        # Get peak dataframe for integration
-        if self.contains_peak(two_theta_range):
-            peakDF = fullDF.loc[
-                two_theta_range[0]:two_theta_range[1],
-                'subtracted'
-            ]
-            # Integrate peak
-            area = np.trapz(x=peakDF.index, y=peakDF)
-        else:
-            area = 0
+        area = self.refinement.net_area(two_theta_range)
         return area
 
     def peak_position(self, twotheta_range):

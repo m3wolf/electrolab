@@ -6,8 +6,10 @@ from xrd.reflection import Reflection
 
 # Corundum standard
 class Corundum(Phase):
+    name = 'corundum'
     unit_cell = HexagonalUnitCell(a=4.75, c=12.982)
-    name='corundum'
+    spacegroup = 'R-3c'
+    fullprof_spacegroup = 'R -3 C'
     diagnostic_hkl = '104'
     reflection_list = [
         Reflection((25, 27), '012'),
@@ -18,6 +20,11 @@ class Corundum(Phase):
         Reflection((52, 54), '024'),
         Reflection((56, 59), '116'),
     ]
+    # Profile peak-width parameters (fwhm = u*(tan θ)^2 + v*tan θ + w)
+    u = 0
+    v = 0
+    w = 0
+
 
 class Aluminum(Phase):
     name = 'aluminum'

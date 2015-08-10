@@ -12,6 +12,9 @@ from xrd.reflection import hkl_to_tuple
 class Phase():
     """A crystallographic phase that can be found in a Material."""
     reflection_list = [] # Predicted peaks by crystallography
+    spacegroup = '' # To be subclassed
+    scale_factor = 1 # Contribution to the overall pattern in refinement
+    eta = 0.5 # Pseudo-voigt peak-shape balance between gaussian/cauchy fit
 
     def __repr__(self):
         name = getattr(self, 'name', '[blank]')

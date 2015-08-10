@@ -19,6 +19,23 @@ from xrd.reflection import Reflection, hkl_to_tuple
 from electrochem.galvanostatrun import GalvanostatRun
 from adapters.bruker_raw_file import BrukerRawFile
 from adapters.bruker_brml_file import BrukerBrmlFile
+from refinement import fullprof
+
+
+# Some phase definitions for testing
+class LMOHighV(CubicLMO):
+    unit_cell = CubicUnitCell(a=8.05)
+    diagnostic_hkl = '333'
+    reflection_list = [
+        Reflection((58.5, 59.3), '333')
+    ]
+
+class LMOMidV(CubicLMO):
+    unit_cell = CubicUnitCell(a=8.13)
+    diagnostic_hkl = '333'
+    reflection_list = [
+        Reflection((59.3, 59.9), '333')
+    ]
 
 
 class ElectrolabTestCase(unittest.TestCase):
@@ -137,6 +154,37 @@ class LMOSolidSolutionTest(unittest.TestCase):
         self.assertTrue(
             reliability < 0.1,
             'Reliability {} is not < 0.1'.format(reliability)
+        )
+
+
+class NativeRefinementTest(ElectrolabTestCase):
+    def setUp(self):
+        self.scan = XRDScan(
+            'test-sample-frames/lmo-two-phase.brml',
+            phases=[LMOHighV(), LMOMidV()], refinement='native'
+        )
+        self.refinement = self.scan.refinement
+
+    def test_two_phase_ratio(self):
+        refinement = self.refinement
+        refinement.refine_scale_factors()
+        self.assertTrue(
+            refinement.is_refined['scale_factors']
+        )
+        self.assertApproximatelyEqual(
+            self.scan.phases[0].scale_factor,
+            275
+        )
+        self.assertApproximatelyEqual(
+            self.scan.phases[1].scale_factor,
+            205
+        )
+
+    def test_peak_area(self):
+        reflection = LMOMidV().diagnostic_reflection
+        self.assertApproximatelyEqual(
+            self.refinement.net_area(reflection.two_theta_range),
+            205
         )
 
 class CycleTest(unittest.TestCase):
@@ -676,6 +724,30 @@ class BrukerBrmlTestCase(unittest.TestCase):
         importedDf = self.adapter.dataframe
         self.assertTrue(
             'counts' in importedDf.columns
+        )
+
+
+class FullProfProfileTest(ElectrolabTestCase):
+    def setUp(self):
+        self.scan = el.XRDScan('test-sample-frames/corundum.brml',
+                               phase=Corundum())
+        self.refinement = fullprof.ProfileMatch(scan=self.scan)
+
+    def test_jinja_context(self):
+        context = self.refinement.pcrfile_context()
+        self.assertEqual(len(context['phases']), 1)
+        phase1 = context['phases'][0]
+        self.assertEqual(
+            phase1['spacegroup'],
+            'R -3 C'
+        )
+        self.assertEqual(
+            phase1['values']['a'],
+            self.scan.phases[0].unit_cell.a
+        )
+        self.assertEqual(
+            phase1['values']['u'],
+            self.scan.phases[0].u
         )
 
 

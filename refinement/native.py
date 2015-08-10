@@ -1,11 +1,18 @@
 # -*- coding: utf-8 -*-
 
+import numpy
 from scipy.interpolate import UnivariateSpline
+import pandas
 
 import plots
 from xrd.peak import remove_peak_from_df
 
 class NativeRefinement():
+    is_refined = {
+        'background': False,
+        'unit_cells': False,
+        'scale_factors': False,
+    }
 
     def __init__(self, scan):
         self.scan = scan
@@ -14,7 +21,12 @@ class NativeRefinement():
         pass
 
     def refine_scale_factors(self):
-        pass
+        # Scale factor is just the ratio of peak area of diagnostic reflection
+        for phase in self.scan.phases:
+            reflection = phase.diagnostic_reflection
+            area = self.net_area(two_theta_range=reflection.two_theta_range)
+            phase.scale_factor = area
+        self.is_refined['scale_factors'] = True
 
     def refine_background(self):
         originalData = self.scan.diffractogram
@@ -51,6 +63,25 @@ class NativeRefinement():
         # Highlight peaks
         self.highlight_peaks(ax=ax)
         return ax
+
+    def net_area(self, two_theta_range):
+        """Area under the scan diffractogram after background subtraction."""
+        fullDF = self.scan.diffractogram
+        # Get peak dataframe for integration
+        if self.scan.contains_peak(two_theta_range):
+            peakDF = fullDF.loc[
+                two_theta_range[0]:two_theta_range[1],
+                'counts'
+            ]
+            # Subtract background
+            background = pandas.Series(self.spline(peakDF.index),
+                                       index=peakDF.index)
+            netDF = peakDF - background
+            # Integrate peak
+            area = numpy.trapz(x=netDF.index, y=netDF)
+        else:
+            area = 0
+        return area
 
     def highlight_peaks(self, ax):
         color_list = [

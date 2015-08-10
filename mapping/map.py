@@ -58,21 +58,7 @@ class Map():
             self.background_phases = background_phases
         if scan_time is not None: self.scan_time = scan_time
         self.refinement = refinement
-        # if scan_time is not None:
-        #     self.scan_time = scan_time # Seconds at each detector angle
-        # elif material is not None:
-        #     self.scan_time = material.scan_time
-        # else:
-        #     # Default value
-        #     self.scan_time = 60
         self.two_theta_range = two_theta_range
-        # if two_theta_range is not None:
-        #     self.two_theta_range = two_theta_range
-        # elif material is not None:
-        #     self.two_theta_range = material.two_theta_range
-        # else:
-        #     # Default value
-        #     self.two_theta_range = (10, 80)
         self.coverage = coverage
         self.sample_name = sample_name
         self.create_scans()
@@ -675,10 +661,14 @@ class PhaseRatioMap(Map):
         charged material.
         """
         # Integrate peaks
-        area1 = self._phase_signal(scan=scan, phase=scan.phases[0])
-        area2 = self._phase_signal(scan=scan, phase=scan.phases[1])
+        # area1 = self._phase_signal(scan=scan, phase=scan.phases[0])
+        # area2 = self._phase_signal(scan=scan, phase=scan.phases[1])
+        phase1 = scan.phases[0]
+        phase2 = scan.phases[1]
         # Compare areas of the two peaks
-        ratio = area1/(area1+area2)
+        # ratio = (area1)/(area1+area2)
+        # Compare ratio of the two phases after refinement
+        ratio = phase1.scale_factor/(phase1.scale_factor+phase2.scale_factor)
         return ratio
 
     def mapscan_reliability(self, scan):
