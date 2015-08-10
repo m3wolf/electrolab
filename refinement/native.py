@@ -6,16 +6,9 @@ import pandas
 
 import plots
 from xrd.peak import remove_peak_from_df
+from refinement.base import BaseRefinement
 
-class NativeRefinement():
-    is_refined = {
-        'background': False,
-        'unit_cells': False,
-        'scale_factors': False,
-    }
-
-    def __init__(self, scan):
-        self.scan = scan
+class NativeRefinement(BaseRefinement):
 
     def refine_unit_cells(self):
         pass

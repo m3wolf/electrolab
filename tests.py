@@ -742,12 +742,27 @@ class FullProfProfileTest(ElectrolabTestCase):
             'R -3 C'
         )
         self.assertEqual(
-            phase1['values']['a'],
+            phase1['params']['a'],
             self.scan.phases[0].unit_cell.a
         )
         self.assertEqual(
-            phase1['values']['u'],
+            phase1['params']['u'],
             self.scan.phases[0].u
+        )
+        self.assertEqual(
+            context['bg_coeffs'],
+            self.refinement.bg_coeffs
+        )
+
+    def test_refine_background(self):
+        self.refinement.refine_background()
+        self.assertTrue(
+            self.refinement.is_refined['background']
+        )
+        # Based on manual refinement in fullprof (winplotr-2006)
+        self.assertEqual(
+            self.refinement.bg_coeffs,
+            [0.635, 0.566, 1.916, -1.954, -2.994, 3.585]
         )
 
 

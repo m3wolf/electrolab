@@ -12,7 +12,7 @@ from filters import fourier_transform
 from xrd.tube import tubes
 from refinement.native import NativeRefinement
 from refinement.fullprof import ProfileMatch as ProfileMatch
-import adapters
+from adapters.shortcuts import adapter_from_filename
 
 def align_scans(scan_list, peak):
     """Align each scan to the peak in the given range. The first scan in
@@ -76,23 +76,13 @@ class XRDScan():
             df = self.load_diffractogram(filename)
         return df
 
-    def load_diffractogram(self, filename):
+    def save_diffractogram(self, filename):
         # Determine file type from extension
-        fileBase, extension = os.path.splitext(filename)
-        # Prepare adapter for importing the file
-        ADAPTERS = {
-            '.plt': adapters.BrukerPltFile,
-            '.xye': adapters.BrukerXyeFile,
-            '.brml': adapters.BrukerBrmlFile
-        }
-        try:
-            Adapter = ADAPTERS[extension]
-        except KeyError:
-            # Unknown file format, raise exception
-            msg = 'Unknown file format {}.'.format(extension)
-            raise exceptions.FileFormatError(msg)
-        else:
-            adapter = Adapter(filename)
+        adapter = adapter_from_filename(filename)
+        return adapter.write_diffractogram(scan=self)
+
+    def load_diffractogram(self, filename):
+        adapter = adapter_from_filename(filename)
         df = adapter.dataframe
         self.name = adapter.sample_name
         # Select only the two-theta range of interest

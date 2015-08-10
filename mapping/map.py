@@ -669,14 +669,14 @@ class PhaseRatioMap(Map):
         charged material.
         """
         # Integrate peaks
-        # area1 = self._phase_signal(scan=scan, phase=scan.phases[0])
-        # area2 = self._phase_signal(scan=scan, phase=scan.phases[1])
+        area1 = self._phase_signal(scan=scan, phase=scan.phases[0])
+        area2 = self._phase_signal(scan=scan, phase=scan.phases[1])
         phase1 = scan.phases[0]
         phase2 = scan.phases[1]
         # Compare areas of the two peaks
-        # ratio = (area1)/(area1+area2)
+        ratio = (area1)/(area1+area2)
         # Compare ratio of the two phases after refinement
-        ratio = phase1.scale_factor/(phase1.scale_factor+phase2.scale_factor)
+        # ratio = phase1.scale_factor/(phase1.scale_factor+phase2.scale_factor)
         return ratio
 
     def mapscan_reliability(self, scan):
