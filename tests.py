@@ -47,7 +47,7 @@ class ElectrolabTestCase(unittest.TestCase):
                 self.assertApproximatelyEqual(a, b, tolerance=tolerance)
         else:
             diff = abs(actual-expected)
-            acceptable_diff = expected * tolerance
+            acceptable_diff = abs(expected * tolerance)
             if diff > acceptable_diff:
                 msg = "{actual} is not close to {expected}"
                 self.fail(msg=msg.format(actual=actual, expected=expected))
@@ -729,9 +729,23 @@ class BrukerBrmlTestCase(unittest.TestCase):
 
 class FullProfProfileTest(ElectrolabTestCase):
     def setUp(self):
+        # Base parameters determine from manual refinement
+        class CorundumRefinement(fullprof.ProfileMatch):
+            bg_coeffs = [1.346, -1.106, 1.185, 1.573, -3.028, 1.035]
+
         self.scan = el.XRDScan('test-sample-frames/corundum.brml',
                                phase=Corundum())
-        self.refinement = fullprof.ProfileMatch(scan=self.scan)
+        corundum = self.scan.phases[0]
+        corundum.unit_cell.a = 4.758637
+        corundum.unit_cell.c = 12.991814
+        corundum.u = 0.00767
+        corundum.v = -0.003524
+        corundum.w = 0.002903
+        corundum.eta = 0.511090
+        corundum.isotropic_temp = 33.314
+        self.refinement = CorundumRefinement(scan=self.scan)
+        self.refinement.zero = 0
+        self.refinement.bg_coeffs = [1.346, -1.106, 1.185, 1.573, -3.028, 1.035]
 
     def test_jinja_context(self):
         context = self.refinement.pcrfile_context()
@@ -742,11 +756,11 @@ class FullProfProfileTest(ElectrolabTestCase):
             'R -3 C'
         )
         self.assertEqual(
-            phase1['params']['a'],
-            self.scan.phases[0].unit_cell.a
+            phase1['vals']['a'],
+            4.758637
         )
         self.assertEqual(
-            phase1['params']['u'],
+            phase1['vals']['u'],
             self.scan.phases[0].u
         )
         self.assertEqual(
@@ -755,14 +769,30 @@ class FullProfProfileTest(ElectrolabTestCase):
         )
 
     def test_refine_background(self):
+        # Set bg coeffs to something wrong
+        self.refinement.bg_coeffs = [0, 0, 0, 0, 0, 0]
         self.refinement.refine_background()
         self.assertTrue(
             self.refinement.is_refined['background']
         )
         # Based on manual refinement in fullprof (winplotr-2006)
-        self.assertEqual(
+        self.assertTrue(
+            0 < self.refinement.chi_squared < 5
+        )
+        self.assertApproximatelyEqual(
             self.refinement.bg_coeffs,
-            [0.635, 0.566, 1.916, -1.954, -2.994, 3.585]
+            [129.92, -105.82, 108.32, 151.85, -277.55, 91.911]
+        )
+
+    @unittest.expectedFailure
+    def test_refine_displacement(self):
+        # Set sample displacement to something wrong
+        self.refinement.displacement = 0
+        self.refinement.refine_displacement()
+        # Based on manual refinement in fullprof
+        self.assertApproximatelyEqual(
+            self.refinement.displacement,
+            0.0006
         )
 
 

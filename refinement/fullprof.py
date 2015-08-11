@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from subprocess import call
+import re
 import os
 import sys
 import tempfile
@@ -15,6 +16,9 @@ from refinement.base import BaseRefinement
 class ProfileMatch(BaseRefinement):
     bg_coeffs = [0, 0, 0, 0, 0, 0] # Sixth degree polynomial
     fullprof_path = '/home/mwolf/bin/fullprof'
+    zero = 0 # Instrument non-centrality
+    displacement = 0.00032 # cos (θ) dependence
+    transparency = -0.00810 # sin (θ) dependence
 
     class Mode(Enum):
         """
@@ -44,17 +48,17 @@ class ProfileMatch(BaseRefinement):
         # Prepare pcr file
         env = jinja2.Environment(loader=jinja2.PackageLoader('electrolab', ''))
         template = env.get_template('refinement/fullprof-template.pcr')
-        basename = os.path.splitext(self.scan.filename)[0]
-        pcrfilename = basename + '.pcr'
+        pcrfilename = self.basename + '.pcr'
         with open(pcrfilename, mode='w') as pcrfile:
             pcrfile.write(template.render(**context))
         # Write datafile
-        datafilename = basename + '.dat'
+        datafilename = self.basename + '.dat'
         self.scan.save_diffractogram(datafilename)
         # Execute refinement
         with open(os.devnull, 'w') as devnull:
-            result = call(['fp2k', pcrfilename]) # , stdout=devnull)
+            result = call(['fp2k', pcrfilename], stdout=devnull)
         # Read refined values
+        self.load_results()
 
     def refine_background(self):
         """
@@ -62,13 +66,35 @@ class ProfileMatch(BaseRefinement):
         """
         # Set codewords on background parameters
         context = self.pcrfile_context()
-        context['bg_codewords'] = [1, 1, 1, 1, 1, 1]
+        context['bg_codewords'] = [11, 21, 31, 41, 51, 61]
+        # context['bg_codewords'] = [0, 0, 0, 0, 0, 0]
         context['refinement_mode'] = self.Mode.constant_scale
+        context['num_params'] = 6
         # Execute refinement
         self.run_fullprof(context=context)
-        # Load refined background parameters
         # Set status flag
         self.is_refined['background'] = True
+
+    def load_results(self, filename=None):
+        """
+        After a refinement, load the result (.sum) file and restore parameters.
+        """
+        if filename is None:
+            filename = self.basename + '.sum'
+        with open(filename) as summaryfile:
+            summary = summaryfile.read()
+        # Search for final Χ² value
+        chi_re = re.compile('Chi2:\s+([0-9.]+)')
+        chi_squared = float(chi_re.search(summary).group(1))
+        self.chi_squared = chi_squared
+        # Search for the background coeffs
+        bg_re = re.compile('Background Polynomial Parameters ==>((?:\s+[-0-9.]+)+)')
+        bg_results = bg_re.search(summary).group(1).split()
+        # Even values are coeffs
+        bg_coeffs = [float(x) for x in bg_results[::2]]
+        # Odd values are standard deviations
+        bg_stdevs = [float(x) for x in bg_results[1::2]]
+        self.bg_coeffs = bg_coeffs
 
     def pcrfile_context(self):
         """Generate a dict of values to put into a pcr input file."""
@@ -77,11 +103,12 @@ class ProfileMatch(BaseRefinement):
         phases = []
         for phase in self.scan.phases:
             unitcell = phase.unit_cell
-            params = {
+            vals = {
                 'a': unitcell.a, 'b': unitcell.b, 'c': unitcell.c,
                 'alpha': unitcell.alpha, 'beta': unitcell.beta, 'gamma': unitcell.gamma,
                 'u': phase.u, 'v': phase.v, 'w': phase.w,
-                'scale': phase.scale_factor, 'eta': phase.eta
+                'scale': phase.scale_factor, 'eta': phase.eta,
+                'Bov': phase.isotropic_temp,
             }
             # Codewords control which parameters are refined and in what order 
             codewords = {
@@ -93,11 +120,16 @@ class ProfileMatch(BaseRefinement):
             phases.append({
                 'name': 'hello',
                 'spacegroup': phase.fullprof_spacegroup,
-                'params': params,
+                'vals': vals,
                 'codewords': codewords
             })
         context['phases'] = phases
+        # Background corrections
         context['bg_coeffs'] = self.bg_coeffs
+        # Instrument corrections
+        context['zero'] = self.zero
+        context['displacement'] = self.displacement
+        context['transparency'] = self.transparency
         return context
 
     def plot(self, ax=None):

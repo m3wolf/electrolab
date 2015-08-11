@@ -39,7 +39,7 @@ class XRDScan():
     diffractogram_is_loaded = False
     spline = None
     filename = None
-    def __init__(self, filename=None, name=None,
+    def __init__(self, filename='', name=None,
                  phases=[], phase=None, background_phases=[],
                  tube='Cu', wavelength=None,
                  refinement='native', two_theta_range=None):
@@ -57,8 +57,8 @@ class XRDScan():
         self.wavelength = self.tube.kalpha
         # Load diffractogram from file
         self.name = name
-        if filename is not None:
-            self.filename=filename
+        self.filename=filename
+        if len(filename) > 0:
             self.load_diffractogram(filename)
 
     def __repr__(self):

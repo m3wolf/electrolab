@@ -12,4 +12,3 @@ class FullProfDataFile():
         """
         df = scan.diffractogram
         result = df.to_csv(self.filename, columns=['counts'], sep=' ')
-        print(result)
