@@ -2,6 +2,8 @@
 
 import numpy as np
 
+import default_units
+
 class Cycle():
     """Data from one charge-discharge cycle."""
     def __init__(self, number, df):

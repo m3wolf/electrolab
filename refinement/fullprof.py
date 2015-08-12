@@ -15,6 +15,23 @@ import plots
 import exceptions
 from refinement.base import BaseRefinement
 
+def load_refined_diffractogram(filename):
+    df = pd.read_csv(filename, skiprows=3, sep='\t')
+    return df
+
+def plot_refinement(filename, ax=None):
+    if ax is None:
+        ax = plots.new_axes()
+    df = load_refined_diffractogram(filename=filename)
+    ax.plot(df[' 2Theta'], df['Yobs'])
+    ax.plot(df[' 2Theta'], df['Ycal'])
+    ax.plot(df[' 2Theta'], df['Yobs-Ycal'])
+    ax.set_title('Profile refinement {filename}'.format(filename=filename))
+    ax.set_xlim(
+        right=df[' 2Theta'].max()
+    )
+    return ax
+
 class ProfileMatch(BaseRefinement):
     bg_coeffs = [0, 0, 0, 0, 0, 0] # Sixth degree polynomial
     fullprof_path = '/home/mwolf/bin/fullprof'
@@ -33,8 +50,7 @@ class ProfileMatch(BaseRefinement):
 
     def calculated_diffractogram(self):
         """Read a pcf file and return the refinement as a dataframe."""
-        df = pd.read_csv(self.filename, skiprows=3, sep='\t')
-        return df
+        return load_refined_diffractogram(self.filename)
 
     def write_hkl_file(self, phase, filename):
         # Write separate hkl file for each phase
@@ -217,14 +233,4 @@ class ProfileMatch(BaseRefinement):
         return context
 
     def plot(self, ax=None):
-        if ax is None:
-            ax = plots.new_axes()
-        df = self.calculated_diffractogram()
-        ax.plot(df[' 2Theta'], df['Yobs'])
-        ax.plot(df[' 2Theta'], df['Ycal'])
-        ax.plot(df[' 2Theta'], df['Yobs-Ycal'])
-        ax.set_title('Profile refinement {filename}'.format(filename=self.filename))
-        ax.set_xlim(
-            right=df[' 2Theta'].max()
-        )
-        return ax
+        return plot_refinement(filename=self.filename, ax=ax)

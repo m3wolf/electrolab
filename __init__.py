@@ -5,6 +5,8 @@ import sys
 import os
 sys.path.append(os.path.dirname(__file__))
 
+import default_units
+
 from xrd.peak import XRDPeak
 # from xrdpeak import PeakFit
 
@@ -15,7 +17,7 @@ from plots import new_axes, big_axes, dual_axes, plot_scans
 
 import filters
 
-from refinement.fullprof import ProfileMatch
+from refinement import fullprof
 
 from xrd.reflection import Reflection
 from xrd.scan import XRDScan, align_scans

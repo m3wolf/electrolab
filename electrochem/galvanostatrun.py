@@ -3,9 +3,12 @@
 import re
 
 import pandas as pd
+import units
+import units.predefined
 
 from electrochem.cycle import Cycle
 from plots import new_axes
+import default_units
 
 def axis_label(key):
     axis_labels = {
@@ -17,8 +20,8 @@ def axis_label(key):
 
 class GalvanostatRun():
     """
-    Electrochemical experiment cycling on one channel.
-    Galvanostatic control potential limited (GPLC).
+    Electrochemical experiment cycling on one channel.  Galvanostatic
+    control potential limited (GPLC). Mass is assumed to be in grams.
     """
     cycles = []
 
@@ -36,7 +39,8 @@ class GalvanostatRun():
         else:
             # Get mass from eclab file
             self.mass = self.mass_from_file()
-        self._df.loc[:,'capacity'] = self._df.loc[:,'(Q-Qo)/mA.h']/self.mass
+        mass_g = default_units.mass(self.mass).num
+        self._df.loc[:,'capacity'] = self._df.loc[:,'(Q-Qo)/mA.h']/mass_g
         # Split the data into cycles, except the initial resting phase
         cycles = list(self._df.groupby('cycle number'))
         # Create Cycle objects for each cycle
@@ -63,16 +67,23 @@ class GalvanostatRun():
 
     def mass_from_file(self):
         """Read the mpt file and extract the sample mass"""
-        regexp = re.compile('^Mass of active material : ([0-9.]+) mg')
+        regexp = re.compile('^Mass of active material : ([0-9.]+) ([kmu]?g)')
         mass = None
         with open(self.filename, encoding='latin-1') as f:
             for line in f:
                 match = regexp.match(line)
                 if match:
+                    mass_num, mass_unit = match.groups()
                     # We found the match, now save it
-                    mass = float(match.groups()[0]) / 1000
+                    mass = units.unit(mass_unit)(float(match.groups()[0]))
                     break
         return mass
+
+    def charge_capacity(self, cycle=-1):
+        """
+        Return the charge capacity of the given cycle (default last).
+        """
+        return self.cycles[cycle].charge_capacity()
 
     def plot_cycles(self, xcolumn, ycolumn, ax=None):
         """Plot each electrochemical cycle"""

@@ -4,6 +4,7 @@ import math, unittest
 import os.path
 
 from matplotlib import colors
+from units import unit
 
 import exceptions
 import electrolab as el
@@ -83,7 +84,7 @@ class PeakTest(ElectrolabTestCase):
 
     def test_peak_fit(self):
         """This particular peak was not fit properly. Let's see why."""
-        peak = XRDPeak(reflection=Reflection((37, 39), '110'))
+        peak = XRDPeak(reflection=Reflection('110', (37, 39)))
         peakScan = XRDScan('test-sample-frames/corundum.xye',
                            phase=Corundum())
         df = peakScan.diffractogram[37:39]
@@ -207,7 +208,7 @@ class GalvanostatRunTest(unittest.TestCase):
     def test_read_mass(self):
         run = GalvanostatRun('electrochem/eclab-test-data.mpt')
         self.assertEqual(
-            run.mass, 0.02253
+            run.mass, unit('g')(0.02253)
         )
 
 class SlamFileTest(unittest.TestCase):
@@ -376,7 +377,7 @@ class XRDScanTest(ElectrolabTestCase):
         peakRange = (35, 40)
         df = xrd_scan.diffractogram
         peakIndex = df[peakRange[0]:peakRange[1]].index
-        remove_peak_from_df(Reflection(peakRange, '000'), df)
+        remove_peak_from_df(Reflection('000', peakRange), df)
         intersection = df.index.intersection(peakIndex)
         self.assertEqual(
             len(intersection),
