@@ -11,3 +11,6 @@ class PeakFitError(RefinementError):
 
 class FileFormatError(ValueError):
     pass
+
+class EmptyRefinementError(RefinementError):
+    pass

@@ -11,13 +11,31 @@ from xrd.reflection import hkl_to_tuple
 
 class Phase():
     """A crystallographic phase that can be found in a Material."""
+    name = None
     reflection_list = [] # Predicted peaks by crystallography
     spacegroup = '' # To be subclassed
+    fullprof_spacegroup = ''
     scale_factor = 1 # Contribution to the overall pattern in refinement
-    eta = 0.5 # Pseudo-voigt peak-shape balance between gaussian/cauchy fit
+    # Peak broadening due to temperature effects
+    isotropic_temp = 0
+    # Peak width parameters
+    u = 0.008
+    v = -0.004
+    w = 0.003
+    # Peak shape parameters
+    eta = 0.5
+    x = 0
+
+    def __str__(self):
+        name = self.name
+        if name is None:
+            name = 'generic phase'
+        return name
 
     def __repr__(self):
-        name = getattr(self, 'name', '[blank]')
+        name = self.name
+        if name is None:
+            name = '[blank]'
         return "<{}: {}>".format(self.__class__.__name__, name)
 
     def reflection_by_hkl(self, hkl_input):

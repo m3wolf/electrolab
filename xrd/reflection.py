@@ -24,12 +24,14 @@ def hkl_to_tuple(hkl_input):
 
 class Reflection():
     """An XRD reflection with a specific hkl value."""
-    def __init__(self, two_theta_range=(10, 80), hkl=(0, 0, 0)):
-        self.two_theta_range = two_theta_range
+    def __init__(self, hkl=(0, 0, 0), two_theta_range=(10, 80), multiplicity=1, intensity=100):
         h, k, l = hkl_to_tuple(hkl)
         self._h = h
         self._k = k
         self._l = l
+        self.multiplicity = multiplicity
+        self.intensity = intensity
+        self.two_theta_range = two_theta_range
 
     @property
     def hkl(self):

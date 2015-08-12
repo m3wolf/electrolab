@@ -27,14 +27,14 @@ class LMOHighV(CubicLMO):
     unit_cell = CubicUnitCell(a=8.05)
     diagnostic_hkl = '333'
     reflection_list = [
-        Reflection((58.5, 59.3), '333')
+        Reflection('333', (58.5, 59.3))
     ]
 
 class LMOMidV(CubicLMO):
     unit_cell = CubicUnitCell(a=8.13)
     diagnostic_hkl = '333'
     reflection_list = [
-        Reflection((59.3, 59.9), '333')
+        Reflection('333', (59.3, 59.9))
     ]
 
 
@@ -730,9 +730,6 @@ class BrukerBrmlTestCase(unittest.TestCase):
 class FullProfProfileTest(ElectrolabTestCase):
     def setUp(self):
         # Base parameters determine from manual refinement
-        class CorundumRefinement(fullprof.ProfileMatch):
-            bg_coeffs = [1.346, -1.106, 1.185, 1.573, -3.028, 1.035]
-
         self.scan = el.XRDScan('test-sample-frames/corundum.brml',
                                phase=Corundum())
         corundum = self.scan.phases[0]
@@ -741,11 +738,13 @@ class FullProfProfileTest(ElectrolabTestCase):
         corundum.u = 0.00767
         corundum.v = -0.003524
         corundum.w = 0.002903
+        corundum.x = 0.001124
         corundum.eta = 0.511090
         corundum.isotropic_temp = 33.314
-        self.refinement = CorundumRefinement(scan=self.scan)
-        self.refinement.zero = 0
-        self.refinement.bg_coeffs = [1.346, -1.106, 1.185, 1.573, -3.028, 1.035]
+        self.refinement = fullprof.ProfileMatch(scan=self.scan)
+        self.refinement.zero = -0.003820
+        self.refinement.displacement = 0.0012
+        self.refinement.bg_coeffs = [129.92, -105.82, 108.32, 151.85, -277.55, 91.911]
 
     def test_jinja_context(self):
         context = self.refinement.pcrfile_context()
@@ -767,32 +766,67 @@ class FullProfProfileTest(ElectrolabTestCase):
             context['bg_coeffs'],
             self.refinement.bg_coeffs
         )
+        self.assertEqual(
+            context['displacement_codeword'],
+            0
+        )
 
     def test_refine_background(self):
         # Set bg coeffs to something wrong
         self.refinement.bg_coeffs = [0, 0, 0, 0, 0, 0]
-        self.refinement.refine_background()
+        self.refinement.refine_background(keep_temp_files=True)
         self.assertTrue(
             self.refinement.is_refined['background']
         )
         # Based on manual refinement in fullprof (winplotr-2006)
         self.assertTrue(
-            0 < self.refinement.chi_squared < 5
+            0 < self.refinement.chi_squared < 10,
+            'Χ² is too high: {}'.format(self.refinement.chi_squared)
         )
         self.assertApproximatelyEqual(
             self.refinement.bg_coeffs,
             [129.92, -105.82, 108.32, 151.85, -277.55, 91.911]
         )
 
-    @unittest.expectedFailure
     def test_refine_displacement(self):
         # Set sample displacement to something wrong
         self.refinement.displacement = 0
         self.refinement.refine_displacement()
+        self.assertTrue(
+            0 < self.refinement.chi_squared < 10,
+            'Χ² is too high: {}'.format(self.refinement.chi_squared)
+        )
         # Based on manual refinement in fullprof
         self.assertApproximatelyEqual(
             self.refinement.displacement,
-            0.0006
+            0.0054
+        )
+
+
+class FullProfLmoTest(ElectrolabTestCase):
+    """Check refinement using data from LiMn2O4 ("NEI")"""
+    def setUp(self):
+        # Base parameters determine from manual refinement
+        class LMOMidV(CubicLMO):
+            unit_cell = CubicUnitCell(a=8.129)
+        class LMOHighV(CubicLMO):
+            unit_cell = CubicUnitCell(a=8.0489)
+        self.scan = el.XRDScan('test-sample-frames/lmo-two-phase.brml',
+                               phases=[LMOHighV(), LMOMidV()])
+        self.refinement = fullprof.ProfileMatch(scan=self.scan)
+
+    def test_scale_factors(self):
+        self.refinement.refine_scale_factors(keep_temp_files=True)
+        self.assertTrue(
+            self.refinement.is_refined['scale_factors']
+        )
+        self.assertApproximatelyEqual(
+            self.scan.phases[0].scale_factor,
+            0.00015
+        )
+        self.assertApproximatelyEqual(
+            self.scan.phases[1].scale_factor,
+            0.0003
         )
 
 

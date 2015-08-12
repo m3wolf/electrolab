@@ -12,13 +12,13 @@ class Corundum(Phase):
     fullprof_spacegroup = 'R -3 C'
     diagnostic_hkl = '104'
     reflection_list = [
-        Reflection((25, 27), '012'),
-        Reflection((34, 36), '104'),
-        Reflection((37, 39), '110'),
-        Reflection((41, 42.5), '006'),
-        Reflection((42.5, 44), '113'),
-        Reflection((52, 54), '024'),
-        Reflection((56, 59), '116'),
+        Reflection('012', (25, 27)),
+        Reflection('104', (34, 36)),
+        Reflection('110', (37, 39)),
+        Reflection('006', (41, 42.5)),
+        Reflection('113', (42.5, 44)),
+        Reflection('024', (52, 54)),
+        Reflection('116', (56, 59)),
     ]
     # Profile peak-width parameters (fwhm = u*(tan θ)^2 + v*tan θ + w)
     u = 0
@@ -30,9 +30,9 @@ class Aluminum(Phase):
     name = 'aluminum'
     diagnostic_hkl = '111'
     reflection_list = [
-        Reflection((37.3, 39), '111'),
-        Reflection((43.5, 45), '200'),
-        Reflection((63.5, 65.5), '220'),
-        Reflection((77, 80), '311'),
-        Reflection((81, 84), '222'),
+        Reflection('111', (37.3, 39)),
+        Reflection('200', (43.5, 45)),
+        Reflection('220', (63.5, 65.5)),
+        Reflection('311', (77, 80)),
+        Reflection('222', (81, 84)),
     ]

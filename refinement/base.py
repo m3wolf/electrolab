@@ -5,6 +5,7 @@ import os
 class BaseRefinement():
     # Status flags
     is_refined = {
+        'displacement': False,
         'background': False,
         'unit_cells': False,
         'scale_factors': False,
