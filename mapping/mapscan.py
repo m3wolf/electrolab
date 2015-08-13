@@ -23,11 +23,12 @@ class MapScan(XRDScan):
         self.cube_coords = location
         self.xrd_map = xrd_map
         self.filebase = filebase
+        result = super(MapScan, self).__init__(*args, **kwargs)
         self.filename = "{samplename}-frames/{filebase}.plt".format(
                 samplename=self.xrd_map.sample_name,
                 filebase=self.filebase,
         )
-        return super(MapScan, self).__init__(*args, **kwargs)
+        return result
 
     @property
     def data_dict(self):
@@ -39,7 +40,7 @@ class MapScan(XRDScan):
             'filebase': self.filebase,
             'metric': self.metric,
             'reliability': self.reliability,
-            'spline': self.spline,
+            'spline': self.refinement.spline,
         }
         return dataDict
 
@@ -53,7 +54,7 @@ class MapScan(XRDScan):
         self.filebase = dataDict['filebase']
         self.metric = dataDict['metric']
         self.reliability = dataDict['reliability']
-        self.spline = dataDict['spline']
+        self.refinement.spline = dataDict['spline']
 
     def xy_coords(self, unit_size=None):
         """Convert internal coordinates to conventional cartesian coords"""

@@ -290,6 +290,7 @@ class Map():
         self.calculate_metrics()
         self.calculate_reliabilities()
         self.calculate_colors()
+        self.composite_image()
 
     def subtract_backgrounds(self):
         for scan in self.scans:
@@ -345,7 +346,7 @@ class Map():
             scan.cached_data['color'] = None
             scan.color()
 
-    def save(self, filename=None, overwrite=False):
+    def save(self, filename=None, image_filename=None):
         """Take cached data and save to disk."""
         # Prepare dictionary of cached data
         data = {
@@ -357,14 +358,15 @@ class Map():
         # Compute filename and Check if file exists
         if filename is None:
             filename = "{sample_name}.map".format(sample_name=self.sample_name)
-        if os.path.exists(filename) and not overwrite:
-            msg = "Cowardly, refusing to overwrite existing file {}. Pass overwrite=True to force."
-            raise IOError(msg.format(filename))
+        if image_filename is None:
+            image_filename = "{sample_name}-composite.png".format(sample_name=self.sample_name)
         # Pickle data and write to file
         with open(filename, 'wb') as saveFile:
             pickle.dump(data, saveFile)
+        # Save composite image
+        scipy.misc.imsave(image_filename, self._numpy_image)
 
-    def load(self, filename=None):
+    def load(self, filename=None, image_filename=None):
         """Load a .map file of previously processed data."""
         # Generate filename if not supplied
         if filename is None:
@@ -387,6 +389,13 @@ class Map():
             #                   refinement=self.refinement)
             newScan.data_dict = dataDict
             self.scans.append(newScan)
+        # Load composite image
+        if image_filename is None:
+            image_filename = "{sample_name}-composite.png".format(sample_name=self.sample_name)
+        try:
+            self._numpy_image = scipy.misc.imread(image_filename)
+        except FileNotFoundError:
+            print('Could not load composite image {}'.format(image_filename))
 
     def plot_map_with_image(self, scan=None, alpha=None):
         mapAxes, imageAxes = dual_axes()
@@ -518,7 +527,7 @@ class Map():
         dots_per_mm = regression(self.camera_zoom)
         return dots_per_mm
 
-    def composite_image_with_numpy(self):
+    def composite_image(self):
         """
         Combine all the individual photos from the diffractometer and
         merge them into one image. Uses numpy to average the pixel values.
@@ -572,7 +581,7 @@ class Map():
             -self.xy_lim(), self.xy_lim(),
             -self.xy_lim(), self.xy_lim()
         )
-        ax.imshow(self.composite_image_with_numpy(), extent=axis_limits)
+        ax.imshow(self.composite_image(), extent=axis_limits)
         # Add plot annotations
         ax.set_title('Micrograph of Mapped Area')
         ax.set_xlabel('mm')
@@ -613,7 +622,7 @@ class DummyMap(Map):
         intensity = pandas.DataFrame(counts, index=twoTheta, columns=['counts'])
         return intensity
 
-    def composite_image_with_numpy(self):
+    def composite_image(self):
         # Stub image to show for layout purposes
         directory = os.path.dirname(os.path.realpath(__file__))
         # Read a cached composite image from disk

@@ -57,7 +57,7 @@ class XRDScan():
         self.wavelength = self.tube.kalpha
         # Load diffractogram from file
         self.name = name
-        self.filename=filename
+        self.filename = filename
         if len(filename) > 0:
             self.load_diffractogram(filename)
 
