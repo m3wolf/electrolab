@@ -40,7 +40,7 @@ class MapScan(XRDScan):
             'filebase': self.filebase,
             'metric': self.metric,
             'reliability': self.reliability,
-            'spline': self.refinement.spline,
+            'spline': getattr(self.refinement, 'spline', None),
         }
         return dataDict
 

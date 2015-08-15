@@ -14,7 +14,6 @@ from mapping.coordinates import Cube
 from mapping.mapscan import MapScan, DummyMapScan
 from mapping.gtkmapwindow import GtkMapWindow
 from plots import new_axes, dual_axes
-from xrd.scan import refinements
 
 class Map():
     """
@@ -364,7 +363,9 @@ class Map():
         with open(filename, 'wb') as saveFile:
             pickle.dump(data, saveFile)
         # Save composite image
-        scipy.misc.imsave(image_filename, self._numpy_image)
+        img = getattr(self, '_numpy_image', None)
+        if img:
+            scipy.misc.imsave(image_filename, img)
 
     def load(self, filename=None, image_filename=None):
         """Load a .map file of previously processed data."""

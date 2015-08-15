@@ -14,17 +14,6 @@ class Phase():
     name = None
     reflection_list = [] # Predicted peaks by crystallography
     spacegroup = '' # To be subclassed
-    fullprof_spacegroup = ''
-    scale_factor = 1 # Contribution to the overall pattern in refinement
-    # Peak broadening due to temperature effects
-    isotropic_temp = 0
-    # Peak width parameters
-    u = 0.008
-    v = -0.004
-    w = 0.003
-    # Peak shape parameters
-    eta = 0.5
-    x = 0
 
     def __str__(self):
         name = self.name

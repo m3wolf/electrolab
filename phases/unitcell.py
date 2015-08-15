@@ -78,11 +78,14 @@ class UnitCell():
             return self.angle
 
         def __set__(self, obj, value):
-            msg = "{name} must equal {angle}° for {cls}"
-            msg = msg.format(name=self.name,
-                             angle=self.angle,
-                             cls=obj.__class__.__name__)
-            raise UnitCellError(msg)
+            # Raise an error if the caller is trying to set a different value
+            if value != self.angle:
+                msg = "{name} must equal {angle}° for {cls} (got {value}°)"
+                msg = msg.format(name=self.name,
+                                 angle=self.angle,
+                                 cls=obj.__class__.__name__,
+                                 value=value)
+                raise UnitCellError(msg)
 
     class ConstrainedLength():
         """

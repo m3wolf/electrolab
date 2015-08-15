@@ -40,6 +40,7 @@ class LMOMidV(CubicLMO):
 
 
 class ElectrolabTestCase(unittest.TestCase):
+    keep_temp_files = False
     def assertApproximatelyEqual(self, actual, expected, tolerance=0.01, msg=None):
         """Assert that 'actual' is within relative 'tolerance' of 'expected'."""
         # Check for lists
@@ -731,17 +732,16 @@ class BrukerBrmlTestCase(unittest.TestCase):
 class FullProfProfileTest(ElectrolabTestCase):
     def setUp(self):
         # Base parameters determine from manual refinement
+        class FPCorundum(fullprof.FullProfPhase, Corundum):
+            unit_cell = HexagonalUnitCell(a=4.758637, c=12.991814)
+            u = 0.00767
+            v = -0.003524
+            w = 0.002903
+            x = 0.001124
+            eta = 0.511090
+            isotropic_temp = 33.314
         self.scan = el.XRDScan('test-sample-frames/corundum.brml',
-                               phase=Corundum())
-        corundum = self.scan.phases[0]
-        corundum.unit_cell.a = 4.758637
-        corundum.unit_cell.c = 12.991814
-        corundum.u = 0.00767
-        corundum.v = -0.003524
-        corundum.w = 0.002903
-        corundum.x = 0.001124
-        corundum.eta = 0.511090
-        corundum.isotropic_temp = 33.314
+                               phase=FPCorundum())
         self.refinement = fullprof.ProfileMatch(scan=self.scan)
         self.refinement.zero = -0.003820
         self.refinement.displacement = 0.0012
@@ -771,11 +771,15 @@ class FullProfProfileTest(ElectrolabTestCase):
             context['displacement_codeword'],
             0
         )
+        self.assertEqual(
+            context['phases'][0]['vals']['I_g'],
+            0
+        )
 
     def test_refine_background(self):
         # Set bg coeffs to something wrong
         self.refinement.bg_coeffs = [0, 0, 0, 0, 0, 0]
-        self.refinement.refine_background(keep_temp_files=True)
+        self.refinement.refine_background(keep_temp_files=self.keep_temp_files)
         self.assertTrue(
             self.refinement.is_refined['background']
         )
@@ -803,31 +807,66 @@ class FullProfProfileTest(ElectrolabTestCase):
             0.0054
         )
 
+    def test_refine_unit_cell(self):
+        # Set unit cell parameters off by a little bit
+        phase = self.scan.phases[0]
+        phase.unit_cell.a = 4.75
+        phase.unit_cell.c = 12.982
+        self.refinement.refine_unit_cells(keep_temp_files=self.keep_temp_files)
+        self.assertTrue(self.refinement.is_refined['unit_cells'])
+        self.assertTrue(self.refinement.chi_squared < 10)
+        self.assertApproximatelyEqual(phase.unit_cell.a, 4.758637,
+                                      tolerance=0.001)
+        self.assertApproximatelyEqual(phase.unit_cell.c, 12.991814,
+                                      tolerance=0.001)
+
 
 class FullProfLmoTest(ElectrolabTestCase):
     """Check refinement using data from LiMn2O4 ("NEI")"""
     def setUp(self):
         # Base parameters determine from manual refinement
-        class LMOMidV(CubicLMO):
-            unit_cell = CubicUnitCell(a=8.129)
-        class LMOHighV(CubicLMO):
-            unit_cell = CubicUnitCell(a=8.0489)
+        class LMOHighV(fullprof.FullProfPhase, CubicLMO):
+            unit_cell = CubicUnitCell(a=8.052577)
+            isotropic_temp = 0.19019
+            u = -0.000166
+            v = 0.120548
+            w = 0.003580
+            I_g = 0.000142
+            eta = 0.206420
+            x = 0.007408
+        class LMOMidV(fullprof.FullProfPhase, CubicLMO):
+            unit_cell = CubicUnitCell(a=8.122771)
+            isotropic_temp = -0.45434
+            u = 0.631556
+            v = -0.115778
+            w = 0.019247
+            I_g = -0.000539
+            eta = 0.923930
+            x = -0.006729
         self.scan = el.XRDScan('test-sample-frames/lmo-two-phase.brml',
                                phases=[LMOHighV(), LMOMidV()])
         self.refinement = fullprof.ProfileMatch(scan=self.scan)
+        # Base parameters determined by manual refinement
+        self.refinement.bg_coeffs = [71.297, -50.002, 148.13, -150.13, -249.84, 297.01]
+        self.refinement.zero = 0.044580
+        self.refinement.displacement = 0.000320
+        self.refinement.transparency = -0.00810
 
     def test_scale_factors(self):
-        self.refinement.refine_scale_factors(keep_temp_files=True)
+        self.refinement.refine_scale_factors(keep_temp_files=self.keep_temp_files)
         self.assertTrue(
             self.refinement.is_refined['scale_factors']
         )
+        self.assertTrue(
+            self.refinement.chi_squared < 10
+        )
         self.assertApproximatelyEqual(
             self.scan.phases[0].scale_factor,
-            0.00015
+            37.621
         )
         self.assertApproximatelyEqual(
             self.scan.phases[1].scale_factor,
-            0.0003
+            40.592
         )
 
 

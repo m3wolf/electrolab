@@ -9,7 +9,6 @@ from xrd.peak import remove_peak_from_df
 from refinement.base import BaseRefinement
 
 class NativeRefinement(BaseRefinement):
-
     def refine_unit_cells(self):
         pass
 
