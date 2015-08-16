@@ -10,7 +10,7 @@ from xrd.reflection import Reflection
 ##################################################
 
 class CubicLMO(Phase):
-    name = 'cubic LiMn₂O₄'
+    name = 'cubic LiMn2O4'
     unit_cell = CubicUnitCell(a=8)
     spacegroup = 'Fd-3m'
     fullprof_spacegroup = 'F D -3 M'

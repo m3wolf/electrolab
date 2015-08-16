@@ -14,6 +14,22 @@ from mapping.coordinates import Cube
 from mapping.mapscan import MapScan, DummyMapScan
 from mapping.gtkmapwindow import GtkMapWindow
 from plots import new_axes, dual_axes
+from refinement.native import NativeRefinement
+
+def display_progress(objs, operation='Status'):
+    """
+    Display the progress of the current operation via print statements.
+    """
+    ctr = 1
+    total = len(objs)
+    for obj in objs:
+        status = '\r{operation}: {curr}/{total} ({percent:.2f}%)'.format(
+            operation=operation, curr=ctr, total=total, percent=(ctr)/total*100
+        )
+        print(status, end='')
+        ctr += 1
+        yield obj
+    print() # Newline to avoid writing over progress
 
 class Map():
     """
@@ -46,7 +62,7 @@ class Map():
                  scan_time=None, sample_name='unknown',
                  detector_distance=20, frame_size=1024,
                  phases=[], background_phases=[],
-                 refinement='native'):
+                 refinement=NativeRefinement):
         self.center = center
         self.diameter = diameter
         self.collimator = collimator
@@ -286,13 +302,37 @@ class Map():
         Perform initial calculations on mapping data and save results to file.
         """
         # self.subtract_backgrounds()
+        self.refine_scans()
         self.calculate_metrics()
         self.calculate_reliabilities()
         self.calculate_colors()
         self.composite_image()
 
+    def refine_scans(self):
+        for scan in display_progress(self.scans, 'Decomposing patterns'):
+            scan.refinement.refine_displacement()
+            scan.refinement.refine_background()
+            scan.refinement.refine_unit_cells()
+            scan.refinement.refine_scale_factors()
+
+    def calculate_metrics(self):
+        """Force recalculation of all metrics in the map."""
+        for scan in display_progress(self.scans, 'Calculating metrics'):
+            scan.cached_data['metric'] = None
+            scan.metric
+
+    def calculate_reliabilities(self):
+        for scan in display_progress(self.scans, 'Reticulating splines'):
+            scan.cached_data['reliability'] = None
+            scan.reliability
+
+    def calculate_colors(self):
+        for scan in display_progress(self.scans, 'Transposing colorspaces'):
+            scan.cached_data['color'] = None
+            scan.color()
+
     def subtract_backgrounds(self):
-        for scan in self.scans:
+        for scan in display_progress(self.scans, 'Fitting background'):
             scan.subtract_background()
 
     def mapscan_metric(self, scan):
@@ -329,22 +369,6 @@ class Map():
             reliability = intensityModifier * signal / (signal+background)
         return reliability
 
-    def calculate_metrics(self):
-        """Force recalculation of all metrics in the map."""
-        for scan in self.scans:
-            scan.cached_data['metric'] = None
-            scan.metric
-
-    def calculate_reliabilities(self):
-        for scan in self.scans:
-            scan.cached_data['reliability'] = None
-            scan.reliability
-
-    def calculate_colors(self):
-        for scan in self.scans:
-            scan.cached_data['color'] = None
-            scan.color()
-
     def save(self, filename=None, image_filename=None):
         """Take cached data and save to disk."""
         # Prepare dictionary of cached data
@@ -364,7 +388,7 @@ class Map():
             pickle.dump(data, saveFile)
         # Save composite image
         img = getattr(self, '_numpy_image', None)
-        if img:
+        if not img is None:
             scipy.misc.imsave(image_filename, img)
 
     def load(self, filename=None, image_filename=None):
@@ -475,7 +499,8 @@ class Map():
         ax.set_ylim([-xy_lim, xy_lim])
         ax.set_xlabel('mm')
         ax.set_ylabel('mm')
-        for scan in self.scans:
+        num_scans = len(self.scans)
+        for scan in display_progress(self.scans, 'Mapping'):
             scan.plot_hexagon(ax=ax)
         # If there's space between beam locations, plot beam location
         if self.coverage != 1:
@@ -550,7 +575,7 @@ class Map():
             # Set to white by default
             compositeImage.fill(0)
             # Step through each scan
-            for scan in self.scans:
+            for scan in display_progress(self.scans, operation="Building Composite Image"):
                 # pad raw image to composite image size
                 scanImage = scan.padded_image(height=compositeHeight,
                                               width=compositeWidth)
@@ -678,22 +703,26 @@ class PhaseRatioMap(Map):
         Compare the ratio of two peaks, one for discharged and one for
         charged material.
         """
+        # Query refinement for the contributions from each phase
+        contributions = [phase.scale_factor for phase in scan.phases]
+        ratio = contributions[0]/sum(contributions)
         # Integrate peaks
-        area1 = self._phase_signal(scan=scan, phase=scan.phases[0])
-        area2 = self._phase_signal(scan=scan, phase=scan.phases[1])
-        phase1 = scan.phases[0]
-        phase2 = scan.phases[1]
-        # Compare areas of the two peaks
-        ratio = (area1)/(area1+area2)
+        # area1 = self._phase_signal(scan=scan, phase=scan.phases[0])
+        # area2 = self._phase_signal(scan=scan, phase=scan.phases[1])
+        # phase1 = scan.phases[0]
+        # phase2 = scan.phases[1]
+        # # Compare areas of the two peaks
+        # ratio = (area1)/(area1+area2)
         # Compare ratio of the two phases after refinement
         # ratio = phase1.scale_factor/(phase1.scale_factor+phase2.scale_factor)
         return ratio
 
     def mapscan_reliability(self, scan):
         """Determine the maximum total intensity of signal peaks."""
-        area1 = self._phase_signal(scan=scan, phase=scan.phases[0])
-        area2 = self._phase_signal(scan=scan, phase=scan.phases[1])
-        return area1+area2
+        scale_factors = [phase.scale_factor for phase in scan.phases]
+        # area1 = self._phase_signal(scan=scan, phase=scan.phases[0])
+        # area2 = self._phase_signal(scan=scan, phase=scan.phases[1])
+        return sum(scale_factors)
 
     def _phase_signal(self, scan, phase):
         peak = phase.diagnostic_reflection.two_theta_range
@@ -726,7 +755,7 @@ class FwhmMap(Map):
         Return the full-width half-max of the diagnostic peak in the first
         phase.
         """
-        peak_range = self.phase_list[0].diagnostic_reflection.two_theta_range
+        peak_range = scan.phases[0].diagnostic_reflection.two_theta_range
         fwhm = scan.peak_fwhm(peak_range)
         return fwhm
 

@@ -33,6 +33,19 @@ def plot_refinement(filename, ax=None):
     )
     return ax
 
+class DataDict():
+    """Provides a convenient way to get a dictionary of pre-computed values."""
+    def __init__(self, attrs):
+        self.attrs = attrs
+    def __get__(self, obj, cls):
+        dataDict = {}
+        for attr in self.attrs:
+            dataDict[attr] = getattr(obj, attr, None)
+    def __set__(self, obj, newDict):
+        if newDict is not None:
+            for attr in newDict.keys():
+                setattr(obj, attr, newDict[attr])
+
 class FullProfPhase(Phase):
     scale_factor = 1
     isotropic_temp = 0
@@ -44,6 +57,9 @@ class FullProfPhase(Phase):
     # Shape parameters
     eta = 0.5
     x = 0
+    data_dict = DataDict(['scale_factor', 'isotropic_temp',
+                          'u', 'v', 'w', 'I_g',
+                          'eta', 'x'])
 
 class Mode(Enum):
     """
@@ -60,6 +76,7 @@ class ProfileMatch(BaseRefinement):
     zero = 0 # Instrument non-centrality
     displacement = 0.00032 # cos (θ) dependence
     transparency = -0.00810 # sin (θ) dependence
+    data_dict = DataDict(['bg_coeffs', 'zero', 'displacement', 'transparency'])
 
     @property
     def calculated_diffractogram(self):
@@ -70,6 +87,25 @@ class ProfileMatch(BaseRefinement):
             df = load_refined_diffractogram(self.basename + '.prf')
             self._df = df
         return df
+
+    # @property
+    # def data_dict(self):
+    #     dataDict = {
+    #         'spline': self.spline,
+    #         'bg_coeffs': self.bg_coeffs,
+    #         'zero': self.zero,
+    #         'displacement': self.displacement,
+    #         'transparency': self.transparency,
+    #     }
+    #     return dataDict
+
+    # @data_dict.setter
+    # def data_dict(self, newDict):
+    #     self.spline = newDict['spline']
+    #     self.bg_coeffs = newDict['bg_coeffs']
+    #     self.zero = newDict['zero']
+    #     self.displacement = newDict['displacement']
+    #     self.transparency = newDict['transparency']
 
     def write_hkl_file(self, phase, filename):
         # Write separate hkl file for each phase
@@ -116,9 +152,7 @@ class ProfileMatch(BaseRefinement):
         self.scan.save_diffractogram(datafilename)
         # Execute refinement
         logfilename = self.basename + '.log'
-        with open(os.devnull, 'w') as devnull, open(logfilename, 'w') as logfile:
-            stdout = None
-            stdout = devnull
+        with open(logfilename, 'w') as logfile:
             call(['fp2k', pcrfilename], stdout=logfile)
         # Read refined values
         try:
@@ -136,7 +170,7 @@ class ProfileMatch(BaseRefinement):
                 os.remove(datafilename)
                 [os.remove(f) for f in hkl_filenames]
                 os.remove(pcrfilename)
-                os.remove(self.basename + '.prf')
+                # os.remove(self.basename + '.prf')
 
     def refine_background(self, keep_temp_files=False):
         """
@@ -144,9 +178,13 @@ class ProfileMatch(BaseRefinement):
         """
         # Set codewords on background parameters
         context = self.pcrfile_context()
-        context['bg_codewords'] = [11, 21, 31, 41, 51, 61]
+        # context['bg_codewords'] = [11, 21, 31, 41, 51, 61]
+        context['bg_codewords'] = [11, 21, 31, 0, 0, 0]
         # context['bg_codewords'] = [0, 0, 0, 0, 0, 0]
         context['num_params'] = 6
+        # Refining scale factors simultaneously help with the fit
+        for idx, phase in enumerate(context['phases']):
+            phase['codewords']['scale'] = (idx+4)*10 + 1
         # Execute refinement
         self.run_fullprof(context=context, keep_temp_files=keep_temp_files)
         # Set status flag
@@ -292,4 +330,18 @@ class ProfileMatch(BaseRefinement):
         return context
 
     def plot(self, ax=None):
-        return plot_refinement(filename=self.filename, ax=ax)
+        if ax is None:
+            ax = plots.new_axes()
+        df = self.calculated_diffractogram
+        ax.plot(df[' 2Theta'], df['Yobs'])
+        ax.plot(df[' 2Theta'], df['Ycal'])
+        ax.plot(df[' 2Theta'], df['Yobs-Ycal'])
+        ax.set_title('Profile refinement for {name}'.format(name=self.scan.axes_title()))
+        ax.set_xlim(
+            right=df[' 2Theta'].max()
+        )
+        return ax
+
+    def highlight_peaks(self, ax):
+        """No-op for fullprof refinement."""
+        return ax

@@ -20,7 +20,7 @@ from xrd.reflection import Reflection, hkl_to_tuple
 from electrochem.galvanostatrun import GalvanostatRun
 from adapters.bruker_raw_file import BrukerRawFile
 from adapters.bruker_brml_file import BrukerBrmlFile
-from refinement import fullprof
+from refinement import fullprof, native
 
 
 # Some phase definitions for testing
@@ -163,7 +163,7 @@ class NativeRefinementTest(ElectrolabTestCase):
     def setUp(self):
         self.scan = XRDScan(
             'test-sample-frames/lmo-two-phase.brml',
-            phases=[LMOHighV(), LMOMidV()], refinement='native'
+            phases=[LMOHighV(), LMOMidV()], refinement=native.NativeRefinement
         )
         self.refinement = self.scan.refinement
 

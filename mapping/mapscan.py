@@ -24,11 +24,15 @@ class MapScan(XRDScan):
         self.xrd_map = xrd_map
         self.filebase = filebase
         result = super(MapScan, self).__init__(*args, **kwargs)
-        self.filename = "{samplename}-frames/{filebase}.plt".format(
-                samplename=self.xrd_map.sample_name,
-                filebase=self.filebase,
-        )
         return result
+
+    @property
+    def filename(self):
+        filename = "{samplename}-frames/{filebase}.plt".format(
+            samplename=self.xrd_map.sample_name,
+            filebase=self.filebase,
+        )
+        return filename
 
     @property
     def data_dict(self):
@@ -40,7 +44,8 @@ class MapScan(XRDScan):
             'filebase': self.filebase,
             'metric': self.metric,
             'reliability': self.reliability,
-            'spline': getattr(self.refinement, 'spline', None),
+            'refinement': self.refinement.data_dict,
+            'phases': [phase.data_dict for phase in self.phases]
         }
         return dataDict
 
@@ -50,11 +55,11 @@ class MapScan(XRDScan):
         self.diffractogram = dataDict['diffractogram']
         self.diffractogram_is_loaded = dataDict['diffractogram'] is not None
         self.cube_coords = Cube(*dataDict['cube_coords'])
-        self.filename = dataDict['filename']
+        # self.filename = dataDict['filename']
         self.filebase = dataDict['filebase']
         self.metric = dataDict['metric']
         self.reliability = dataDict['reliability']
-        self.refinement.spline = dataDict['spline']
+        self.refinement.data_dict = dataDict['refinement']
 
     def xy_coords(self, unit_size=None):
         """Convert internal coordinates to conventional cartesian coords"""

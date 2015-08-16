@@ -26,14 +26,11 @@ def align_scans(scan_list, peak):
         scan.shift_diffractogram(offset)
     return scan_list
 
-refinements = {
-    'native': NativeRefinement,
-    'fullprof': ProfileMatch,
-}
-
 class XRDScan():
     """
     A set of data collected on an x-ray diffractometer, 2theta dispersive.
+    'refinement' argument accepts a refinement class that is used for
+    backend calculations.
     """
     _df = None # Replaced by load_diffractogram() method
     diffractogram_is_loaded = False
@@ -42,28 +39,35 @@ class XRDScan():
     def __init__(self, filename='', name=None,
                  phases=[], phase=None, background_phases=[],
                  tube='Cu', wavelength=None,
-                 refinement='native', two_theta_range=None):
+                 refinement=NativeRefinement, two_theta_range=None):
+        self._filename = filename
         if phase is not None:
             self.phases = [phase]
         else:
             self.phases = phases
         self.background_phases = background_phases
         self.cached_data = {}
-        Refinement = refinements[refinement]
-        self.refinement = Refinement(scan=self)
+        self.refinement = refinement(scan=self)
         self._two_theta_range = two_theta_range
         # Determine wavelength from tube type
         self.tube = tubes[tube]
         self.wavelength = self.tube.kalpha
         # Load diffractogram from file
         self.name = name
-        self.filename = filename
         if len(filename) > 0:
             self.load_diffractogram(filename)
 
     def __repr__(self):
         return "<{cls}: {filename}>".format(cls=self.__class__.__name__,
                                             filename=self.filename)
+
+    @property
+    def filename(self):
+        return self._filename
+
+    @filename.setter
+    def filename(self, val):
+        self._filename = val
 
     @property
     def diffractogram(self, filename=None):
@@ -79,7 +83,8 @@ class XRDScan():
     def save_diffractogram(self, filename):
         # Determine file type from extension
         adapter = adapter_from_filename(filename)
-        return adapter.write_diffractogram(scan=self)
+        result = adapter.write_diffractogram(scan=self)
+        return result
 
     def load_diffractogram(self, filename):
         adapter = adapter_from_filename(filename)
@@ -93,8 +98,8 @@ class XRDScan():
         self._df = df
         self.diffractogram_is_loaded = True
         # Subtract background (only if peaks are within range)
-        if len(self.phases) > 0 or len(self.background_phases) > 0:
-            self.refinement.refine_background()
+        # if len(self.phases) > 0 or len(self.background_phases) > 0:
+        #     self.refinement.refine_background()
         return self._df
 
     @property
@@ -119,18 +124,16 @@ class XRDScan():
         df = self.diffractogram
         if ax is None:
             ax = plots.big_axes()
+        ax.set_xlim(left=df.index.min(), right=df.index.max())
+        # ax.set_ylim(bottom=0)
         ax.plot(df.index, df.loc[:, 'counts'])
         # Plot refinement
         self.refinement.plot(ax=ax)
-        # if self.has_background:
-        #     ax.plot(df.index, df.background)
         # Plot fitted peaks
-        for phase in self.phases:
-            for peak in phase.peak_list:
-                peak.plot_overall_fit(ax=ax, background=self.spline)
+        # for phase in self.phases:
+        #     for peak in phase.peak_list:
+        #         peak.plot_overall_fit(ax=ax, background=self.spline)
         # Set plot annotations
-        ax.set_xlim(left=df.index.min(), right=df.index.max())
-        ax.set_ylim(bottom=0)
         ax.set_xlabel(r'$2\theta$')
         ax.set_ylabel('Counts')
         ax.set_title(self.axes_title())
