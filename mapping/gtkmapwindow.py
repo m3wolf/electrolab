@@ -86,7 +86,7 @@ class GtkMapWindow(Gtk.Window):
         if activeScan:
             activeScan.plot_diffractogram(ax=self.diffractogramAxes)
         else:
-            self.xrd_map.plot_bulk_diffractogram(ax=self.diffractogramAxes)
+            self.xrd_map.plot_diffractogram(ax=self.diffractogramAxes)
         # Draw individual scan's image or histogram
         self.scanImageAxes.clear()
         if activeScan:

@@ -83,6 +83,10 @@ class Map():
         self.create_scans()
 
     @property
+    def name(self):
+        return self.sample_name
+
+    @property
     def rows(self):
         """Determine number of rows from collimator size and sample diameter.
         Central spot counts as a row."""
@@ -425,7 +429,7 @@ class Map():
         mapAxes, diffractogramAxes = dual_axes()
         self.plot_map(ax=mapAxes, highlightedScan = scan)
         if scan is None:
-            self.plot_bulk_diffractogram(ax=diffractogramAxes)
+            self.plot_diffractogram(ax=diffractogramAxes)
         else:
             scan.plot_diffractogram(ax=diffractogramAxes)
         return (mapAxes, diffractogramAxes)
@@ -435,6 +439,13 @@ class Map():
         self.plot_map(ax=mapAxes)
         self.plot_histogram(ax=histogramAxes)
         return (mapAxes, histogramAxes)
+
+    @property
+    def diffractogram(self):
+        """Returns self.bulk_diffractogram(). Polymorphism for XRDScan."""
+        bulk_series = self.bulk_diffractogram()
+        df = pandas.DataFrame(bulk_series, columns=['counts'])
+        return df
 
     def bulk_diffractogram(self):
         """
@@ -454,7 +465,11 @@ class Map():
         bulk_diffractogram = bulk_diffractogram/scanCount
         return bulk_diffractogram
 
-    def plot_bulk_diffractogram(self, ax=None):
+    def plot_diffractogram(self, ax=None):
+        """
+        Plot an averaged diffractogram of all the scans, weighted by
+        reliability.
+        """
         bulk_diffractogram = self.bulk_diffractogram()
         # Get default axis if none is given
         if ax is None:
@@ -749,8 +764,8 @@ class FwhmMap(Map):
         Return the full-width half-max of the diagnostic peak in the first
         phase.
         """
-        peak_range = scan.phases[0].diagnostic_reflection.two_theta_range
-        fwhm = scan.peak_fwhm(peak_range)
+        angle = sum(scan.phases[0].diagnostic_reflection.two_theta_range)/2
+        fwhm = scan.refinement.fwhm(angle)
         return fwhm
 
 class IORMap(Map):

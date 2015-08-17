@@ -38,9 +38,10 @@ def plot_scans(scan_list, step_size=1, ax=None):
         scannames.append(scan.name)
     ax.legend(reversed(lines), reversed(scannames))
     # Set axes limits
-    xMax = scan_list[0].diffractogram.index.max()
+    df = scan_list[0].diffractogram
     xMax = max([scan.diffractogram.index.max() for scan in scan_list])
-    ax.set_xlim(right=xMax)
+    xMin = min([scan.diffractogram.index.min() for scan in scan_list])
+    ax.set_xlim(left=xMin, right=xMax)
     # Decorate
     ax.set_xlabel(r'$2\theta$')
     ax.set_ylabel('counts')
