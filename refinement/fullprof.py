@@ -60,12 +60,14 @@ class Mode(Enum):
 
 class ProfileMatch(BaseRefinement):
     keep_temp_files = False # delete temp files after refinement?
-    bg_coeffs = [0, 0, 0, 0, 0, 0] # Sixth degree polynomial
     fullprof_path = '/home/mwolf/bin/fullprof'
+    bg_coeffs = [0, 0, 0, 0, 0, 0] # Sixth degree polynomial
+    chi_squared = None
     zero = 0 # Instrument non-centrality
     displacement = 0.00032 # cos (θ) dependence
     transparency = -0.00810 # sin (θ) dependence
-    data_dict = DataDict(['bg_coeffs', 'zero', 'displacement', 'transparency'])
+    data_dict = DataDict(['bg_coeffs', 'zero', 'displacement',
+                          'transparency', 'chi_squared'])
     # Regular expressions for reading output summary files
     success_re = re.compile('==> RESULTS OF REFINEMENT:')
     chi_re = re.compile('Chi2:\s+([-0-9Ee.Na]+)')
@@ -324,6 +326,10 @@ class ProfileMatch(BaseRefinement):
             right=df[' 2Theta'].max()
         )
         return ax
+
+    def details(self):
+        msg = "Χ²: {chi}".format(chi=self.chi_squared)
+        return msg
 
     def highlight_peaks(self, ax):
         """No-op for fullprof refinement."""

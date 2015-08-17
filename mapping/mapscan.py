@@ -150,7 +150,7 @@ class MapScan(XRDScan):
     @property
     def metric_details(self):
         """Returns a string describing how the metric was calculated."""
-        return "No additional info"
+        return self.refinement.details()
 
     @property
     def reliability_raw(self):

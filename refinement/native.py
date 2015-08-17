@@ -82,6 +82,9 @@ class NativeRefinement(BaseRefinement):
             area = 0
         return area
 
+    def details(self):
+        return "Native refinement"
+
     def highlight_peaks(self, ax):
         color_list = [
             'green',

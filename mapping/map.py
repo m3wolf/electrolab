@@ -74,7 +74,8 @@ class Map():
             self.phases = phases
         if len(background_phases) > 0:
             self.background_phases = background_phases
-        if scan_time is not None: self.scan_time = scan_time
+        if scan_time is not None:
+            self.scan_time = scan_time
         self.refinement = refinement
         if two_theta_range is not None: self.two_theta_range = two_theta_range
         self.coverage = coverage
@@ -376,7 +377,7 @@ class Map():
             reliability = intensityModifier * signal / (signal+background)
         return reliability
 
-    def save(self, filename=None, image_filename=None):
+    def save(self, filename=None):
         """Take cached data and save to disk."""
         # Prepare dictionary of cached data
         data = {
@@ -388,17 +389,11 @@ class Map():
         # Compute filename and Check if file exists
         if filename is None:
             filename = "{sample_name}.map".format(sample_name=self.sample_name)
-        if image_filename is None:
-            image_filename = "{sample_name}-composite.png".format(sample_name=self.sample_name)
         # Pickle data and write to file
         with open(filename, 'wb') as saveFile:
             pickle.dump(data, saveFile)
-        # Save composite image
-        img = getattr(self, '_numpy_image', None)
-        if not img is None:
-            scipy.misc.imsave(image_filename, img)
 
-    def load(self, filename=None, image_filename=None):
+    def load(self, filename=None):
         """Load a .map file of previously processed data."""
         # Generate filename if not supplied
         if filename is None:
@@ -413,21 +408,8 @@ class Map():
         # Restore each scan
         for idx, dataDict in enumerate(data['scans']):
             newScan = self.scans[idx]
-            # newScan = MapScan(location=dataDict['cube_coords'],
-            #                   xrd_map=self,
-            #                   phases=[Phase() for Phase in self.phases],
-            #                   background_phases=[Phase() for Phase in self.background_phases],
-            #                   filebase=dataDict['filebase'],
-            #                   refinement=self.refinement)
             newScan.data_dict = dataDict
             self.scans.append(newScan)
-        # Load composite image
-        if image_filename is None:
-            image_filename = "{sample_name}-composite.png".format(sample_name=self.sample_name)
-        try:
-            self._numpy_image = scipy.misc.imread(image_filename)
-        except FileNotFoundError:
-            print('Could not load composite image {}'.format(image_filename))
 
     def plot_map_with_image(self, scan=None, alpha=None):
         mapAxes, imageAxes = dual_axes()
@@ -560,7 +542,7 @@ class Map():
         dots_per_mm = regression(self.camera_zoom)
         return dots_per_mm
 
-    def composite_image(self):
+    def composite_image(self, filename=None, recalculate=False):
         """
         Combine all the individual photos from the diffractometer and
         merge them into one image. Uses numpy to average the pixel values.
@@ -568,40 +550,50 @@ class Map():
         # Check for a cached image to return
         compositeImage = getattr(self, '_numpy_image', None)
          # Check for cached image or create one if not cache found
-        if compositeImage is None:
-            compositeWidth = int(2 * self.xy_lim() * self.dots_per_mm())
-            compositeHeight = compositeWidth
-            # Create a new numpy array to hold the composited image
-            # (it is unsigned int 16 to not overflow when images are added)
-            dtype = numpy.uint16
-            compositeImage = numpy.ndarray((compositeHeight, compositeWidth, 3),
-                                        dtype=dtype)
-            # This array keeps track of how many images contribute to each pixel
-            counterArray = numpy.ndarray((compositeHeight, compositeWidth, 3),
-                                      dtype=dtype)
-            # Set to white by default
-            compositeImage.fill(0)
-            # Step through each scan
-            for scan in display_progress(self.scans, operation="Building Composite Image"):
-                # pad raw image to composite image size
-                scanImage = scan.padded_image(height=compositeHeight,
-                                              width=compositeWidth)
-                # add padded image to composite image
-                compositeImage = compositeImage + scanImage
-                # create padded image mask
-                scanMask = scan.padded_image_mask(height=compositeHeight,
+        if compositeImage is None and not recalculate:
+            # Default filename
+            if filename is None:
+                filename = "{sample_name}-composite.png".format(sample_name=self.sample_name)
+            if os.path.exists(filename) and not recalculate:
+                # Load existing image and cache it
+                compositeImage = scipy.misc.imread(filename)
+                self._numpy_image = compositeImage
+            else:
+                # Build composite image
+                compositeWidth = int(2 * self.xy_lim() * self.dots_per_mm())
+                compositeHeight = compositeWidth
+                # Create a new numpy array to hold the composited image
+                # (it is unsigned int 16 to not overflow when images are added)
+                dtype = numpy.uint16
+                compositeImage = numpy.ndarray((compositeHeight, compositeWidth, 3),
+                                            dtype=dtype)
+                # This array keeps track of how many images contribute to each pixel
+                counterArray = numpy.ndarray((compositeHeight, compositeWidth, 3),
+                                          dtype=dtype)
+                # Set to white by default
+                compositeImage.fill(0)
+                # Step through each scan
+                for scan in display_progress(self.scans, operation="Building Composite Image"):
+                    # pad raw image to composite image size
+                    scanImage = scan.padded_image(height=compositeHeight,
                                                   width=compositeWidth)
-                # add padded image mask to counter image
-                counterArray = counterArray + scanMask
-            # Divide by the total count for each pixel
-            compositeImage = compositeImage / counterArray
-            # Convert back to a uint8 array for displaying
-            compositeImage = compositeImage.astype(numpy.uint8)
-            # Roll over pixels to force white background
-            # (bias was added in padded_image method)
-            compositeImage = compositeImage - 1
-            # Save a cached version
-            self._numpy_image = compositeImage
+                    # add padded image to composite image
+                    compositeImage = compositeImage + scanImage
+                    # create padded image mask
+                    scanMask = scan.padded_image_mask(height=compositeHeight,
+                                                      width=compositeWidth)
+                    # add padded image mask to counter image
+                    counterArray = counterArray + scanMask
+                # Divide by the total count for each pixel
+                compositeImage = compositeImage / counterArray
+                # Convert back to a uint8 array for displaying
+                compositeImage = compositeImage.astype(numpy.uint8)
+                # Roll over pixels to force white background
+                # (bias was added in padded_image method)
+                compositeImage = compositeImage - 1
+                # Save a cached version to memory and disk
+                self._numpy_image = compositeImage
+                scipy.misc.imsave(filename, compositeImage)
         return compositeImage
 
     def plot_composite_image(self, ax=None):

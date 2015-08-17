@@ -249,7 +249,7 @@ class ReliabilityBox(ValueBox):
 
 
 class DataSummaryBox(Gtk.Box):
-    """Three-column box that shows a summary of data for a Scan."""
+    """Three-section box that shows a summary of data for a Scan."""
     padding = 10
     def __init__(self, *args, **kwargs):
         retVal = super(DataSummaryBox, self).__init__(*args, **kwargs)
