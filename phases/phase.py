@@ -6,6 +6,7 @@ import math
 import scipy
 
 import exceptions
+from mapping.datadict import DataDict
 from xrd.peak import XRDPeak
 from xrd.reflection import hkl_to_tuple
 
@@ -14,6 +15,8 @@ class Phase():
     name = None
     reflection_list = [] # Predicted peaks by crystallography
     spacegroup = '' # To be subclassed
+    scale_factor = 1
+    data_dict = DataDict(['scale_factor'])
 
     def __str__(self):
         name = self.name

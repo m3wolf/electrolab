@@ -10,6 +10,7 @@ import numpy
 import pandas
 import scipy
 
+import exceptions
 from mapping.coordinates import Cube
 from mapping.mapscan import MapScan, DummyMapScan
 from mapping.gtkmapwindow import GtkMapWindow
@@ -23,13 +24,14 @@ def display_progress(objs, operation='Status'):
     ctr = 1
     total = len(objs)
     for obj in objs:
-        status = '\r{operation}: {curr}/{total} ({percent:.2f}%)'.format(
+        status = '{operation}: {curr}/{total} ({percent:.2f}%)'.format(
             operation=operation, curr=ctr, total=total, percent=(ctr)/total*100
         )
-        print(status, end='')
+        print(status, end='\r')
         ctr += 1
         yield obj
     print() # Newline to avoid writing over progress
+
 
 class Map():
     """
@@ -268,10 +270,6 @@ class Map():
             raise ValueError(msg)
         return num_frames
 
-    # @property
-    # def two_theta_range(self):
-    #     return self._two_theta_range
-
     def get_theta2_start(self):
         # Assuming that theta1 starts at highest possible range
         theta1 = self.get_theta1()
@@ -309,11 +307,20 @@ class Map():
         self.composite_image()
 
     def refine_scans(self):
+        """
+        Refine a series of parameters on each scan. Continue if an
+        exceptions.RefinementError occurs.
+        """
         for scan in display_progress(self.scans, 'Decomposing patterns'):
-            scan.refinement.refine_displacement()
-            scan.refinement.refine_background()
-            scan.refinement.refine_unit_cells()
-            scan.refinement.refine_scale_factors()
+            try:
+                scan.refinement.refine_background()
+                scan.refinement.refine_displacement()
+                scan.refinement.refine_unit_cells()
+                scan.refinement.refine_scale_factors()
+            except exceptions.SingularMatrixError as e:
+                # Display an error message on exception and then coninue fitting
+                msg = "{coords}: {msg}".format(coords=scan.cube_coords, msg=e)
+                print(msg)
 
     def calculate_metrics(self):
         """Force recalculation of all metrics in the map."""
@@ -705,16 +712,11 @@ class PhaseRatioMap(Map):
         """
         # Query refinement for the contributions from each phase
         contributions = [phase.scale_factor for phase in scan.phases]
-        ratio = contributions[0]/sum(contributions)
-        # Integrate peaks
-        # area1 = self._phase_signal(scan=scan, phase=scan.phases[0])
-        # area2 = self._phase_signal(scan=scan, phase=scan.phases[1])
-        # phase1 = scan.phases[0]
-        # phase2 = scan.phases[1]
-        # # Compare areas of the two peaks
-        # ratio = (area1)/(area1+area2)
-        # Compare ratio of the two phases after refinement
-        # ratio = phase1.scale_factor/(phase1.scale_factor+phase2.scale_factor)
+        total = sum(contributions)
+        if total > 0: # Avoid div by zero
+            ratio = contributions[0]/sum(contributions)
+        else:
+            ratio = 0
         return ratio
 
     def mapscan_reliability(self, scan):

@@ -14,6 +14,7 @@ import pandas as pd
 
 import plots
 import exceptions
+from mapping.datadict import DataDict
 from refinement.base import BaseRefinement
 from phases.phase import Phase
 
@@ -32,19 +33,6 @@ def plot_refinement(filename, ax=None):
         right=df[' 2Theta'].max()
     )
     return ax
-
-class DataDict():
-    """Provides a convenient way to get a dictionary of pre-computed values."""
-    def __init__(self, attrs):
-        self.attrs = attrs
-    def __get__(self, obj, cls):
-        dataDict = {}
-        for attr in self.attrs:
-            dataDict[attr] = getattr(obj, attr, None)
-    def __set__(self, obj, newDict):
-        if newDict is not None:
-            for attr in newDict.keys():
-                setattr(obj, attr, newDict[attr])
 
 class FullProfPhase(Phase):
     scale_factor = 1
@@ -71,13 +59,22 @@ class Mode(Enum):
     constant_intensities = 3
 
 class ProfileMatch(BaseRefinement):
+    keep_temp_files = False # delete temp files after refinement?
     bg_coeffs = [0, 0, 0, 0, 0, 0] # Sixth degree polynomial
     fullprof_path = '/home/mwolf/bin/fullprof'
     zero = 0 # Instrument non-centrality
     displacement = 0.00032 # cos (θ) dependence
     transparency = -0.00810 # sin (θ) dependence
     data_dict = DataDict(['bg_coeffs', 'zero', 'displacement', 'transparency'])
-
+    # Regular expressions for reading output summary files
+    success_re = re.compile('==> RESULTS OF REFINEMENT:')
+    chi_re = re.compile('Chi2:\s+([-0-9Ee.Na]+)')
+    bg_re = re.compile('Background Polynomial Parameters ==>((?:\s+[-0-9Ee.]+)+)')
+    displacement_re = re.compile('Cos\( theta\)-shift parameter :\s+([-0-9Ee.]+)')
+    scale_re = re.compile('=> overall scale factor :\s+([-0-9Ee.]+)\s+([-0-9Ee.]+)')
+    cell_re = re.compile('=> Cell parameters\s+:\s+((?:\s+[-0-9Ee.]+)+)')
+    # Regular expressions for reading errors from log file
+    singular_matrix_re = re.compile('==> Singular matrix!!, problem with (\S+)')
     @property
     def calculated_diffractogram(self):
         """Read a pcf file and return the refinement as a dataframe."""
@@ -87,25 +84,6 @@ class ProfileMatch(BaseRefinement):
             df = load_refined_diffractogram(self.basename + '.prf')
             self._df = df
         return df
-
-    # @property
-    # def data_dict(self):
-    #     dataDict = {
-    #         'spline': self.spline,
-    #         'bg_coeffs': self.bg_coeffs,
-    #         'zero': self.zero,
-    #         'displacement': self.displacement,
-    #         'transparency': self.transparency,
-    #     }
-    #     return dataDict
-
-    # @data_dict.setter
-    # def data_dict(self, newDict):
-    #     self.spline = newDict['spline']
-    #     self.bg_coeffs = newDict['bg_coeffs']
-    #     self.zero = newDict['zero']
-    #     self.displacement = newDict['displacement']
-    #     self.transparency = newDict['transparency']
 
     def write_hkl_file(self, phase, filename):
         # Write separate hkl file for each phase
@@ -121,7 +99,7 @@ class ProfileMatch(BaseRefinement):
                                                 mult=reflection.multiplicity,
                                                 intensity=reflection.intensity))
 
-    def run_fullprof(self, context, keep_temp_files):
+    def run_fullprof(self, context):
         """Prepare a pcr file and execute the actual fullprof program."""
         # Make sure the context is sane
         if context['num_params'] == 0:
@@ -158,12 +136,11 @@ class ProfileMatch(BaseRefinement):
         try:
             self.load_results()
         except exceptions.RefinementError as e:
-            msg = "Check logfile {} for details.".format(logfilename)
-            raise exceptions.RefinementError(msg)
+            raise
         else:
             # If all went well, load refined pattern and delete temporary files
             self.calculated_diffractogram
-            if not keep_temp_files:
+            if not self.keep_temp_files:
                 os.remove(logfilename)
                 os.remove(self.basename + '.sum')
                 os.remove(self.basename + '.out')
@@ -172,7 +149,7 @@ class ProfileMatch(BaseRefinement):
                 os.remove(pcrfilename)
                 # os.remove(self.basename + '.prf')
 
-    def refine_background(self, keep_temp_files=False):
+    def refine_background(self):
         """
         Refine the six background coefficients.
         """
@@ -186,11 +163,11 @@ class ProfileMatch(BaseRefinement):
         for idx, phase in enumerate(context['phases']):
             phase['codewords']['scale'] = (idx+4)*10 + 1
         # Execute refinement
-        self.run_fullprof(context=context, keep_temp_files=keep_temp_files)
+        self.run_fullprof(context=context)
         # Set status flag
         self.is_refined['background'] = True
 
-    def refine_displacement(self, keep_temp_files=False):
+    def refine_displacement(self):
         """
         Refine sample displacement cos θ dependendent correction.
         """
@@ -198,11 +175,11 @@ class ProfileMatch(BaseRefinement):
         context['displacement_codeword'] = 11
         context['num_params'] = 1
         # Execute refinement
-        self.run_fullprof(context=context, keep_temp_files=keep_temp_files)
+        self.run_fullprof(context=context)
         # Set status flag
         self.is_refined['displacement'] = True
 
-    def refine_unit_cells(self, keep_temp_files=False):
+    def refine_unit_cells(self):
         context = self.pcrfile_context()
         context['num_params'] = len(context['phases']) * 6
         for idx, phase in enumerate(context['phases']):
@@ -213,18 +190,18 @@ class ProfileMatch(BaseRefinement):
             phase['codewords']['beta'] = (idx*6+5)*10 + 1
             phase['codewords']['gamma'] = (idx*6+6)*10 + 1
         # Execute refinement
-        self.run_fullprof(context=context, keep_temp_files=keep_temp_files)
+        self.run_fullprof(context=context)
         # Set status flag
         self.is_refined['unit_cells'] = True
 
-    def refine_scale_factors(self, keep_temp_files=False):
+    def refine_scale_factors(self):
         context = self.pcrfile_context()
         # Must be in constant intensities mode to refine a scale factor
         context['num_params'] = 2
         for idx, phase in enumerate(context['phases']):
             phase['codewords']['scale'] = (idx+1)*10 + 1
         # Execute refinement
-        self.run_fullprof(context=context, keep_temp_files=keep_temp_files)
+        self.run_fullprof(context=context)
         # Set status flag
         self.is_refined['scale_factors'] = True
 
@@ -237,36 +214,42 @@ class ProfileMatch(BaseRefinement):
         with open(filename) as summaryfile:
             summary = summaryfile.read()
         # Check for successful refinement
-        success_re = re.compile('==> RESULTS OF REFINEMENT:')
-        success = success_re.search(summary)
+        success = self.success_re.search(summary)
         if not success:
-            raise exceptions.RefinementError()
+            # Refinement was not successful, look through log file for clues
+            with open(self.basename + '.log') as logfile:
+                log = logfile.read()
+            singular_match = self.singular_matrix_re.search(log)
+            if singular_match:
+                # Singular matrix errors usually mean divergence on a given parameter
+                param = singular_match.group(1)
+                raise exceptions.SingularMatrixError(param=param)
+            else:
+                raise exceptions.RefinementError()
         # Search for final Χ² value
-        chi_re = re.compile('Chi2:\s+([0-9.]+)')
-        chi_squared = float(chi_re.search(summary).group(1))
+        chi_squared = float(self.chi_re.search(summary).group(1))
+        if chi_squared == 'NaN':
+            print('raised')
+            raise exceptions.NoReflectionsError()
         self.chi_squared = chi_squared
         # Search for the background coeffs
-        bg_re = re.compile('Background Polynomial Parameters ==>((?:\s+[-0-9.]+)+)')
-        bg_results = bg_re.search(summary).group(1).split()
+        bg_results = self.bg_re.search(summary).group(1).split()
         # (Even values are coeffs, odd values are standard deviations)
         bg_coeffs = [float(x) for x in bg_results[::2]]
         bg_stdevs = [float(x) for x in bg_results[1::2]]
         self.bg_coeffs = bg_coeffs
         # Search for sample displacement correction
-        displacement_re = re.compile('Cos\( theta\)-shift parameter :\s+([-0-9.]+)')
-        displacement = float(displacement_re.search(summary).group(1))
+        displacement = float(self.displacement_re.search(summary).group(1))
         self.displacement = displacement
         # Search for scale factors
-        scale_re = re.compile('=> overall scale factor :\s+([-0-9.]+)\s+([-0-9.]+)')
-        scale_matches = scale_re.findall(summary)
+        scale_matches = self.scale_re.findall(summary)
         assert len(scale_matches) == len(self.scan.phases)
         for idx, match in enumerate(scale_matches):
             phase = self.scan.phases[idx]
             phase.scale_factor = float(match[0])
             phase.scale_error = float(match[1])
         # Search for unit-cell parameters
-        cell_re = re.compile('=> Cell parameters\s+:\s+((?:\s+[-0-9.]+)+)')
-        cell_results = cell_re.findall(summary)
+        cell_results = self.cell_re.findall(summary)
         for idx, match in enumerate(cell_results):
             match = match.split()
             cell_params = [float(x) for x in match[::2]]

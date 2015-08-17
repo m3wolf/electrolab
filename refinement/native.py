@@ -7,8 +7,11 @@ import pandas
 import plots
 from xrd.peak import remove_peak_from_df
 from refinement.base import BaseRefinement
+from mapping.datadict import DataDict
 
 class NativeRefinement(BaseRefinement):
+    data_dict = DataDict(['spline'])
+
     def refine_unit_cells(self):
         pass
 
@@ -40,6 +43,10 @@ class NativeRefinement(BaseRefinement):
         originalData['background'] = self.spline(x)
         originalData['subtracted'] = originalData.counts - originalData.background
         return originalData
+
+    def refine_displacement(self):
+        """Not implemented yet."""
+        pass
 
     def plot(self, ax=None):
         # Check if background has been fit
