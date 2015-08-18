@@ -21,6 +21,7 @@ from refinement import fullprof
 
 from xrd.reflection import Reflection
 from xrd.scan import XRDScan, align_scans
+from xrd.map import XRDMap
 
 from mapping.coordinates import Cube
 from mapping.map import Map, DummyMap, PeakPositionMap, PhaseRatioMap, FwhmMap

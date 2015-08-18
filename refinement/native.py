@@ -32,7 +32,7 @@ class NativeRefinement(BaseRefinement):
         rms_error = math.sqrt(running_total/len(diffs))
         return rms_error
 
-    def refine_unit_cell(self, quiet=False):
+    def refine_unit_cells(self, quiet=True):
         """Residual least squares refinement of the unit-cell
         parameters. Returns the residual root-mean-square error between
         predicted and observed 2θ."""
@@ -93,8 +93,8 @@ class NativeRefinement(BaseRefinement):
         # Extrapolate the background for the whole pattern
         x = originalData.index
         self._background = pandas.Series(data=self.spline(x),
-                                        index=originalData.index)
-        self._subtracted = pandas.Series(originalData.counts - self.background)
+                                         index=originalData.index)
+        self._subtracted = pandas.Series(originalData.counts - self._background)
         return originalData
 
     @property
@@ -197,10 +197,17 @@ class NativeRefinement(BaseRefinement):
             'red',
             'orange'
         ]
+        def draw_peaks(ax, phase, color):
+            """Highlight the expected peak corresponding to this phase."""
+            alpha = 0.15
+            # Highlight each peak in this phase
+            for reflection in phase.reflection_list:
+                two_theta = reflection.two_theta_range
+                ax.axvspan(two_theta[0], two_theta[1], color=color, alpha=alpha)
         # Highlight phases
         for idx, phase in enumerate(self.scan.phases):
-            phase.highlight_peaks(ax=ax, color=color_list[idx])
+            draw_peaks(ax=ax, phase=phase, color=color_list[idx])
         # Highlight background
         for phase in self.scan.background_phases:
-            phase.highlight_peaks(ax=ax, color='grey')
+            draw_peaks(ax=ax, phase=phase, color='grey')
         return ax
