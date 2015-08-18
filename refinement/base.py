@@ -21,3 +21,6 @@ class BaseRefinement():
 
     def plot(self):
         raise NotImplementedError
+
+    def fwhm(self, twotheta=40):
+        raise NotImplementedError

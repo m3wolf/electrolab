@@ -162,8 +162,9 @@ class ProfileMatch(BaseRefinement):
         # context['bg_codewords'] = [0, 0, 0, 0, 0, 0]
         context['num_params'] = 6
         # Refining scale factors simultaneously help with the fit
-        for idx, phase in enumerate(context['phases']):
-            phase['codewords']['scale'] = (idx+4)*10 + 1
+        if not context['refinement_mode'] == Mode.constant_scale:
+            for idx, phase in enumerate(context['phases']):
+                phase['codewords']['scale'] = (idx+4)*10 + 1
         # Execute refinement
         self.run_fullprof(context=context)
         # Set status flag
@@ -199,7 +200,7 @@ class ProfileMatch(BaseRefinement):
     def refine_scale_factors(self):
         context = self.pcrfile_context()
         # Must be in constant intensities mode to refine a scale factor
-        context['num_params'] = 2
+        context['num_params'] = len(context['phases'])
         for idx, phase in enumerate(context['phases']):
             phase['codewords']['scale'] = (idx+1)*10 + 1
         # Execute refinement

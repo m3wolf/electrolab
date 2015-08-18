@@ -255,13 +255,3 @@ class XRDScan():
         rightIdx = half_max(rightDF, maxCounts)
         fullWidth = rightIdx - leftIdx
         return fullWidth
-
-    def fit_peaks(self):
-        for phase in self.phases:
-            phase.fit_peaks(scan=self)
-
-    def refine_unit_cells(self):
-        """Residual least-squares refinement of the unit cell for each
-        phase. Warning: overlapping reflections from different phases is
-        likely to cause considerable errors."""
-        raise NotImplementedError
