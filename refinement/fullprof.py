@@ -67,7 +67,7 @@ class ProfileMatch(BaseRefinement):
     displacement = 0.00032 # cos (θ) dependence
     transparency = -0.00810 # sin (θ) dependence
     data_dict = DataDict(['bg_coeffs', 'zero', 'displacement',
-                          'transparency', 'chi_squared'])
+                          'transparency', 'chi_squared', 'is_refined'])
     # Regular expressions for reading output summary files
     success_re = re.compile('==> RESULTS OF REFINEMENT:')
     chi_re = re.compile('Chi2:\s+([-0-9Ee.Na]+)')

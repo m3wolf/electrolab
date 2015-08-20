@@ -14,6 +14,7 @@ from phases.unitcell import UnitCell, CubicUnitCell, HexagonalUnitCell
 from mapping.map import Map, DummyMap, PeakPositionMap
 from mapping.coordinates import Cube
 from mapping.mapscan import MapScan
+from xrd.map import XRDMap
 from xrd.scan import XRDScan
 from xrd.peak import XRDPeak, PeakFit, remove_peak_from_df
 from xrd.reflection import Reflection, hkl_to_tuple
@@ -157,6 +158,11 @@ class LMOSolidSolutionTest(unittest.TestCase):
             reliability < 0.1,
             'Reliability {} is not < 0.1'.format(reliability)
         )
+
+
+class XRDMapTest(ElectrolabTestCase):
+    def setUp(self):
+        self.map = XRDMap()
 
 
 class NativeRefinementTest(ElectrolabTestCase):
@@ -670,7 +676,7 @@ class ExperimentalDataTest(ElectrolabTestCase):
         # Results take from celref using corundum standard
         scan = XRDScan(filename='test-sample-frames/corundum.xye',
                        phase=Corundum())
-        residuals = scan.refinement.refine_unit_cell(quiet=True)
+        residuals = scan.refinement.refine_unit_cells(quiet=True)
         unit_cell_parameters = self.phase.unit_cell.cell_parameters
         # Cell parameters taken from 1978a sample CoA
         self.assertApproximatelyEqual(

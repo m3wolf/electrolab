@@ -13,15 +13,25 @@ from refinement.base import BaseRefinement
 from mapping.datadict import DataDict
 
 class NativeRefinement(BaseRefinement):
-    data_dict = DataDict(['spline'])
+    data_dict = DataDict(['spline', 'is_refined'])
 
     def peak_rms_error(self, phase, unit_cell=None):
         diffs = []
         wavelength = self.scan.wavelength
         predicted_peaks = phase.predicted_peak_positions(wavelength=wavelength,
-                                                         unit_cell=unit_cell)
+                                                   unit_cell=unit_cell,
+                                                   scan=self.scan)
+        # Only include those that are within the two_theta range
+        df = self.scan
+        phase_idx = self.scan.phases.index(phase)
+        actual_peaks = self._peak_list[phase_idx]
+        # Make sure lists line up
+        if len(predicted_peaks) != len(actual_peaks):
+            msg = 'uneven peak lists: {} != {}'.format(len(predicted_peaks),
+                                                       len(actual_peaks))
+            raise exceptions.RefinementError(msg)
         # Prepare list of peak position differences
-        for idx, actual_peak in enumerate(self.peak_list):
+        for idx, actual_peak in enumerate(actual_peaks):
             actual = actual_peak.center_kalpha
             predicted = predicted_peaks[idx].two_theta
             diffs.append(actual-predicted)
@@ -138,7 +148,11 @@ class NativeRefinement(BaseRefinement):
         peak_list = getattr(self, '_peak_list', None)
         if peak_list is None:
             peak_list = self.fit_peaks()
-        return peak_list
+        # Flatten the list of phases/peaks
+        full_list = []
+        for phase in peak_list:
+            full_list += phase
+        return full_list
 
     def fit_peaks(self):
         """
@@ -148,31 +162,33 @@ class NativeRefinement(BaseRefinement):
         self._peak_list = []
         fitMethods = ['pseudo-voigt', 'gaussian', 'cauchy', 'estimated']
         reflection_list = []
+        # Step through each reflection in the relevant phases and find the peak
         for phase in self.scan.phases:
             reflection_list += phase.reflection_list
-        # Step through each possible reflection and find the peak
-        for reflection in reflection_list:
-            if self.scan.contains_peak(reflection.two_theta_range):
-                newPeak = XRDPeak(reflection=reflection)
-                df = self.subtracted.loc[
-                    reflection.two_theta_range[0]:reflection.two_theta_range[1]
-                ]
-                # Try each fit method until one works
-                for method in fitMethods:
-                    try:
-                        newPeak.fit(two_theta=df.index,
-                                    intensity=df,
-                                    method=method)
-                    except exceptions.PeakFitError:
-                        # Try next fit
-                        continue
+            phase_peak_list = []
+            for reflection in reflection_list:
+                if self.scan.contains_peak(reflection.two_theta_range):
+                    newPeak = XRDPeak(reflection=reflection)
+                    df = self.subtracted.loc[
+                        reflection.two_theta_range[0]:reflection.two_theta_range[1]
+                    ]
+                    # Try each fit method until one works
+                    for method in fitMethods:
+                        try:
+                            newPeak.fit(two_theta=df.index,
+                                        intensity=df,
+                                        method=method)
+                        except exceptions.PeakFitError:
+                            # Try next fit
+                            continue
+                        else:
+                            phase_peak_list.append(newPeak)
+                            break
                     else:
-                        self._peak_list.append(newPeak)
-                        break
-                else:
-                    # No sucessful fit could be found.
-                    msg = "peak could not be fit for {}.".format(reflection)
-                    print(msg)
+                        # No sucessful fit could be found.
+                        msg = "peak could not be fit for {}.".format(reflection)
+                        print(msg)
+            self._peak_list.append(phase_peak_list)
         return self._peak_list
 
     def plot(self, ax=None):

@@ -19,11 +19,13 @@ class MapScan(XRDScan):
     """
     IMAGE_HEIGHT = 480 # px
     IMAGE_WIDTH = 640 # px
+    metric = 0
+    reliability = 1
     def __init__(self, location, xrd_map, filebase, *args, **kwargs):
         self.cube_coords = location
         self.xrd_map = xrd_map
         self.filebase = filebase
-        result = super(MapScan, self).__init__(*args, **kwargs)
+        result = super().__init__(*args, **kwargs)
         return result
 
     @property
@@ -60,6 +62,9 @@ class MapScan(XRDScan):
         self.metric = dataDict['metric']
         self.reliability = dataDict['reliability']
         self.refinement.data_dict = dataDict['refinement']
+        # Load phases
+        for idx, phase in enumerate(self.phases):
+            phase.data_dict = dataDict['phases'][idx]
 
     def xy_coords(self, unit_size=None):
         """Convert internal coordinates to conventional cartesian coords"""
@@ -129,25 +134,6 @@ class MapScan(XRDScan):
         return self.xrd_map.metric_normalizer(self.metric)
 
     @property
-    def metric(self):
-        """
-        Check for a cached metric and if none is found, generate a new
-        one.
-        """
-        metric = self.cached_data.get('metric', None)
-        if metric is None:
-            if self.diffractogram_is_loaded:
-                metric = self.xrd_map.mapscan_metric(scan=self)
-                self.cached_data['metric'] = metric
-            else:
-                metric = 0
-        return metric
-
-    @metric.setter
-    def metric(self, metric):
-        self.cached_data['metric'] = metric
-
-    @property
     def metric_details(self):
         """Returns a string describing how the metric was calculated."""
         return self.refinement.details()
@@ -157,25 +143,6 @@ class MapScan(XRDScan):
         """Acquire un-normalized reliability."""
         reliability = self.xrd_map.mapscan_reliability(scan=self)
         return reliability
-
-    @property
-    def reliability(self):
-        """Serve up cached value or recalculate if necessary."""
-        reliability = self.cached_data.get('reliability', None)
-        if reliability is None:
-            self.diffractogram
-            if self.diffractogram_is_loaded:
-                raw = self.reliability_raw
-                normalizer = self.xrd_map.reliability_normalizer
-                reliability = normalizer(raw)
-                self.cached_data['reliability'] = reliability
-            else:
-                reliability = 0
-        return reliability
-
-    @reliability.setter
-    def reliability(self, reliability):
-        self.cached_data['reliability'] = reliability
 
     def plot_hexagon(self, ax):
         """Build and plot a hexagon for display on the mapping routine.

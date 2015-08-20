@@ -24,7 +24,7 @@ def display_progress(objs, operation='Status'):
     ctr = 1
     total = len(objs)
     for obj in objs:
-        status = '{operation}: {curr}/{total} ({percent:.2f}%)'.format(
+        status = '{operation}: {curr}/{total} ({percent:.0f}%)'.format(
             operation=operation, curr=ctr, total=total, percent=(ctr)/total*100
         )
         print(status, end='\r')
@@ -304,39 +304,14 @@ class Map():
         """
         Perform initial calculations on mapping data and save results to file.
         """
-        # self.subtract_backgrounds()
-        self.refine_scans()
-        self.calculate_metrics()
         self.calculate_reliabilities()
-        self.calculate_colors()
         self.composite_image()
-
-    def refine_scans(self):
-        """
-        Refine a series of parameters on each scan. Continue if an
-        exceptions.RefinementError occurs.
-        """
-        for scan in display_progress(self.scans, 'Decomposing patterns'):
-            try:
-                scan.refinement.refine_background()
-                scan.refinement.refine_displacement()
-                scan.refinement.refine_unit_cells()
-                scan.refinement.refine_scale_factors()
-            except exceptions.SingularMatrixError as e:
-                # Display an error message on exception and then coninue fitting
-                msg = "{coords}: {msg}".format(coords=scan.cube_coords, msg=e)
-                print(msg)
 
     def calculate_metrics(self):
         """Force recalculation of all metrics in the map."""
         for scan in display_progress(self.scans, 'Calculating metrics'):
             scan.cached_data['metric'] = None
             scan.metric
-
-    def calculate_reliabilities(self):
-        for scan in display_progress(self.scans, 'Reticulating splines'):
-            scan.cached_data['reliability'] = None
-            scan.reliability
 
     def calculate_colors(self):
         for scan in display_progress(self.scans, 'Transposing colorspaces'):
@@ -353,33 +328,6 @@ class Map():
         subclasses.
         """
         raise NotImplementedError
-
-    def mapscan_reliability(self, scan):
-        """
-        Use phase intensities to determine how likely a scan is to be
-        target material (versus background)."""
-        signal = 0
-        # Calculate signals
-        for phase in scan.phases:
-            two_theta_range = phase.diagnostic_reflection.two_theta_range
-            if scan.contains_peak(two_theta_range=two_theta_range):
-                signal += scan.peak_area(two_theta_range)
-        # Calculate background signal
-        background = 0
-        for Phase in self.background_phases:
-            phase = Phase()
-            if phase.diagnostic_reflection is not None:
-                two_theta_range = phase.diagnostic_reflection.two_theta_range
-                background += scan.peak_area(two_theta_range)
-        if background == 0:
-            # No background peaks available
-            reliability = 1
-        else:
-            # Compute reliability from signal to background
-            totalIntensity = signal + background
-            intensityModifier = colors.Normalize(0.15, 0.5, clip=True)(totalIntensity)
-            reliability = intensityModifier * signal / (signal+background)
-        return reliability
 
     def save(self, filename=None):
         """Take cached data and save to disk."""

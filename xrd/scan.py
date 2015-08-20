@@ -97,9 +97,6 @@ class XRDScan():
         # Store dataframe and set flags
         self._df = df
         self.diffractogram_is_loaded = True
-        # Subtract background (only if peaks are within range)
-        # if len(self.phases) > 0 or len(self.background_phases) > 0:
-        #     self.refinement.refine_background()
         return self._df
 
     @property

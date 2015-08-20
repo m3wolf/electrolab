@@ -43,13 +43,18 @@ class Phase():
     def diagnostic_reflection(self, new_hkl):
         self.diagnostic_hkl = new_hkl
 
-    def predicted_peak_positions(self, wavelength, unit_cell=None):
+    def predicted_peak_positions(self, wavelength, unit_cell=None, scan=None):
         # Use current unit_cell if none is given
         if unit_cell is None:
             unit_cell = self.unit_cell
         PredictedPeak = namedtuple('PredictedPeak', ('hkl', 'd', 'two_theta'))
         predicted_peaks = []
         for reflection in self.reflection_list:
+            # Only include reflection if it's within the scan's two-theta range
+            if scan is not None:
+                if not scan.contains_peak(reflection.two_theta_range):
+                    continue
+            # Calculate predicted position
             hkl = reflection.hkl
             d = unit_cell.d_spacing(hkl)
             radians = math.asin(wavelength/2/d)
