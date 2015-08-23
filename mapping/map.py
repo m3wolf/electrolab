@@ -54,6 +54,7 @@ class Map():
     frame_width = 20 # 2-theta coverage of detector face
     scan_time = 300 # In seconds
     scans = []
+    cell_class = MapScan
     hexagon_patches = None # Replaced by cached versions
     metric_normalizer = colors.Normalize(0, 1, clip=True)
     reliability_normalizer = colors.Normalize(0, 1, clip=True)
@@ -112,11 +113,11 @@ class Map():
             phases = [Phase() for Phase in self.phases]
             background_phases = [Phase() for Phase in self.background_phases]
             # Create XRD Scan object
-            new_scan = MapScan(location=coords, xrd_map=self, filebase=fileBase,
-                               phases=phases,
-                               background_phases=background_phases,
-                               two_theta_range=self.two_theta_range,
-                               refinement=self.refinement)
+            new_scan = self.cell_class(location=coords, xrd_map=self,
+                                       filebase=fileBase, phases=phases,
+                                       background_phases=background_phases,
+                                       two_theta_range=self.two_theta_range,
+                                       refinement=self.refinement)
             self.scans.append(new_scan)
 
     def scan(self, cube):
@@ -304,7 +305,7 @@ class Map():
         """
         Perform initial calculations on mapping data and save results to file.
         """
-        self.calculate_reliabilities()
+        # self.calculate_reliabilities()
         self.composite_image()
 
     def calculate_metrics(self):
@@ -312,6 +313,10 @@ class Map():
         for scan in display_progress(self.scans, 'Calculating metrics'):
             scan.cached_data['metric'] = None
             scan.metric
+
+    def reliabilities(self):
+        # Calculate new values
+        return [scan.reliability for scan in self.scans]
 
     def calculate_colors(self):
         for scan in display_progress(self.scans, 'Transposing colorspaces'):

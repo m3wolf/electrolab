@@ -12,6 +12,36 @@ from xrd.scan import XRDScan
 from mapping.coordinates import Cube
 from plots import new_axes
 
+
+class cached_property():
+    """
+    Calculates a computationally expensive value once and save it for
+    later retrieval. To force recalculation, delete the attribute and it
+    will be calculated again next time it is needed.
+    """
+    def __init__(self, func):
+        self.func = func
+
+    def is_cached(self):
+        return hasattr(self, 'cached_value')
+
+    def __get__(self, obj, objtype):
+        # Check for cached value first
+        if not self.is_cached():
+            # If not cached, calculate and store
+            self.cached_value = self.func(obj)
+        # Return value (either cached or calculated)
+        ret = self.cached_value
+        return ret
+
+    def __set__(self, obj, value):
+        self.cached_value = value
+
+    def __delete__(self, obj):
+        if self.is_cached():
+            del self.cached_value
+
+
 class MapScan(XRDScan):
     """
     An XRD scan at one X,Y location. Several Scan objects make up a
@@ -20,13 +50,18 @@ class MapScan(XRDScan):
     IMAGE_HEIGHT = 480 # px
     IMAGE_WIDTH = 640 # px
     metric = 0
-    reliability = 1
+
     def __init__(self, location, xrd_map, filebase, *args, **kwargs):
         self.cube_coords = location
         self.xrd_map = xrd_map
         self.filebase = filebase
         result = super().__init__(*args, **kwargs)
         return result
+
+    @cached_property
+    def reliability(self):
+        """Measure of reliability of the data ranging 0..1"""
+        return 1.0
 
     @property
     def filename(self):
@@ -60,7 +95,7 @@ class MapScan(XRDScan):
         # self.filename = dataDict['filename']
         self.filebase = dataDict['filebase']
         self.metric = dataDict['metric']
-        self.reliability = dataDict['reliability']
+        self.reliability = dataDict.get('reliability', self.reliability)
         self.refinement.data_dict = dataDict['refinement']
         # Load phases
         for idx, phase in enumerate(self.phases):
@@ -137,12 +172,6 @@ class MapScan(XRDScan):
     def metric_details(self):
         """Returns a string describing how the metric was calculated."""
         return self.refinement.details()
-
-    @property
-    def reliability_raw(self):
-        """Acquire un-normalized reliability."""
-        reliability = self.xrd_map.mapscan_reliability(scan=self)
-        return reliability
 
     def plot_hexagon(self, ax):
         """Build and plot a hexagon for display on the mapping routine.

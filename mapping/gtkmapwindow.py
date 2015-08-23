@@ -244,7 +244,7 @@ class MetricBox(ValueBox):
 class ReliabilityBox(ValueBox):
     def update_labels(self, scan):
         # Set values from scan
-        self.rawLabel.set_text("{:.03f}".format(scan.reliability_raw))
+        self.rawLabel.set_text("{:.03f}".format(scan.signal_level))
         self.normLabel.set_text("{:.03f}".format(scan.reliability))
 
 

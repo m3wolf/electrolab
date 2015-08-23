@@ -13,7 +13,7 @@ from phases.lmo import CubicLMO
 from phases.unitcell import UnitCell, CubicUnitCell, HexagonalUnitCell
 from mapping.map import Map, DummyMap, PeakPositionMap
 from mapping.coordinates import Cube
-from mapping.mapscan import MapScan
+from mapping.mapscan import MapScan, cached_property
 from xrd.map import XRDMap
 from xrd.scan import XRDScan
 from xrd.peak import XRDPeak, PeakFit, remove_peak_from_df
@@ -116,10 +116,10 @@ class CubeTest(unittest.TestCase):
         self.assertEqual(cube, Cube(1, 0, -1))
 
 
-class LMOSolidSolutionTest(unittest.TestCase):
+class LMOSolidSolutionTest(ElectrolabTestCase):
     def setUp(self):
         self.phase = CubicLMO()
-        self.map = PeakPositionMap(scan_time=10,
+        self.map = XRDMap(scan_time=10,
                                    two_theta_range=(30, 55),
                                    phases=[CubicLMO],
                                    background_phases=[Aluminum])
@@ -128,20 +128,29 @@ class LMOSolidSolutionTest(unittest.TestCase):
         self.scan.load_diffractogram('test-sample-frames/LMO-sample-data.plt')
 
     def test_metric(self):
-        self.scan.diffractogram
-        metric = self.scan.metric
-        self.assertEqual(
+        self.scan.refinement.refine_unit_cells()
+        metric = self.scan.phases[0].unit_cell.a
+        self.assertApproximatelyEqual(
             metric,
-            36.485
+            8.192
         )
 
     def test_reliability_sample(self):
+        self.scan.refinement.refine_background()
+        self.scan.refinement.refine_scale_factors()
         reliability = self.scan.reliability
         self.assertTrue(
             reliability > 0.9,
             'Reliability {} is not > 0.9'.format(reliability)
-       )
+        )
+        signal_level = self.scan.signal_level
+        self.assertApproximatelyEqual(
+            signal_level,
+            1.77,
+            # 'Signal level {} is not < 0.1'.format(signal_level)
+        )
 
+    @unittest.expectedFailure
     def test_reliability_background(self):
         self.scan.load_diffractogram('test-sample-frames/LMO-background.plt')
         reliability = self.scan.reliability
@@ -153,11 +162,17 @@ class LMOSolidSolutionTest(unittest.TestCase):
     def test_reliability_noise(self):
         # Check that background noise gives low reliability
         self.scan.load_diffractogram('test-sample-frames/LMO-noise.plt')
+        self.scan.refinement.refine_background()
+        self.scan.refinement.refine_scale_factors()
         reliability = self.scan.reliability
         self.assertTrue(
             reliability < 0.1,
             'Reliability {} is not < 0.1'.format(reliability)
         )
+        # signal_level = self.scan.signal_level
+        # self.assertApproximatelyEqual(
+        #     'Signal level {} is not < 0.1'.format(signal_level)
+        # )
 
 
 class XRDMapTest(ElectrolabTestCase):
@@ -446,7 +461,7 @@ class XRDScanTest(ElectrolabTestCase):
         )
 
 
-class TestUnitCell(unittest.TestCase):
+class UnitCellTest(unittest.TestCase):
     def test_init(self):
         unitCell = UnitCell(a=15, b=3, alpha=45)
         self.assertEqual(unitCell.a, 15)
@@ -463,7 +478,7 @@ class TestUnitCell(unittest.TestCase):
             unitCell.alpha = -10
 
 
-class TestCubicUnitCell(unittest.TestCase):
+class CubicUnitCellTest(unittest.TestCase):
     def setUp(self):
         self.unit_cell = CubicUnitCell()
 
@@ -491,7 +506,7 @@ class TestCubicUnitCell(unittest.TestCase):
         )
 
 
-class TestHexagonalUnitCell(unittest.TestCase):
+class HexagonalUnitCellTest(unittest.TestCase):
     def setUp(self):
         self.unit_cell = HexagonalUnitCell()
 
@@ -635,6 +650,42 @@ class PhaseTest(ElectrolabTestCase):
             reflection.hkl,
             (1, 1, 0)
         )
+
+    def test_unitcell_copy(self):
+        """
+        Stems from a bug where setting a parameter on one unit cell changes
+        another.
+        """
+        mapp = XRDMap(scan_time=10,
+                      two_theta_range=(30, 55),
+                      phases=[CubicLMO],
+                      background_phases=[Aluminum])
+        phase1 = mapp.scans[0].phases[0]
+        phase2 = mapp.scans[1].phases[0]
+        # Changing parameter on one phase should not change the other
+        phase1.unit_cell.a = 8
+        phase2.unit_cell.a = 5
+        self.assertIsNot(phase1.unit_cell, phase2.unit_cell)
+        self.assertNotEqual(phase1.unit_cell.a, 5, 'Unit cells are coupled')
+
+
+class CachingTest(ElectrolabTestCase):
+    def test_cached_property(self):
+        # Simple class to test caching
+        class Adder():
+            a = 1
+            b = 2
+            @cached_property
+            def added(self):
+                return self.a + self.b
+        adder = Adder()
+        self.assertEqual(adder.added, 3)
+        # Now change an attribute and see if the cached value is returned
+        adder.a = 3
+        self.assertEqual(adder.added, 3)
+        # Delete the cached value and see if a new value is computer
+        del adder.added
+        self.assertEqual(adder.added, 5)
 
 
 class ExperimentalDataTest(ElectrolabTestCase):

@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from collections import namedtuple
+import copy
 import math
 
 import scipy
@@ -8,6 +9,18 @@ import scipy
 import exceptions
 from mapping.datadict import DataDict
 from xrd.reflection import hkl_to_tuple
+from phases.unitcell import UnitCell
+
+class PhaseDataDict(DataDict):
+    def __get__(self, obj, cls):
+        new_dict = super().__get__(obj, cls)
+        new_dict['unit_cell'] = obj.unit_cell.data_dict
+        return new_dict
+
+    def __set__(self, obj, new_dict):
+        obj.unit_cell.data_dict = new_dict['unit_cell']
+        del new_dict['unit_cell']
+        return super().__set__(obj, new_dict)
 
 class Phase():
     """A crystallographic phase that can be found in a Material."""
@@ -15,7 +28,16 @@ class Phase():
     reflection_list = [] # Predicted peaks by crystallography
     spacegroup = ''
     scale_factor = 1
-    data_dict = DataDict(['scale_factor'])
+    data_dict = PhaseDataDict(['scale_factor', 'u', 'v', 'w'])
+    unit_cell = UnitCell
+    # Profile peak-width parameters (fwhm = u*(tan θ)^2 + v*tan θ + w)
+    u = 0
+    v = 0
+    w = 0
+
+    def __init__(self):
+        # Create a fresh unit cell
+        self.unit_cell = copy.copy(self.unit_cell)
 
     def __str__(self):
         name = self.name

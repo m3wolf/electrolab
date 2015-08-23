@@ -74,6 +74,7 @@ class NativeRefinement(BaseRefinement):
                 # Optimization failed for some reason
                 raise exceptions.RefinementError(result.message)
 
+
     def refine_scale_factors(self):
         # Make sure background is refined first
         if not self.is_refined['background']:

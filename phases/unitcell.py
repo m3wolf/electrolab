@@ -4,6 +4,7 @@ from collections import namedtuple
 import math
 
 from exceptions import UnitCellError
+from mapping.datadict import DataDict
 
 class UnitCell():
     """Describes a crystallographic unit cell for XRD Refinement. Composed
@@ -19,6 +20,7 @@ class UnitCell():
     alpha = 90
     beta = 90
     gamma = 90
+    data_dict = DataDict(['a', 'b', 'c', 'alpha', 'beta', 'gamma'])
     def __init__(self, a=None, b=None, c=None,
                  alpha=None, beta=None, gamma=None):
         # Set initial cell parameters.

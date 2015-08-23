@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from phases.phase import Phase
-from phases.unitcell import HexagonalUnitCell
+from phases.unitcell import HexagonalUnitCell, CubicUnitCell
 from xrd.reflection import Reflection
 
 # Corundum standard
@@ -20,14 +20,11 @@ class Corundum(Phase):
         Reflection('024', (52, 54)),
         Reflection('116', (56, 59)),
     ]
-    # Profile peak-width parameters (fwhm = u*(tan θ)^2 + v*tan θ + w)
-    u = 0
-    v = 0
-    w = 0
 
 
 class Aluminum(Phase):
     name = 'aluminum'
+    unit_cell = CubicUnitCell(a=4.05)
     diagnostic_hkl = '111'
     reflection_list = [
         Reflection('111', (37.3, 39)),
