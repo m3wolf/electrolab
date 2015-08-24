@@ -635,7 +635,11 @@ class DummyMap(Map):
         # Ensure that "diffractogram is loaded" for each scan
         for scan in self.scans:
             scan.diffractogram_is_loaded = True
-        return super(DummyMap, self).plot_map(*args, **kwargs)
+            p = scan.cube_coords[0]
+            rows = scan.xrd_map.rows
+            r = p/2/rows + 0.5
+            scan.metric = r
+        return super().plot_map(*args, **kwargs)
 
     def create_scans(self):
         """Populate the scans array with new scans in a hexagonal array."""

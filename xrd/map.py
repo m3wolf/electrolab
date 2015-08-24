@@ -28,6 +28,11 @@ class XRDMap(Map):
         # Now plot the map
         return self.plot_map(*args, **kwargs)
 
+    def set_metric_fwhm(self, phase_idx=0, *args, **kwargs):
+        for scan in display_progress(self.scans, 'Culculating peak widths'):
+            phase = scan.phases[phase_idx]
+            scan.metric = scan.refinement.fwhm(phase=phase)
+
     def prepare_mapping_data(self):
         self.refine_scans()
         return super().prepare_mapping_data()
@@ -41,6 +46,7 @@ class XRDMap(Map):
             try:
                 scan.refinement.refine_background()
                 scan.refinement.refine_displacement()
+                scan.refinement.refine_peak_widths()
                 scan.refinement.refine_unit_cells()
                 scan.refinement.refine_scale_factors()
             except exceptions.SingularMatrixError as e:

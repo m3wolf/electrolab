@@ -802,6 +802,7 @@ class FullProfProfileTest(ElectrolabTestCase):
         self.refinement.zero = -0.003820
         self.refinement.displacement = 0.0012
         self.refinement.bg_coeffs = [129.92, -105.82, 108.32, 151.85, -277.55, 91.911]
+        # self.refinement.keep_temp_files = True
 
     def test_jinja_context(self):
         context = self.refinement.pcrfile_context()

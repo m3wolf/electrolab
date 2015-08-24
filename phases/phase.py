@@ -18,8 +18,9 @@ class PhaseDataDict(DataDict):
         return new_dict
 
     def __set__(self, obj, new_dict):
-        obj.unit_cell.data_dict = new_dict['unit_cell']
-        del new_dict['unit_cell']
+        if 'unit_cell' in new_dict.keys():
+            obj.unit_cell.data_dict = new_dict['unit_cell']
+            del new_dict['unit_cell']
         return super().__set__(obj, new_dict)
 
 class Phase():
@@ -28,8 +29,8 @@ class Phase():
     reflection_list = [] # Predicted peaks by crystallography
     spacegroup = ''
     scale_factor = 1
-    data_dict = PhaseDataDict(['scale_factor', 'u', 'v', 'w'])
     unit_cell = UnitCell
+    data_dict = PhaseDataDict(['scale_factor', 'u', 'v', 'w'])
     # Profile peak-width parameters (fwhm = u*(tan θ)^2 + v*tan θ + w)
     u = 0
     v = 0
@@ -50,6 +51,17 @@ class Phase():
         if name is None:
             name = '[blank]'
         return "<{}: {}>".format(self.__class__.__name__, name)
+
+    # @property
+    # def data_dict(self):
+    #     new_dict = {
+    #         'scale_factor': self.scale_factor,
+    #         'u': self.u,
+    #         'v': self.v,
+    #         'w': self.w,
+    #         'unit_cell': self.unit_cell.data_dict
+    #     }
+    #     return new_dict
 
     def reflection_by_hkl(self, hkl_input):
         for reflection in self.reflection_list:

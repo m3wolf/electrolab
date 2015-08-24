@@ -9,6 +9,7 @@ class DataDict():
         dataDict = {}
         for attr in self.attrs:
             dataDict[attr] = getattr(obj, attr, None)
+            # print(attr, ':', dataDict[attr])
         return dataDict
 
     def __set__(self, obj, newDict):

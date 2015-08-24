@@ -3,6 +3,7 @@
 from collections import namedtuple
 from enum import Enum
 import io
+import math
 import os
 import re
 from subprocess import call
@@ -11,6 +12,7 @@ import tempfile
 
 import jinja2
 import pandas as pd
+from matplotlib.colors import Normalize
 
 import plots
 import exceptions
@@ -45,9 +47,9 @@ class FullProfPhase(Phase):
     # Shape parameters
     eta = 0.5
     x = 0
-    data_dict = DataDict(['scale_factor', 'isotropic_temp',
-                          'u', 'v', 'w', 'I_g',
-                          'eta', 'x'])
+    # data_dict = DataDict(['scale_factor', 'isotropic_temp',
+    #                       'u', 'v', 'w', 'I_g',
+    #                       'eta', 'x'])
 
 class Mode(Enum):
     """
@@ -74,6 +76,7 @@ class ProfileMatch(BaseRefinement):
     bg_re = re.compile('Background Polynomial Parameters ==>((?:\s+[-0-9Ee.]+)+)')
     displacement_re = re.compile('Cos\( theta\)-shift parameter :\s+([-0-9Ee.]+)')
     scale_re = re.compile('=> overall scale factor :\s+([-0-9Ee.]+)\s+([-0-9Ee.]+)')
+    width_re = re.compile('=> Halfwidth parameters\s+:\s+((?:\s+[-0-9Ee.]+)+)')
     cell_re = re.compile('=> Cell parameters\s+:\s+((?:\s+[-0-9Ee.]+)+)')
     # Regular expressions for reading errors from log file
     singular_matrix_re = re.compile('==> Singular matrix!!, problem with (\S+)')
@@ -160,7 +163,7 @@ class ProfileMatch(BaseRefinement):
         # context['bg_codewords'] = [11, 21, 31, 41, 51, 61]
         context['bg_codewords'] = [11, 21, 31, 0, 0, 0]
         # context['bg_codewords'] = [0, 0, 0, 0, 0, 0]
-        context['num_params'] = 6
+        context['num_params'] = 3
         # Refining scale factors simultaneously help with the fit
         if not context['refinement_mode'] == Mode.constant_scale:
             for idx, phase in enumerate(context['phases']):
@@ -181,6 +184,17 @@ class ProfileMatch(BaseRefinement):
         self.run_fullprof(context=context)
         # Set status flag
         self.is_refined['displacement'] = True
+
+    def refine_peak_widths(self):
+        context = self.pcrfile_context()
+        context['num_params'] = len(context['phases'])*1
+        for idx, phase in enumerate(context['phases']):
+            # phase['codewords']['u'] = (idx*2+1)*10 + 1
+            phase['codewords']['w'] = (idx*1+1)*10 + 1
+            # phase['codewords']['v'] = (idx*2+2)*10 + 1
+        # Execute refinement
+        self.run_fullprof(context=context)
+        self.is_refined['peak_widths'] = True
 
     def refine_unit_cells(self):
         context = self.pcrfile_context()
@@ -246,18 +260,32 @@ class ProfileMatch(BaseRefinement):
         self.displacement = displacement
         # Search for scale factors
         scale_matches = self.scale_re.findall(summary)
-        assert len(scale_matches) == len(self.scan.phases)
-        for idx, match in enumerate(scale_matches):
-            phase = self.scan.phases[idx]
+        if len(scale_matches) < len(self.scan.phases):
+            raise exceptions.RefinementError()
+        for idx, phase in enumerate(self.scan.phases):
+            match = scale_matches[idx]
             phase.scale_factor = float(match[0])
             phase.scale_error = float(match[1])
+        # Search for peak-width parameters
+        width_matches = self.width_re.findall(summary)
+        if len(width_matches) < len(self.scan.phases):
+            raise exceptions.RefinementError()
+        for idx, phase in enumerate(self.scan.phases):
+            match = width_matches[idx].split()
+            width_params = [float(x) for x in match[::2]]
+            width_stdevs = [float(x) for x in match[1::2]]
+            phase.u = width_params[0]
+            phase.v = width_params[1]
+            phase.w = width_params[2]
         # Search for unit-cell parameters
-        cell_results = self.cell_re.findall(summary)
-        for idx, match in enumerate(cell_results):
-            match = match.split()
+        cell_matches = self.cell_re.findall(summary)
+        if len(cell_matches) < len(self.scan.phases):
+            raise exceptions.RefinementError()
+        for idx, phase in enumerate(self.scan.phases):
+            match = cell_matches[idx].split()
             cell_params = [float(x) for x in match[::2]]
             cell_stdevs = [float(x) for x in match[1::2]]
-            unit_cell = self.scan.phases[idx].unit_cell
+            unit_cell = phase.unit_cell
             unit_cell.a = cell_params[0]
             unit_cell.b = cell_params[1]
             unit_cell.c = cell_params[2]
@@ -291,7 +319,7 @@ class ProfileMatch(BaseRefinement):
             codewords = {
                 'a': 0, 'b': 0, 'c': 0,
                 'alpha': 0, 'beta': 0, 'gamma': 0,
-                'u': 0, 'v': 0, 'w': 0,
+                'u': 0, 'v': 0, 'w': 0, 'x': 0,
                 'scale': 0, 'eta': 0
             }
             phases.append({
@@ -335,3 +363,22 @@ class ProfileMatch(BaseRefinement):
     def highlight_peaks(self, ax):
         """No-op for fullprof refinement."""
         return ax
+
+    def fwhm(self, phase=None):
+        angle = sum(phase.diagnostic_reflection.two_theta_range)/2
+        angle = math.radians(angle)
+        width_squared = phase.u * math.tan(angle)**2 + phase.v * math.tan(angle)**2 + phase.w
+        if width_squared >= 0:
+            width = math.sqrt(width_squared)
+        else:
+            width = 0
+        # print(width)
+        return width
+
+    def confidence(self):
+        normalizer = Normalize(-0.5, -0.2, clip=True)
+        if self.chi_squared is not None:
+            confidence = normalizer(-self.chi_squared)
+        else:
+            confidence = 0
+        return confidence

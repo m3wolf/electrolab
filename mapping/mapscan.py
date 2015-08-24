@@ -100,6 +100,7 @@ class MapScan(XRDScan):
         # Load phases
         for idx, phase in enumerate(self.phases):
             phase.data_dict = dataDict['phases'][idx]
+            # print(phase.w)
 
     def xy_coords(self, unit_size=None):
         """Convert internal coordinates to conventional cartesian coords"""
@@ -158,7 +159,7 @@ class MapScan(XRDScan):
     def load_diffractogram(self, filename):
         # Checking for existance of file allows for partial maps
         if filename is not None and os.path.isfile(filename):
-            df = super(MapScan, self).load_diffractogram(filename)
+            df = super().load_diffractogram(filename)
         else:
             df = None
         return df
@@ -322,6 +323,10 @@ class DummyMapScan(MapScan):
     """
     An XRD Scan but with fake data for testing.
     """
+
+    @property
+    def signal_level(self):
+        return 1
 
     def spline(self, xdata):
         random = numpy.random.rand(len(xdata))

@@ -7,6 +7,7 @@ class BaseRefinement():
     is_refined = {
         'displacement': False,
         'background': False,
+        'peak_widths': False,
         'unit_cells': False,
         'scale_factors': False,
     }
@@ -22,5 +23,5 @@ class BaseRefinement():
     def plot(self):
         raise NotImplementedError
 
-    def fwhm(self, twotheta=40):
+    def fwhm(self, phase):
         raise NotImplementedError

@@ -36,7 +36,7 @@ COMM {{ sample_name }}
     {{ phase.codewords.scale }}     0.000     0.000     0.000     0.000     0.000
 !       U         V          W           X          Y        GauSiz   LorSiz Size-Model
   {{ phase.vals.u }}   {{ phase.vals.v }}   {{ phase.vals.w }}   {{ phase.vals.x }}  {{ phase.vals.I_g }}   0.000000   0.000000    0
-      0.000      0.000      0.000      0.000      0.000      0.000      0.000
+      {{ phase.codewords.u }}     {{ phase.codewords.v }}      {{ phase.codewords.w }}      {{ phase.codewords.x }}  0.000      0.000      0.000      0.000
 !     a          b         c        alpha      beta       gamma      #Cell Info
    {{ phase.vals.a }}   {{ phase.vals.b }}   {{ phase.vals.c }}  {{ phase.vals.alpha }}  {{ phase.vals.beta }}  {{ phase.vals.gamma }}
    {{ phase.codewords.a }}   {{ phase.codewords.b }}   {{ phase.codewords.c }}  {{ phase.codewords.alpha }}  {{ phase.codewords.beta }}  {{ phase.codewords.gamma }}
@@ -44,27 +44,3 @@ COMM {{ sample_name }}
   0.00000  0.00000  0.00000  0.00000  0.00000  0.00000
      0.00     0.00     0.00     0.00     0.00     0.00
 {% endfor %}
-! !-------------------------------------------------------------------------------
-! !  Data for PHASE number:   2  ==> Current R_Bragg for Pattern#  1:     8.87
-! !-------------------------------------------------------------------------------
-! LMO Cubic (High-V)
-! !
-! !Nat Dis Ang Pr1 Pr2 Pr3 Jbt Irf Isy Str Furth       ATZ    Nvk Npr More
-!    0   0   0 0.0 0.0 1.0  -3   2   0   0   0          0.000   0   5   0
-! !
-! F D -3 M                 <--Space group symbol
-! !-------> Profile Parameters for Pattern #  1
-! !  Scale        Shape1      Bov      Str1      Str2      Str3   Strain-Model
-!  0.15435E-03   0.00001  -0.70274   0.00000   0.00000   0.00000       0
-!     41.00000     0.000     0.000     0.000     0.000     0.000
-! !       U         V          W           X          Y        GauSiz   LorSiz Size-Model
-!    0.232509  -0.238317   0.072635   0.025309   0.000000   0.000000   0.000000    0
-!       0.000      0.000      0.000      0.000      0.000      0.000      0.000
-! !     a          b         c        alpha      beta       gamma      #Cell Info
-!    8.053382   8.053382   8.053382  90.000000  90.000000  90.000000   
-!    21.00000   21.00000   21.00000    0.00000    0.00000    0.00000
-! !  Pref1    Pref2      Asy1     Asy2     Asy3     Asy4  
-!   0.00000  0.00000  0.00000  0.00000  0.00000  0.00000
-!      0.00     0.00     0.00     0.00     0.00     0.00
-! !  2Th1/TOF1    2Th2/TOF2  Pattern to plot
-!       10.102      80.006       1

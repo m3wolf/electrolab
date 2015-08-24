@@ -228,3 +228,6 @@ class NativeRefinement(BaseRefinement):
         for phase in self.scan.background_phases:
             draw_peaks(ax=ax, phase=phase, color='grey')
         return ax
+
+    def confidence(self):
+        return 1
