@@ -438,7 +438,8 @@ class Map():
         ax.set_title('Bulk diffractogram')
         return ax
 
-    def plot_map(self, ax=None, highlightedScan=None, alpha=None):
+    def plot_map(self, ax=None, metric_range=None,
+                 highlightedScan=None, alpha=None):
         """
         Generate a two-dimensional map of the electrode surface. Color is
         determined by each scans metric() method. If no axes are given
