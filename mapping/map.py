@@ -4,7 +4,6 @@ import math
 import os
 import pickle
 
-import jinja2
 from matplotlib import pyplot, cm, patches, colors
 import numpy
 import pandas
@@ -12,10 +11,9 @@ import scipy
 
 import exceptions
 from mapping.coordinates import Cube
-from mapping.mapscan import MapScan, DummyMapScan
+from mapping.locus import Locus, DummyLocus
 from mapping.gtkmapwindow import GtkMapWindow
 from plots import new_axes, dual_axes
-from refinement.native import NativeRefinement
 
 def display_progress(objs, operation='Status'):
     """
@@ -34,54 +32,24 @@ def display_progress(objs, operation='Status'):
 
 
 class Map():
-    """
-    A physical sample that gets mapped by XRD, presumed to be circular
-    with center and diameter in millimeters. Collimator size given in mm.
-    scan_time determines seconds spent at each detector position. Detector
-    distance given in cm, frame_size in pixels.
-
-    The parameter 'phases' is a list of *uninitialized* Phase
-    classes. These will be initialized separately for each scan.
+    """A physical sample that gets mapped by some scientific process,
+    presumed to be circular with center and diameter in
+    millimeters. Resolution is the size of each cell, given in mm.
     """
     cmap_name = 'winter'
-    THETA1_MIN=0 # Source limits based on geometry
-    THETA1_MAX=50
-    THETA2_MIN=0 # Detector limits based on geometry
-    THETA2_MAX=55
-    camera_zoom = 6
-    two_theta_range = (10, 80)
-    frame_step = 20 # How much to move detector by in degrees
-    frame_width = 20 # 2-theta coverage of detector face
-    scan_time = 300 # In seconds
-    scans = []
-    cell_class = MapScan
+    loci = []
     hexagon_patches = None # Replaced by cached versions
     metric_normalizer = colors.Normalize(0, 1, clip=True)
     reliability_normalizer = colors.Normalize(0, 1, clip=True)
-    phases = []
-    background_phases = []
-    def __init__(self, center=(0, 0), diameter=12.7, collimator=0.5,
-                 two_theta_range=None, coverage=1,
-                 scan_time=None, sample_name='unknown',
-                 detector_distance=20, frame_size=1024,
-                 phases=[], background_phases=[],
-                 refinement=NativeRefinement):
+
+    def __init__(self, *, center=(0, 0), diameter=12.7, coverage=1,
+                 sample_name='unknown', resolution=1):
         self.center = center
         self.diameter = diameter
-        self.collimator = collimator
-        self.detector_distance=detector_distance
-        self.frame_size=frame_size
-        if len(phases) > 0:
-            self.phases = phases
-        if len(background_phases) > 0:
-            self.background_phases = background_phases
-        if scan_time is not None:
-            self.scan_time = scan_time
-        self.refinement = refinement
-        if two_theta_range is not None: self.two_theta_range = two_theta_range
         self.coverage = coverage
         self.sample_name = sample_name
-        self.create_scans()
+        self.resolution = resolution
+        self.create_loci()
 
     @property
     def name(self):
@@ -89,7 +57,7 @@ class Map():
 
     @property
     def rows(self):
-        """Determine number of rows from collimator size and sample diameter.
+        """Determine number of rows from resolution and sample diameter.
         Central spot counts as a row."""
         rows = self.diameter / self.unit_size / math.sqrt(3)
         centerDot = 1
@@ -98,41 +66,44 @@ class Map():
     @property
     def unit_size(self):
         """Size of a step in the path."""
-        unit_size = math.sqrt(3) * self.collimator / 2
+        unit_size = math.sqrt(3) * self.resolution / 2
         # Unit size should be bigger if we're not mapping 100%
         unit_size = unit_size / math.sqrt(self.coverage)
         return unit_size
 
-    def create_scans(self):
-        """Populate the scans array with new scans in a hexagonal array."""
-        self.scans = []
+    def new_locus(self, *, location, filebase):
+        """Create a new mapping cell with the given attributes."""
+        new_locus = Locus(location=location, parent_map=self,
+                          filebase=filebase)
+        return new_locus
+
+    def create_loci(self):
+        """Populate the loci array with new loci in a hexagonal array."""
+        self.loci = []
         for idx, coords in enumerate(self.path(self.rows)):
             # Try and determine filename from the sample name
-            fileBase = "map-{n:x}".format(n=idx)
-            # Initialize list of crystallographic phases
-            phases = [Phase() for Phase in self.phases]
-            background_phases = [Phase() for Phase in self.background_phases]
-            # Create XRD Scan object
-            new_scan = self.cell_class(location=coords, xrd_map=self,
-                                       filebase=fileBase, phases=phases,
-                                       background_phases=background_phases,
-                                       two_theta_range=self.two_theta_range,
-                                       refinement=self.refinement)
-            self.scans.append(new_scan)
+            filebase = "map-{n:x}".format(n=idx)
+            new_locus = self.new_locus(location=coords, filebase=filebase)
+            # new_scan = self.cell_class(location=coords, xrd_map=self,
+            #                            filebase=fileBase, phases=phases,
+            #                            background_phases=background_phases,
+            #                            two_theta_range=self.two_theta_range,
+            #                            refinement=self.refinement)
+            self.loci.append(new_locus)
 
-    def scan(self, cube):
-        """Find a scan in the array give a set of cubic coordinates"""
+    def locus(self, cube_coords):
+        """Find a mapping cell in the array give a set of cubic coordinates"""
         result = None
-        for scan in self.scans:
-            if scan.cube_coords == cube:
-                result = scan
+        for locus in self.loci:
+            if locus.cube_coords == cube_coords:
+                result = locus
                 break
         return result
 
-    def scan_by_xy(self, xy):
+    def locus_by_xy(self, xy):
         """Find the nearest scan by set of xy coords."""
-        scan = self.scan(Cube.from_xy(xy, unit_size=self.unit_size))
-        return scan
+        locus = self.locus(Cube.from_xy(xy, unit_size=self.unit_size))
+        return locus
 
     def path(self, rows):
         """Generator gives coordinates for a spiral path around the sample."""
@@ -171,96 +142,8 @@ class Map():
     def xy_lim(self):
         return self.diameter/2*1.5
 
-    def write_slamfile(self, f=None, quiet=False):
-        """
-        Format the sample into a slam file that GADDS can process.
-        """
-        # Import template
-        env = jinja2.Environment(loader=jinja2.PackageLoader('electrolab', ''))
-        template = env.get_template('mapping/mapping-template.slm')
-        self.create_scans()
-        context = self.get_context()
-        # Create file and directory if necessary
-        if f is None:
-            directory = self.directory()
-            if not os.path.exists(directory):
-                os.makedirs(directory)
-            filename = '{dir}/{samplename}.slm'.format(
-                dir=directory, samplename=self.sample_name
-            )
-            with open(filename, 'w') as f:
-                f.write(template.render(**context))
-        else:
-            f.write(template.render(**context))
-        # Print summary info
-        if not quiet:
-            msg = "Running {num} scans ({frames} frames each). ETA: {time}."
-            print(msg.format(num=context['num_scans'],
-                             time=context['total_time'],
-                             frames=context['number_of_frames']))
-            frameStart = context['frames'][0]['start']
-            frameEnd = context['frames'][-1]['end']
-            msg = "Integration range: {start}° to {end}°"
-            print(msg.format(start=frameStart, end=frameEnd))
-        return f
-
-    def get_context(self):
-        """Convert the object to a dictionary for the templating engine."""
-        # Estimate the total time
-        totalSecs = len(self.scans)*self.scan_time*self.get_number_of_frames()
-        days = math.floor(totalSecs/60/60/24)
-        remainder = totalSecs - days * 60 * 60 * 24
-        hours = math.floor(remainder/60/60)
-        remainder = remainder - hours * 60 * 60
-        mins = math.floor(remainder/60)
-        total_time = "{secs}s ({days}d {hours}h {mins}m)".format(secs=totalSecs,
-                                                                 days=days,
-                                                                 hours=hours,
-                                                                 mins=mins)
-        # List of frames to integrate
-        frames = []
-        for frame_num in range(0, self.get_number_of_frames()):
-            start = self.two_theta_range[0] + frame_num*self.frame_step
-            end = start + self.frame_step
-            frame = {
-                'start': start,
-                'end': end,
-                'number': frame_num,
-            }
-            frames.append(frame)
-        # Generate flood and spatial reference files to load
-        floodFilename = "{framesize:04d}_{distance:03d}._FL".format(
-            distance=self.detector_distance,
-            framesize=self.frame_size
-        )
-        spatialFilename = "{framesize:04d}_{distance:03d}._ix".format(
-            distance=self.detector_distance,
-            framesize=self.frame_size
-        )
-        # Prepare context dictionary
-        context = {
-            'scans': [],
-            'num_scans': len(self.scans),
-            'frames': frames,
-            'frame_step': self.frame_step,
-            'number_of_frames': self.get_number_of_frames(),
-            'xoffset': self.center[0],
-            'yoffset': self.center[1],
-            'theta1': self.get_theta1(),
-            'theta2': self.get_theta2_start(),
-            'aux': self.camera_zoom,
-            'scan_time': self.scan_time,
-            'total_time': total_time,
-            'sample_name': self.sample_name,
-            'flood_file': floodFilename,
-            'spatial_file': spatialFilename,
-        }
-        for idx, scan in enumerate(self.scans):
-            # Prepare scan-specific details
-            x, y = scan.xy_coords(unit_size=self.unit_size)
-            scan_metadata = {'x': x, 'y': y, 'filename': scan.filebase}
-            context['scans'].append(scan_metadata)
-        return context
+    def write_script(self, *args, **kwargs):
+        raise NotImplementedError
 
     def get_number_of_frames(self):
         num_frames = math.ceil(
@@ -341,7 +224,7 @@ class Map():
             'diameter': self.diameter,
             'coverage': self.coverage,
             'rows': self.rows,
-            'scans': [scan.data_dict for scan in self.scans],
+            'loci': [locus.data_dict for locus in self.loci],
         }
         # Compute filename and Check if file exists
         if filename is None:

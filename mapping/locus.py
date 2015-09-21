@@ -42,21 +42,19 @@ class cached_property():
             del self.cached_value
 
 
-class MapScan(XRDScan):
+class Locus():
     """
-    An XRD scan at one X,Y location. Several Scan objects make up a
-    Sample object.
+    An mapping cell at one X,Y location. Several Locus objects make up a
+    Map object.
     """
     IMAGE_HEIGHT = 480 # px
     IMAGE_WIDTH = 640 # px
     metric = 0
 
-    def __init__(self, location, xrd_map, filebase, *args, **kwargs):
+    def __init__(self, location, parent_map, filebase):
         self.cube_coords = location
-        self.xrd_map = xrd_map
+        self.parent_map = parent_map
         self.filebase = filebase
-        result = super().__init__(*args, **kwargs)
-        return result
 
     @cached_property
     def reliability(self):
@@ -66,7 +64,7 @@ class MapScan(XRDScan):
     @property
     def filename(self):
         filename = "{samplename}-frames/{filebase}.plt".format(
-            samplename=self.xrd_map.sample_name,
+            samplename=self.parent_map.sample_name,
             filebase=self.filebase,
         )
         return filename
@@ -81,7 +79,7 @@ class MapScan(XRDScan):
             'filebase': self.filebase,
             'metric': self.metric,
             'reliability': self.reliability,
-            'refinement': self.refinement.data_dict,
+            'refinement': self.xrdscan.refinement.data_dict,
             'phases': [phase.data_dict for phase in self.phases]
         }
         return dataDict
@@ -106,7 +104,7 @@ class MapScan(XRDScan):
         """Convert internal coordinates to conventional cartesian coords"""
         # Get default unit vector magnitude if not given
         if unit_size is None:
-            unit = self.xrd_map.unit_size
+            unit = self.parent_map.unit_size
         else:
             unit = unit_size
         # Calculate x and y positions
@@ -131,38 +129,13 @@ class MapScan(XRDScan):
         height and width. Assumes the sample center is at the center
         of the image.
         """
-        dots_per_mm = self.xrd_map.dots_per_mm()
+        dots_per_mm = self.parent_map.dots_per_mm()
         xy_coords = self.xy_coords()
         pixel_coords = {
             'height': round(height/2 - xy_coords[1] * dots_per_mm),
             'width': round(width/2 + xy_coords[0] * dots_per_mm)
         }
         return pixel_coords
-
-    @property
-    def diffractogram(self):
-        """Return a diffractogram based on naming scheme for mapping,
-        with caching."""
-        # Check for cached version
-        if self._df is not None:
-            df = self._df
-        else:
-            # Get file from disk
-            filename = self.filename
-            df = self.load_diffractogram(filename)
-        return df
-
-    @diffractogram.setter
-    def diffractogram(self, newDf):
-        self._df = newDf
-
-    def load_diffractogram(self, filename):
-        # Checking for existance of file allows for partial maps
-        if filename is not None and os.path.isfile(filename):
-            df = super().load_diffractogram(filename)
-        else:
-            df = None
-        return df
 
     @property
     def metric_normalized(self):
@@ -232,13 +205,9 @@ class MapScan(XRDScan):
         Use the metric for this material to determine what color this scan
         should be on the resulting map.
         """
-        color = self.cached_data.get('color', None)
-        if color is None:
-            # Not cached, so recalculate
-            metric = self.metric
-            cmap = self.xrd_map.get_cmap()
-            color = cmap(self.xrd_map.metric_normalizer(metric))
-            self.cached_data['color'] = color
+        metric = self.metric
+        cmap = self.xrd_map.get_cmap()
+        color = cmap(self.xrd_map.metric_normalizer(metric))
         return color
 
     def axes_title(self):
@@ -319,7 +288,7 @@ class MapScan(XRDScan):
                                  image=scanImage)
 
 
-class DummyMapScan(MapScan):
+class DummyLocus(Locus):
     """
     An XRD Scan but with fake data for testing.
     """

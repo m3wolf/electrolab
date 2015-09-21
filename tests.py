@@ -13,9 +13,10 @@ from phases.lmo import CubicLMO
 from phases.unitcell import UnitCell, CubicUnitCell, HexagonalUnitCell
 from mapping.map import Map, DummyMap, PeakPositionMap
 from mapping.coordinates import Cube
-from mapping.mapscan import MapScan, cached_property
+from mapping.locus import Locus, cached_property
 from xrd.map import XRDMap
 from xrd.scan import XRDScan
+from xrd.locus import XRDLocus
 from xrd.peak import XRDPeak, PeakFit, remove_peak_from_df
 from xrd.reflection import Reflection, hkl_to_tuple
 from electrochem.galvanostatrun import GalvanostatRun
@@ -31,6 +32,7 @@ class LMOHighV(CubicLMO):
     reflection_list = [
         Reflection('333', (58.5, 59.3))
     ]
+
 
 class LMOMidV(CubicLMO):
     unit_cell = CubicUnitCell(a=8.13)
@@ -124,26 +126,26 @@ class LMOSolidSolutionTest(ElectrolabTestCase):
                                    phases=[CubicLMO],
                                    background_phases=[Aluminum])
         self.map.reliability_normalizer = colors.Normalize(0.4, 0.8, clip=True)
-        self.scan = self.map.scans[0]
-        self.scan.load_diffractogram('test-sample-frames/LMO-sample-data.plt')
+        self.locus = self.map.loci[0]
+        self.locus.load_diffractogram('test-sample-frames/LMO-sample-data.plt')
 
     def test_metric(self):
-        self.scan.refinement.refine_unit_cells()
-        metric = self.scan.phases[0].unit_cell.a
+        self.locus.refine_unit_cells()
+        metric = self.locus.phases[0].unit_cell.a
         self.assertApproximatelyEqual(
             metric,
             8.192
         )
 
     def test_reliability_sample(self):
-        self.scan.refinement.refine_background()
-        self.scan.refinement.refine_scale_factors()
-        reliability = self.scan.reliability
+        self.locus.refine_background()
+        self.locus.refine_scale_factors()
+        reliability = self.locus.reliability
         self.assertTrue(
             reliability > 0.9,
             'Reliability {} is not > 0.9'.format(reliability)
         )
-        signal_level = self.scan.signal_level
+        signal_level = self.locus.signal_level
         self.assertApproximatelyEqual(
             signal_level,
             1.77,
@@ -152,8 +154,8 @@ class LMOSolidSolutionTest(ElectrolabTestCase):
 
     @unittest.expectedFailure
     def test_reliability_background(self):
-        self.scan.load_diffractogram('test-sample-frames/LMO-background.plt')
-        reliability = self.scan.reliability
+        self.locus.load_diffractogram('test-sample-frames/LMO-background.plt')
+        reliability = self.locus.reliability
         self.assertTrue(
             reliability < 0.1,
             'Reliability {} is not < 0.1'.format(reliability)
@@ -161,18 +163,14 @@ class LMOSolidSolutionTest(ElectrolabTestCase):
 
     def test_reliability_noise(self):
         # Check that background noise gives low reliability
-        self.scan.load_diffractogram('test-sample-frames/LMO-noise.plt')
-        self.scan.refinement.refine_background()
-        self.scan.refinement.refine_scale_factors()
-        reliability = self.scan.reliability
+        self.locus.load_diffractogram('test-sample-frames/LMO-noise.plt')
+        self.locus.refine_background()
+        self.locus.refine_scale_factors()
+        reliability = self.locus.reliability
         self.assertTrue(
             reliability < 0.1,
             'Reliability {} is not < 0.1'.format(reliability)
         )
-        # signal_level = self.scan.signal_level
-        # self.assertApproximatelyEqual(
-        #     'Signal level {} is not < 0.1'.format(signal_level)
-        # )
 
 
 class XRDMapTest(ElectrolabTestCase):
@@ -269,7 +267,7 @@ class GalvanostatRunTest(unittest.TestCase):
 class SlamFileTest(unittest.TestCase):
 
     def setUp(self):
-        self.sample = Map(center=(0, 0), diameter=12.7,
+        self.sample = XRDMap(center=(0, 0), diameter=12.7,
                           sample_name='slamfile-test',
                           scan_time=5, two_theta_range=(10, 20))
         self.sample.two_theta_range = (50, 90)
@@ -287,8 +285,8 @@ class SlamFileTest(unittest.TestCase):
         )
 
     def test_rows(self):
-        # Does passing a collimator diameter set the appropriate number of rows
-        self.sample = Map(diameter=12.7, collimator=0.5)
+        # Does passing a resolution set the appropriate number of rows
+        self.sample = XRDMap(diameter=12.7, resolution=0.5)
         self.assertEqual(
             self.sample.rows,
             18
@@ -347,39 +345,39 @@ class SlamFileTest(unittest.TestCase):
              Cube(0, -1, 1),
              Cube(1, -1, 0)]
         )
-        self.sample.create_scans()
+        self.sample.create_loci()
         self.assertEqual(
-            self.sample.scans[8].cube_coords,
+            self.sample.loci[8].cube_coords,
             Cube(2, 0, -2)
         )
 
     def test_coverage(self):
-        halfMap = Map(collimator=2, coverage=0.25)
+        halfMap = XRDMap(collimator=2, coverage=0.25)
         self.assertEqual(halfMap.unit_size, 2 * math.sqrt(3))
 
     def test_cell_size(self):
-        unitMap = Map(collimator=2)
+        unitMap = XRDMap(collimator=2)
         self.assertEqual(unitMap.unit_size, math.sqrt(3))
 
     def test_jinja_context(self):
-        sample = Map(center=(-10.5, 20.338),
+        sample = XRDMap(center=(-10.5, 20.338),
                      diameter=10,
                      sample_name='LiMn2O4',
                      scan_time=10,
                      two_theta_range=(10, 20))
-        sample.create_scans()
-        context = sample.get_context()
+        sample.create_loci()
+        context = sample.context()
         self.assertEqual(
             len(context['scans']),
-            len(sample.scans)
+            len(sample.loci)
         )
         self.assertEqual(
             context['scans'][1]['x'],
-            sample.scans[1].xy_coords(sample.unit_size)[0]
+            sample.loci[1].xy_coords(sample.unit_size)[0]
         )
         self.assertEqual(
             context['scans'][1]['y'],
-            sample.scans[1].xy_coords(sample.unit_size)[1]
+            sample.loci[1].xy_coords(sample.unit_size)[1]
         )
         self.assertEqual(
             context['scans'][3]['filename'],
@@ -411,7 +409,7 @@ class SlamFileTest(unittest.TestCase):
             'Directory {} already exists, cannot test'.format(directory)
         )
         # Write the slamfile
-        self.sample.write_slamfile(quiet=True)
+        self.sample.write_script(quiet=True)
         # Test if the correct things were created
         self.assertTrue(os.path.exists(directory))
         # Clean up
@@ -535,14 +533,13 @@ class HexagonalUnitCellTest(unittest.TestCase):
         )
 
 
-class MapScanTest(unittest.TestCase):
+class XRDLocusTest(unittest.TestCase):
     def setUp(self):
-        xrdMap = Map(scan_time=10,
-                     two_theta_range=(10, 20))
-        self.scan = MapScan(Cube(1, 0, -1), xrd_map=xrdMap, filebase="map-0",
-                            phase=Corundum())
-        self.scan.sample = DummyMap(scan_time=10,
-                                    two_theta_range=(10, 20))
+        xrd_map = XRDMap(scan_time=10,
+                         two_theta_range=(10, 20))
+        self.scan = XRDLocus(location=Cube(1, 0, -1),
+                             parent_map=xrd_map,
+                             filebase="map-0")
 
     def test_xy_coords(self):
         self.scan.cube_coords = Cube(1, -1, 0)
@@ -615,7 +612,7 @@ class MapScanTest(unittest.TestCase):
 
 class MapTest(unittest.TestCase):
     def setUp(self):
-        self.test_map = Map()
+        self.test_map = XRDMap()
 
     def test_save(self):
         self.test_map.save()
@@ -656,12 +653,12 @@ class PhaseTest(ElectrolabTestCase):
         Stems from a bug where setting a parameter on one unit cell changes
         another.
         """
-        mapp = XRDMap(scan_time=10,
-                      two_theta_range=(30, 55),
-                      phases=[CubicLMO],
-                      background_phases=[Aluminum])
-        phase1 = mapp.scans[0].phases[0]
-        phase2 = mapp.scans[1].phases[0]
+        xrdmap = XRDMap(scan_time=10,
+                        two_theta_range=(30, 55),
+                        phases=[CubicLMO],
+                        background_phases=[Aluminum])
+        phase1 = xrdmap.loci[0].phases[0]
+        phase2 = xrdmap.loci[1].phases[0]
         # Changing parameter on one phase should not change the other
         phase1.unit_cell.a = 8
         phase2.unit_cell.a = 5
