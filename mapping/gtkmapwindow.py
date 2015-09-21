@@ -16,10 +16,10 @@ class GtkMapWindow(Gtk.Window):
     map_hexagon = None
     image_hexagon = None
     composite_hexagon = None
-    def __init__(self, xrd_map, *args, **kwargs):
-        self.xrd_map = xrd_map
-        self.currentScan = self.xrd_map.scan(Cube(0, 0, 0))
-        return_val = super(GtkMapWindow, self).__init__(*args, **kwargs)
+    def __init__(self, *args, parent_map, **kwargs):
+        self.parent_map = parent_map
+        self.currentLocus = self.parent_map.locus(Cube(0, 0, 0))
+        return_val = super().__init__(*args, **kwargs)
         self.connect('delete-event', Gtk.main_quit)
         # Load icon
         directory = os.path.dirname(os.path.realpath(__file__))
@@ -54,7 +54,7 @@ class GtkMapWindow(Gtk.Window):
         """
         (re)draw the plots on the gtk window
         """
-        xrdMap = self.xrd_map
+        xrdMap = self.parent_map
         self.fig.clear()
         # Prepare plots
         self.mapAxes = self.fig.add_subplot(221)
@@ -77,7 +77,7 @@ class GtkMapWindow(Gtk.Window):
             self.image_hexagon = None
         # Check if a scan should be highlighted
         if self.local_mode:
-            activeScan = self.currentScan
+            activeScan = self.currentLocus
         else:
             activeScan = None
         # Plot diffractogram (either bulk or local)
@@ -86,13 +86,13 @@ class GtkMapWindow(Gtk.Window):
         if activeScan:
             activeScan.plot_diffractogram(ax=self.diffractogramAxes)
         else:
-            self.xrd_map.plot_diffractogram(ax=self.diffractogramAxes)
+            self.parent_map.plot_diffractogram(ax=self.diffractogramAxes)
         # Draw individual scan's image or histogram
         self.scanImageAxes.clear()
         if activeScan:
             activeScan.plot_image(ax=self.scanImageAxes)
         else:
-            self.xrd_map.plot_histogram(ax=self.scanImageAxes)
+            self.parent_map.plot_histogram(ax=self.scanImageAxes)
             self.scanImageAxes.set_aspect('auto')
         # Highlight the hexagon on the map and composite image
         if activeScan:
@@ -106,7 +106,7 @@ class GtkMapWindow(Gtk.Window):
         self.fig.canvas.draw()
 
     def on_key_press(self, widget, event, user_data=None):
-        oldCoords = self.currentScan.cube_coords
+        oldCoords = self.currentLocus.cube_coords
         newCoords = oldCoords
         # Check for arrow keys -> move to new location on map
         if not self.local_mode:
@@ -123,9 +123,9 @@ class GtkMapWindow(Gtk.Window):
             # Return to bulk view
             self.local_mode = False
         # Check if new coordinates are valid and update scan
-        scan = self.xrd_map.scan(newCoords)
+        scan = self.parent_map.scan(newCoords)
         if scan:
-            self.currentScan = scan
+            self.currentLocus = scan
         self.update_plots()
         self.update_details()
 
@@ -136,11 +136,11 @@ class GtkMapWindow(Gtk.Window):
         inImageAxes = event.inaxes == self.scanImageAxes
         if (inMapAxes or inCompositeAxes or inImageAxes):
             # Switch to new position on map
-            scan = self.xrd_map.scan_by_xy((event.xdata, event.ydata))
+            scan = self.parent_map.scan_by_xy((event.xdata, event.ydata))
             if not self.local_mode:
                 self.local_mode = True
             elif scan:
-                self.currentScan = scan
+                self.currentLocus = scan
         else:
             # Reset local_mode
             self.local_mode = False
@@ -150,7 +150,7 @@ class GtkMapWindow(Gtk.Window):
     def update_details(self):
         """Set the sidebar text details."""
         if self.local_mode == True:
-            self.dataSummary.update_data(self.currentScan)
+            self.dataSummary.update_data(self.currentLocus)
         else:
             self.dataSummary.set_default_data()
 

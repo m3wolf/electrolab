@@ -223,7 +223,6 @@ class Map():
         data = {
             'diameter': self.diameter,
             'coverage': self.coverage,
-            'rows': self.rows,
             'loci': [locus.data_dict for locus in self.loci],
         }
         # Compute filename and Check if file exists
@@ -244,12 +243,12 @@ class Map():
         self.diameter = data['diameter']
         self.coverage = data['coverage']
         # Create scan list
-        self.create_scans()
+        self.create_loci()
         # Restore each scan
-        for idx, dataDict in enumerate(data['scans']):
-            newScan = self.scans[idx]
-            newScan.data_dict = dataDict
-            self.scans.append(newScan)
+        for idx, dataDict in enumerate(data['loci']):
+            new_locus = self.loci[idx]
+            new_locus.restore_data_dict(dataDict)
+            self.loci.append(new_locus)
 
     def plot_map_with_image(self, scan=None, alpha=None):
         mapAxes, imageAxes = dual_axes()
@@ -315,14 +314,14 @@ class Map():
         else:
             print("No bulk diffractogram data to plot")
         # Highlight peaks
-        self.scans[0].refinement.highlight_peaks(ax=ax)
+        self.loci[0].xrdscan.refinement.highlight_peaks(ax=ax)
         ax.set_xlabel(r'$2\theta$')
         ax.set_ylabel('counts')
         ax.set_title('Bulk diffractogram')
         return ax
 
     def plot_map(self, ax=None, metric_range=None,
-                 highlightedScan=None, alpha=None):
+                 highlightedLocus=None, alpha=None):
         """
         Generate a two-dimensional map of the electrode surface. Color is
         determined by each scans metric() method. If no axes are given
@@ -340,16 +339,16 @@ class Map():
         ax.set_ylim([-xy_lim, xy_lim])
         ax.set_xlabel('mm')
         ax.set_ylabel('mm')
-        num_scans = len(self.scans)
-        for scan in display_progress(self.scans, 'Mapping'):
-            scan.plot_hexagon(ax=ax)
+        num_scans = len(self.loci)
+        for locus in display_progress(self.loci, 'Mapping'):
+            locus.plot_hexagon(ax=ax)
         # If there's space between beam locations, plot beam location
         if self.coverage != 1:
-            for scan in self.scans:
-                scan.plot_beam(ax=ax)
+            for locus in self.loci:
+                locus.plot_beam(ax=ax)
         # If a highlighted scan was given, show it in a different color
-        if highlightedScan is not None:
-            highlightedScan.highlight_beam(ax=ax)
+        if highlightedLocus is not None:
+            highlightedLocus.highlight_beam(ax=ax)
         # Add circle for theoretical edge
         self.draw_edge(ax, color='blue')
         # Add colormap to the side of the axes
@@ -364,7 +363,7 @@ class Map():
         """
         # Show GTK window
         title = "Maps for sample '{}'".format(self.sample_name)
-        window = GtkMapWindow(xrd_map=self, title=title)
+        window = GtkMapWindow(parent_map=self, title=title)
         window.show_all()
         window.main()
         # Close the current blank plot
@@ -467,13 +466,11 @@ class Map():
         return ax
 
     def plot_histogram(self, ax=None):
-        metrics = [scan.metric for scan in self.scans]
         minimum = self.metric_normalizer.vmin
-        # minimum = min(metrics)
         maximum = self.metric_normalizer.vmax
-        # maximum = max(metrics)
+        metrics = [locus.metric for locus in self.loci]
         metrics = numpy.clip(metrics, minimum, maximum)
-        weights = [scan.reliability for scan in self.scans]
+        weights = [locus.reliability for locus in self.loci]
         if ax is None:
             pyplot.figure()
             ax = pyplot.gca()
@@ -517,12 +514,12 @@ class DummyMap(Map):
 
     def plot_map(self, *args, **kwargs):
         # Ensure that "diffractogram is loaded" for each scan
-        for scan in self.scans:
-            scan.diffractogram_is_loaded = True
-            p = scan.cube_coords[0]
-            rows = scan.xrd_map.rows
+        for locus in self.loci:
+            locus.diffractogram_is_loaded = True
+            p = locus.cube_coords[0]
+            rows = locus.parent_map.rows
             r = p/2/rows + 0.5
-            scan.metric = r
+            locus.metric = r
         return super().plot_map(*args, **kwargs)
 
     def create_scans(self):

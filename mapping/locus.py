@@ -73,32 +73,17 @@ class Locus():
     def data_dict(self):
         """Return a dictionary of calculated data, suitable for pickling."""
         dataDict = {
-            'diffractogram': self.diffractogram,
             'cube_coords': tuple(self.cube_coords),
-            'filename': self.filename,
             'filebase': self.filebase,
             'metric': self.metric,
-            'reliability': self.reliability,
-            'refinement': self.xrdscan.refinement.data_dict,
-            'phases': [phase.data_dict for phase in self.phases]
         }
         return dataDict
 
-    @data_dict.setter
-    def data_dict(self, dataDict):
+    def restore_data_dict(self, dataDict):
         """Restore calulated values from a data dictionary."""
-        self.diffractogram = dataDict['diffractogram']
-        self.diffractogram_is_loaded = dataDict['diffractogram'] is not None
         self.cube_coords = Cube(*dataDict['cube_coords'])
-        # self.filename = dataDict['filename']
         self.filebase = dataDict['filebase']
         self.metric = dataDict['metric']
-        self.reliability = dataDict.get('reliability', self.reliability)
-        self.refinement.data_dict = dataDict['refinement']
-        # Load phases
-        for idx, phase in enumerate(self.phases):
-            phase.data_dict = dataDict['phases'][idx]
-            # print(phase.w)
 
     def xy_coords(self, unit_size=None):
         """Convert internal coordinates to conventional cartesian coords"""
@@ -140,7 +125,7 @@ class Locus():
     @property
     def metric_normalized(self):
         """Return the metric between 0 and 1."""
-        return self.xrd_map.metric_normalizer(self.metric)
+        return self.parent_map.metric_normalizer(self.metric)
 
     @property
     def metric_details(self):
@@ -151,9 +136,9 @@ class Locus():
         """Build and plot a hexagon for display on the mapping routine.
         Return the hexagon patch object."""
         # Check for cached data
-        radius = 0.595*self.xrd_map.unit_size
+        radius = 0.595*self.parent_map.unit_size
         # Determine how opaque to make the hexagon
-        if self.xrd_map.coverage == 1:
+        if self.parent_map.coverage == 1:
             alpha = self.reliability
         else:
             alpha = self.reliability/3
@@ -173,7 +158,7 @@ class Locus():
         on the mapping routine.
         Return the patch object."""
         # Check for cached data
-        diameter = self.xrd_map.collimator
+        diameter = self.parent_map.collimator
         ellipse = patches.Ellipse(
             xy=self.xy_coords(),
             width=diameter,
@@ -188,7 +173,7 @@ class Locus():
     def highlight_beam(self, ax):
         """Plots a red hexagon to highlight this specific scan."""
         diameter = self.xrd_map.collimator
-        hexagon = patches.Ellipse(
+        ellipse = patches.Ellipse(
             xy=self.xy_coords(),
             width=diameter,
             height=diameter,
@@ -197,8 +182,8 @@ class Locus():
             edgecolor='red',
             facecolor='none'
         )
-        ax.add_patch(hexagon)
-        return hexagon
+        ax.add_patch(ellipse)
+        return ellipse
 
     def color(self):
         """
@@ -206,17 +191,16 @@ class Locus():
         should be on the resulting map.
         """
         metric = self.metric
-        cmap = self.xrd_map.get_cmap()
-        color = cmap(self.xrd_map.metric_normalizer(metric))
+        cmap = self.parent_map.get_cmap()
+        color = cmap(self.parent_map.metric_normalizer(metric))
         return color
 
     def axes_title(self):
-        """Determine diffractogram axes title from cube coordinates."""
-        title = 'XRD Diffractogram at ({i}, {j}, {k})'.format(
+        """Determine axes title from cube coordinates."""
+        title = 'Dataset at ({i}, {j}, {k})'.format(
             i=self.cube_coords[0],
             j=self.cube_coords[1],
             k=self.cube_coords[2],
-            metric=self.metric,
         )
         return title
 
@@ -225,7 +209,7 @@ class Locus():
         Retrieve the image file taken by the diffractometer.
         """
         filename = '{dir}/{file_base}_01.jpg'.format(
-                dir=self.xrd_map.directory(),
+                dir=self.parent_map.directory(),
                 file_base=self.filebase
             )
         imageArray = scipy.misc.imread(filename)
@@ -290,7 +274,7 @@ class Locus():
 
 class DummyLocus(Locus):
     """
-    An XRD Scan but with fake data for testing.
+    An Locus but with fake data for testing.
     """
 
     @property

@@ -80,6 +80,10 @@ class XRDScan():
             df = self.load_diffractogram(filename)
         return df
 
+    @diffractogram.setter
+    def diffractogram(self, new_df):
+        self._df = new_df
+
     def save_diffractogram(self, filename):
         # Determine file type from extension
         adapter = adapter_from_filename(filename)

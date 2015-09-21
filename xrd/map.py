@@ -163,10 +163,10 @@ class XRDMap(Map):
 
     def set_metric_phase_ratio(self, phase_idx=0):
         """Set the plotting metric as the proportion of given phase."""
-        for scan in display_progress(self.scans, 'Calculating metrics'):
-            phase_scale = scan.phases[phase_idx].scale_factor
-            total_scale = sum([phase.scale_factor for phase in scan.phases])
-            scan.metric = phase_scale/total_scale
+        for locus in display_progress(self.loci, 'Calculating metrics'):
+            phase_scale = locus.phases[phase_idx].scale_factor
+            total_scale = sum([phase.scale_factor for phase in locus.phases])
+            locus.metric = phase_scale/total_scale
 
     def plot_phase_ratio(self, phase_idx=0, *args, **kwargs):
         """Plot a map of the ratio of the given phase index to all the phases"""
@@ -183,9 +183,9 @@ class XRDMap(Map):
         return self.plot_map(*args, **kwargs)
 
     def set_metric_cell_parameter(self, parameter='a', phase_idx=0):
-        for scan in display_progress(self.scans, 'Calculating cell parameters'):
-            phase = scan.phases[phase_idx]
-            scan.metric = getattr(phase.unit_cell, parameter)
+        for locus in display_progress(self.loci, 'Calculating cell parameters'):
+            phase = locus.phases[phase_idx]
+            locus.metric = getattr(phase.unit_cell, parameter)
 
     def plot_cell_parameter(self, parameter='a', phase_idx=0, *args, **kwargs):
         self.set_metric_cell_parameter(parameter, phase_idx)
@@ -201,11 +201,13 @@ class XRDMap(Map):
         return self.plot_map(*args, **kwargs)
 
     def set_metric_fwhm(self, phase_idx=0, *args, **kwargs):
-        for scan in display_progress(self.scans, 'Culculating peak widths'):
-            phase = scan.phases[phase_idx]
-            scan.metric = scan.refinement.fwhm(phase=phase)
+        for locus in display_progress(self.loci, 'Culculating peak widths'):
+            phase = locus.phases[phase_idx]
+            locus.metric = locus.refinement.fwhm(phase=phase)
 
     def prepare_mapping_data(self):
+        for locus in self.loci:
+            locus.load_diffractogram()
         self.refine_scans()
         return super().prepare_mapping_data()
 
@@ -214,25 +216,25 @@ class XRDMap(Map):
         Refine a series of parameters on each scan. Continue if an
         exceptions.RefinementError occurs.
         """
-        for scan in display_progress(self.scans, 'Reticulating splines'):
+        for locus in display_progress(self.loci, 'Reticulating splines'):
             try:
                 current_step = 'background'
-                scan.refinement.refine_background()
+                locus.refinement.refine_background()
                 current_step = 'displacement'
-                scan.refinement.refine_displacement()
+                locus.refinement.refine_displacement()
                 current_step = 'peak_widths'
-                scan.refinement.refine_peak_widths()
+                locus.refinement.refine_peak_widths()
                 current_step = 'unit cells'
-                scan.refinement.refine_unit_cells()
+                locus.refinement.refine_unit_cells()
                 current_step = 'scale factors'
-                scan.refinement.refine_scale_factors()
+                locus.refinement.refine_scale_factors()
             except exceptions.SingularMatrixError as e:
                 # Display an error message on exception and then coninue fitting
-                msg = "{coords}: {msg}".format(coords=scan.cube_coords, msg=e)
+                msg = "{coords}: {msg}".format(coords=locus.cube_coords, msg=e)
                 print(msg)
             except exceptions.DivergenceError as e:
                 msg = "{coords}: DivergenceError while refining {step}".format(
-                    coords=scan.cube_coords,
+                    coords=locus.cube_coords,
                     step=current_step
                 )
                 print(msg)
