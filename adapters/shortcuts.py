@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import os
 
-import adapters
+import adapters, exceptions
 
 FILE_ADAPTERS = {
     '.plt': adapters.BrukerPltFile,
@@ -16,13 +16,14 @@ def adapter_from_filename(filename):
     file adapter.
     """
     # Determine file type from extension
-    fileBase, extension = os.path.splitext(filename)
+    filebase, extension = os.path.splitext(filename)
     # Prepare adapter for importing the file
     try:
         Adapter = FILE_ADAPTERS[extension]
     except KeyError:
         # Unknown file format, raise exception
-        msg = 'Unknown file format {}.'.format(extension)
+        msg = 'Unknown file format {extension} ({filename}).'.format(extension=extension,
+                                                                   filename=filename)
         raise exceptions.FileFormatError(msg)
     else:
         adapter = Adapter(filename)

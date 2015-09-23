@@ -126,7 +126,7 @@ class ProfileMatch(BaseRefinement):
                 context['Irf'] = 2 # Need to save codefile
                 self.write_hkl_file(phase, hklfilename)
         # Prepare pcr file
-        env = jinja2.Environment(loader=jinja2.PackageLoader('electrolab', ''))
+        env = jinja2.Environment(loader=jinja2.PackageLoader('scimap', ''))
         template = env.get_template('refinement/fullprof-template.pcr')
         pcrfilename = self.basename + '.pcr'
         with open(pcrfilename, mode='w') as pcrfile:
