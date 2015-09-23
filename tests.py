@@ -7,7 +7,7 @@ from matplotlib import colors
 from units import unit
 
 import exceptions
-import electrolab as el
+import scimap
 from phases.standards import Corundum, Aluminum
 from phases.lmo import CubicLMO
 from phases.unitcell import UnitCell, CubicUnitCell, HexagonalUnitCell
@@ -71,7 +71,7 @@ class PeakTest(ElectrolabTestCase):
 
     def test_initial_parameters(self):
         # Does the class guess reasonable starting values for peak fitting
-        peakScan = el.XRDScan('test-sample-frames/corundum.xye',
+        peakScan = scimap.XRDScan('test-sample-frames/corundum.xye',
                               phase=Corundum())
         df = peakScan.diffractogram[34:36]
         peakFit = PeakFit()
@@ -604,6 +604,13 @@ class XRDLocusTest(unittest.TestCase):
 class XRDMapTest(unittest.TestCase):
     def setUp(self):
         self.test_map = XRDMap(phases=[Corundum], sample_name='test-sample')
+        self.savefile = 'test-sample.map'
+
+    def tearDown(self):
+        try:
+            os.remove(self.savefile)
+        except FileNotFoundError:
+            pass
 
     def test_set_phases(self):
         """Verify that phases are passed to all the necessary composited objects."""
@@ -625,14 +632,13 @@ class XRDMapTest(unittest.TestCase):
         self.test_map.save()
         # Make sure savefile was created
         self.assertTrue(
-            os.path.isfile('unknown.map')
+            os.path.isfile(self.savefile)
         )
         # Load from file
         new_map = XRDMap()
-        new_map.load('unknown.map')
+        new_map.load(filename=self.savefile)
         self.assertEqual(new_map.diameter, self.test_map.diameter)
         self.assertEqual(new_map.coverage, self.test_map.coverage)
-        os.remove('unknown.map')
 
     def test_save_loci(self):
         """Does the save routine properly save the loci list."""
@@ -643,20 +649,19 @@ class XRDMapTest(unittest.TestCase):
         original_locus.diffractogram = 'Gibberish'
         self.test_map.save()
         new_map = XRDMap()
-        new_map.load('unknown.map')
+        new_map.load(self.savefile)
         new_locus = new_map.loci[0]
         self.assertEqual(new_locus.metric, original_locus.metric)
         self.assertEqual(new_locus.filebase, original_locus.filebase)
         self.assertEqual(new_locus.cube_coords, original_locus.cube_coords)
         self.assertEqual(new_locus.diffractogram, original_locus.diffractogram)
-        os.remove('unknown.map')
 
     def test_save_refinement(self):
         original = self.test_map.loci[0].refinement
         original.spline = (1, 3, 5)
         self.test_map.save()
         new_map = XRDMap()
-        new_map.load('unknown.map')
+        new_map.load(self.savefile)
         new_refinement = new_map.loci[0].refinement
         self.assertEqual(new_refinement.spline, original.spline)
 
@@ -665,7 +670,7 @@ class XRDMapTest(unittest.TestCase):
         original.scale_factor = 100
         self.test_map.save()
         new_map = XRDMap(phases=[Corundum])
-        new_map.load('unknown.map')
+        new_map.load(self.savefile)
         new_phase = new_map.loci[0].phases[0]
         self.assertEqual(new_phase.scale_factor, original.scale_factor)
 
@@ -842,7 +847,7 @@ class FullProfProfileTest(ElectrolabTestCase):
             x = 0.001124
             eta = 0.511090
             isotropic_temp = 33.314
-        self.scan = el.XRDScan('test-sample-frames/corundum.brml',
+        self.scan = scimap.XRDScan('test-sample-frames/corundum.brml',
                                phase=FPCorundum())
         self.refinement = fullprof.ProfileMatch(scan=self.scan)
         self.refinement.zero = -0.003820
@@ -946,7 +951,7 @@ class FullProfLmoTest(ElectrolabTestCase):
             I_g = -0.000539
             eta = 0.923930
             x = -0.006729
-        self.scan = el.XRDScan('test-sample-frames/lmo-two-phase.brml',
+        self.scan = scimap.XRDScan('test-sample-frames/lmo-two-phase.brml',
                                phases=[LMOHighV(), LMOMidV()])
         self.refinement = fullprof.ProfileMatch(scan=self.scan)
         # Base parameters determined by manual refinement

@@ -2,6 +2,8 @@
 
 import os
 
+import numpy
+import pandas
 from gi.repository import Gtk, Gdk
 from matplotlib import figure
 from matplotlib.backends.backend_gtk3agg import FigureCanvasGTK3Agg as FigureCanvas
@@ -50,7 +52,7 @@ class GtkMapWindow(Gtk.Window):
         fig.canvas.mpl_connect('button_press_event', self.click_callback)
         return return_val
 
-    def draw_plots(self, scan=None):
+    def draw_plots(self, locus=None):
         """
         (re)draw the plots on the gtk window
         """
@@ -62,11 +64,11 @@ class GtkMapWindow(Gtk.Window):
         self.mapAxes.set_aspect(1)
         self.compositeImageAxes = self.fig.add_subplot(223)
         xrdMap.plot_composite_image(ax=self.compositeImageAxes)
-        self.scanImageAxes = self.fig.add_subplot(224)
+        self.locusImageAxes = self.fig.add_subplot(224)
         self.update_plots()
 
     def update_plots(self):
-        """Respond to changes in the selected scan."""
+        """Respond to changes in the selected locus."""
         # Clear old highlights
         if self.map_hexagon:
             self.map_hexagon.remove()
@@ -75,35 +77,40 @@ class GtkMapWindow(Gtk.Window):
             self.composite_hexagon = None
             self.image_hexagon.remove()
             self.image_hexagon = None
-        # Check if a scan should be highlighted
+        # Check if a locus should be highlighted
         if self.local_mode:
-            activeScan = self.currentLocus
+            activeLocus = self.currentLocus
         else:
-            activeScan = None
+            activeLocus = None
         # Plot diffractogram (either bulk or local)
-        self.diffractogramAxes = self.fig.add_subplot(222)
-        self.diffractogramAxes.cla() # Clear axes
-        if activeScan:
-            activeScan.plot_diffractogram(ax=self.diffractogramAxes)
+        self.locusAxes = self.fig.add_subplot(222)
+        self.locusAxes.cla() # Clear axes
+        self.plot_locus_detail(locus=activeLocus)
+        # Draw individual locus's image or histogram
+        self.locusImageAxes.clear()
+        if activeLocus:
+            activeLocus.plot_image(ax=self.locusImageAxes)
         else:
-            self.parent_map.plot_diffractogram(ax=self.diffractogramAxes)
-        # Draw individual scan's image or histogram
-        self.scanImageAxes.clear()
-        if activeScan:
-            activeScan.plot_image(ax=self.scanImageAxes)
-        else:
-            self.parent_map.plot_histogram(ax=self.scanImageAxes)
-            self.scanImageAxes.set_aspect('auto')
+            self.parent_map.plot_histogram(ax=self.locusImageAxes)
+            self.locusImageAxes.set_aspect('auto')
         # Highlight the hexagon on the map and composite image
-        if activeScan:
-            self.map_hexagon = activeScan.highlight_beam(ax=self.mapAxes)
-            self.composite_hexagon = activeScan.highlight_beam(
+        if activeLocus:
+            self.map_hexagon = activeLocus.highlight_beam(ax=self.mapAxes)
+            self.composite_hexagon = activeLocus.highlight_beam(
                 ax=self.compositeImageAxes)
-            self.image_hexagon = activeScan.highlight_beam(
-                ax=self.scanImageAxes)
+            self.image_hexagon = activeLocus.highlight_beam(
+                ax=self.locusImageAxes)
             self.mapAxes.draw_artist(self.map_hexagon)
         # Force a redraw of the canvas since Gtk won't do it
         self.fig.canvas.draw()
+
+    def plot_locus_detail(self, locus):
+        # Return some random data
+        twoTheta = numpy.linspace(10, 80, num=700)
+        counts = numpy.random.rand(len(twoTheta))
+        intensity = pandas.DataFrame(counts, index=twoTheta, columns=['counts'])
+        self.locusAxes.plot(twoTheta, counts)
+        return self.locusAxes
 
     def on_key_press(self, widget, event, user_data=None):
         oldCoords = self.currentLocus.cube_coords
@@ -122,25 +129,25 @@ class GtkMapWindow(Gtk.Window):
         elif event.keyval == Gdk.KEY_Escape:
             # Return to bulk view
             self.local_mode = False
-        # Check if new coordinates are valid and update scan
-        scan = self.parent_map.scan(newCoords)
-        if scan:
-            self.currentLocus = scan
+        # Check if new coordinates are valid and update locs
+        locus = self.parent_map.locus(newCoords)
+        if locus:
+            self.currentLocus = locus
         self.update_plots()
         self.update_details()
 
     def click_callback(self, event):
-        """Detect and then update which scan is active."""
+        """Detect and then update which locus is active."""
         inMapAxes = event.inaxes == self.mapAxes
         inCompositeAxes = event.inaxes == self.compositeImageAxes
-        inImageAxes = event.inaxes == self.scanImageAxes
+        inImageAxes = event.inaxes == self.locusImageAxes
         if (inMapAxes or inCompositeAxes or inImageAxes):
             # Switch to new position on map
-            scan = self.parent_map.scan_by_xy((event.xdata, event.ydata))
+            locus = self.parent_map.locus_by_xy((event.xdata, event.ydata))
             if not self.local_mode:
                 self.local_mode = True
-            elif scan:
-                self.currentLocus = scan
+            elif locus:
+                self.currentLocus = locus
         else:
             # Reset local_mode
             self.local_mode = False
@@ -194,11 +201,11 @@ class LocationBox(DetailBox):
         self.cubeLabel = LeftLabel("0")
         box.pack_start(self.cubeLabel, False, False, 0)
 
-    def update_labels(self, scan):
-        xyCoords = scan.xy_coords()
+    def update_labels(self, locus):
+        xyCoords = locus.xy_coords()
         xyStr = "({x:.02f}, {y:0.2f})".format(x=xyCoords[0], y=xyCoords[1])
         self.xyLabel.set_text(xyStr)
-        self.cubeLabel.set_text(str(scan.cube_coords))
+        self.cubeLabel.set_text(str(locus.cube_coords))
 
     def set_default_labels(self):
         self.xyLabel.set_text("N/A")
@@ -233,23 +240,23 @@ class ValueBox(DetailBox):
 
 
 class MetricBox(ValueBox):
-    def update_labels(self, scan):
-        # Set values from scan
-        self.rawLabel.set_text("{:.03f}".format(scan.metric))
-        self.normLabel.set_text("{:.03f}".format(scan.metric_normalized))
-        self.otherLabel.set_text(scan.metric_details)
+    def update_labels(self, locus):
+        # Set values from locus
+        self.rawLabel.set_text("{:.03f}".format(locus.metric))
+        self.normLabel.set_text("{:.03f}".format(locus.metric_normalized))
+        self.otherLabel.set_text(locus.metric_details)
         self.otherLabel.show()
 
 
 class ReliabilityBox(ValueBox):
-    def update_labels(self, scan):
-        # Set values from scan
-        self.rawLabel.set_text("{:.03f}".format(scan.signal_level))
-        self.normLabel.set_text("{:.03f}".format(scan.reliability))
+    def update_labels(self, locus):
+        # Set values from locus
+        self.rawLabel.set_text("{:.03f}".format(locus.signal_level))
+        self.normLabel.set_text("{:.03f}".format(locus.reliability))
 
 
 class DataSummaryBox(Gtk.Box):
-    """Three-section box that shows a summary of data for a Scan."""
+    """Three-section box that shows a summary of data for a Locus."""
     padding = 10
     def __init__(self, *args, **kwargs):
         retVal = super(DataSummaryBox, self).__init__(*args, **kwargs)
@@ -264,10 +271,10 @@ class DataSummaryBox(Gtk.Box):
         self.pack_start(self.reliabilityBox, False, False, self.padding)
         return retVal
 
-    def update_data(self, scan):
-        self.locBox.update_labels(scan=scan)
-        self.metricBox.update_labels(scan=scan)
-        self.reliabilityBox.update_labels(scan=scan)
+    def update_data(self, locus):
+        self.locBox.update_labels(locus=locus)
+        self.metricBox.update_labels(locus=locus)
+        self.reliabilityBox.update_labels(locus=locus)
 
     def set_default_data(self):
         self.locBox.set_default_labels()

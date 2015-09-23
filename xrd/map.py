@@ -4,11 +4,13 @@ import math
 import os
 
 from matplotlib.colors import Normalize
+import pandas
 import jinja2
 
 import exceptions
 from mapping.map import Map, display_progress
 from xrd.locus import XRDLocus
+from xrd.gtkmapwindow import GtkXrdMapWindow
 from refinement.native import NativeRefinement
 
 class XRDMap(Map):
@@ -133,7 +135,7 @@ class XRDMap(Map):
         Format the sample into a slam file that GADDS can process.
         """
         # Import template
-        env = jinja2.Environment(loader=jinja2.PackageLoader('electrolab', ''))
+        env = jinja2.Environment(loader=jinja2.PackageLoader('scimap', ''))
         template = env.get_template('mapping/mapping-template.slm')
         self.create_loci()
         context = self.context()
@@ -160,6 +162,51 @@ class XRDMap(Map):
             msg = "Integration range: {start}° to {end}°"
             print(msg.format(start=frameStart, end=frameEnd))
         return file
+
+    @property
+    def diffractogram(self):
+        """Returns self.bulk_diffractogram(). Polymorphism for XRDScan."""
+        bulk_series = self.bulk_diffractogram()
+        df = pandas.DataFrame(bulk_series, columns=['counts'])
+        return df
+
+    def bulk_diffractogram(self):
+        """
+        Calculate the bulk diffractogram by averaging each scan weighted
+        by reliability.
+        """
+        bulk_diffractogram = pandas.Series()
+        locusCount = 0
+        # Add a contribution from each map location
+        for locus in self.loci:
+            if locus.diffractogram_is_loaded:
+                locus_diffractogram = locus.diffractogram['counts']
+                corrected_diffractogram = locus_diffractogram * locus.reliability
+                locusCount = locusCount + 1
+                bulk_diffractogram = bulk_diffractogram.add(corrected_diffractogram, fill_value=0)
+        # Divide by the total number of scans included
+        bulk_diffractogram = bulk_diffractogram/locusCount
+        return bulk_diffractogram
+
+    def plot_diffractogram(self, ax=None):
+        """
+        Plot an averaged diffractogram of all the scans, weighted by
+        reliability.
+        """
+        bulk_diffractogram = self.bulk_diffractogram()
+        # Get default axis if none is given
+        if ax is None:
+            ax = new_axes()
+        if len(bulk_diffractogram) > 0:
+            bulk_diffractogram.plot(ax=ax)
+        else:
+            print("No bulk diffractogram data to plot")
+        ax.set_xlabel(r'$2\theta$')
+        ax.set_ylabel('counts')
+        ax.set_title('Bulk diffractogram')
+        # Highlight peaks
+        self.loci[0].xrdscan.refinement.highlight_peaks(ax=ax)
+        return ax
 
     def set_metric_phase_ratio(self, phase_idx=0):
         """Set the plotting metric as the proportion of given phase."""
@@ -204,6 +251,18 @@ class XRDMap(Map):
         for locus in display_progress(self.loci, 'Culculating peak widths'):
             phase = locus.phases[phase_idx]
             locus.metric = locus.refinement.fwhm(phase=phase)
+
+    def plot_map_gtk(self):
+        return super().plot_map_gtk(WindowClass=GtkXrdMapWindow)
+
+    def dots_per_mm(self):
+        """Determine the width of the scan images based on sample's camera
+        zoom (dpm taken from camera calibration using quadratic
+        regression on Bruker D8 Discover)
+        """
+        regression = lambda x: 3.640*x**2 + 13.869*x + 31.499
+        dots_per_mm = regression(self.camera_zoom)
+        return dots_per_mm
 
     def prepare_mapping_data(self):
         for locus in self.loci:

@@ -37,6 +37,7 @@ class Map():
     millimeters. Resolution is the size of each cell, given in mm.
     """
     cmap_name = 'winter'
+    camera_zoom = 1
     loci = []
     hexagon_patches = None # Replaced by cached versions
     metric_normalizer = colors.Normalize(0, 1, clip=True)
@@ -237,7 +238,7 @@ class Map():
         # Generate filename if not supplied
         if filename is None:
             filename = "{sample_name}.map".format(sample_name=self.sample_name)
-            # Get the data from disk
+        # Get the data from disk
         with open(filename, 'rb') as loadFile:
             data = pickle.load(loadFile)
         self.diameter = data['diameter']
@@ -274,51 +275,6 @@ class Map():
         self.plot_map(ax=mapAxes)
         self.plot_histogram(ax=histogramAxes)
         return (mapAxes, histogramAxes)
-
-    @property
-    def diffractogram(self):
-        """Returns self.bulk_diffractogram(). Polymorphism for XRDScan."""
-        bulk_series = self.bulk_diffractogram()
-        df = pandas.DataFrame(bulk_series, columns=['counts'])
-        return df
-
-    def bulk_diffractogram(self):
-        """
-        Calculate the bulk diffractogram by averaging each scan weighted
-        by reliability.
-        """
-        bulk_diffractogram = pandas.Series()
-        scanCount = 0
-        # Add a contribution from each map location
-        for scan in self.scans:
-            if scan.diffractogram_is_loaded:
-                scan_diffractogram = scan.diffractogram['counts']
-                corrected_diffractogram = scan_diffractogram * scan.reliability
-                scanCount = scanCount + 1
-                bulk_diffractogram = bulk_diffractogram.add(corrected_diffractogram, fill_value=0)
-        # Divide by the total number of scans included
-        bulk_diffractogram = bulk_diffractogram/scanCount
-        return bulk_diffractogram
-
-    def plot_diffractogram(self, ax=None):
-        """
-        Plot an averaged diffractogram of all the scans, weighted by
-        reliability.
-        """
-        bulk_diffractogram = self.bulk_diffractogram()
-        # Get default axis if none is given
-        if ax is None:
-            ax = new_axes()
-        if len(bulk_diffractogram) > 0:
-            bulk_diffractogram.plot(ax=ax)
-        else:
-            print("No bulk diffractogram data to plot")
-        # Highlight peaks
-        self.loci[0].xrdscan.refinement.highlight_peaks(ax=ax)
-        ax.set_xlabel(r'$2\theta$')
-        ax.set_ylabel('counts')
-        ax.set_title('Bulk diffractogram')
-        return ax
 
     def plot_map(self, ax=None, metric_range=None,
                  highlightedLocus=None, alpha=None):
@@ -357,13 +313,13 @@ class Map():
         pyplot.colorbar(mappable, ax=ax)
         return ax
 
-    def plot_map_gtk(self):
+    def plot_map_gtk(self, WindowClass=GtkMapWindow):
         """
         Create a gtk window with plots and images for interactive data analysis.
         """
         # Show GTK window
         title = "Maps for sample '{}'".format(self.sample_name)
-        window = GtkMapWindow(parent_map=self, title=title)
+        window = WindowClass(parent_map=self, title=title)
         window.show_all()
         window.main()
         # Close the current blank plot
@@ -388,10 +344,7 @@ class Map():
         """
         Determine the width of the scan images based on sample's camera zoom
         """
-        # (dpm taken from camera calibration using quadratic regression)
-        regression = lambda x: 3.640*x**2 + 13.869*x + 31.499
-        dots_per_mm = regression(self.camera_zoom)
-        return dots_per_mm
+        return 72*self.camera_zoom
 
     def composite_image(self, filename=None, recalculate=False):
         """
@@ -417,24 +370,24 @@ class Map():
                 # (it is unsigned int 16 to not overflow when images are added)
                 dtype = numpy.uint16
                 compositeImage = numpy.ndarray((compositeHeight, compositeWidth, 3),
-                                            dtype=dtype)
+                                               dtype=dtype)
                 # This array keeps track of how many images contribute to each pixel
                 counterArray = numpy.ndarray((compositeHeight, compositeWidth, 3),
-                                          dtype=dtype)
+                                             dtype=dtype)
                 # Set to white by default
                 compositeImage.fill(0)
                 # Step through each scan
-                for scan in display_progress(self.scans, operation="Building Composite Image"):
+                for locus in display_progress(self.loci, operation="Building Composite Image"):
                     # pad raw image to composite image size
-                    scanImage = scan.padded_image(height=compositeHeight,
-                                                  width=compositeWidth)
+                    locusImage = locus.padded_image(height=compositeHeight,
+                                                    width=compositeWidth)
                     # add padded image to composite image
-                    compositeImage = compositeImage + scanImage
+                    compositeImage = compositeImage + locusImage
                     # create padded image mask
-                    scanMask = scan.padded_image_mask(height=compositeHeight,
-                                                      width=compositeWidth)
+                    locusMask = locus.padded_image_mask(height=compositeHeight,
+                                                        width=compositeWidth)
                     # add padded image mask to counter image
-                    counterArray = counterArray + scanMask
+                    counterArray = counterArray + locusMask
                 # Divide by the total count for each pixel
                 compositeImage = compositeImage / counterArray
                 # Convert back to a uint8 array for displaying
@@ -489,12 +442,6 @@ class DummyMap(Map):
     """
     Sample that returns a dummy map for testing.
     """
-    def bulk_diffractogram(self):
-        # Return some random data
-        twoTheta = numpy.linspace(10, 80, num=700)
-        counts = numpy.random.rand(len(twoTheta))
-        intensity = pandas.DataFrame(counts, index=twoTheta, columns=['counts'])
-        return intensity
 
     def composite_image(self):
         # Stub image to show for layout purposes

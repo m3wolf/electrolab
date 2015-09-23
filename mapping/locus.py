@@ -56,7 +56,11 @@ class Locus():
         self.parent_map = parent_map
         self.filebase = filebase
 
-    @cached_property
+    @property
+    def signal_level(self):
+        return 1.0
+
+    @property
     def reliability(self):
         """Measure of reliability of the data ranging 0..1"""
         return 1.0
@@ -103,9 +107,9 @@ class Locus():
         Convert internal coordinates to cartesian coordinates relative to
         the sample stage of the instrument.
         """
-        xy = self.xy_coords(self.xrd_map.unit_size)
-        x = xy[0] + self.xrd_map.center[0]
-        y = xy[1] + self.xrd_map.center[1]
+        xy = self.xy_coords(self.parent_map.unit_size)
+        x = xy[0] + self.parent_map.center[0]
+        y = xy[1] + self.parent_map.center[1]
         return (x, y)
 
     def pixel_coords(self, height, width):
@@ -130,7 +134,7 @@ class Locus():
     @property
     def metric_details(self):
         """Returns a string describing how the metric was calculated."""
-        return self.refinement.details()
+        return "Not implemented, override in subclasses."
 
     def plot_hexagon(self, ax):
         """Build and plot a hexagon for display on the mapping routine.
@@ -158,7 +162,7 @@ class Locus():
         on the mapping routine.
         Return the patch object."""
         # Check for cached data
-        diameter = self.parent_map.collimator
+        diameter = self.parent_map.resolution
         ellipse = patches.Ellipse(
             xy=self.xy_coords(),
             width=diameter,
@@ -172,7 +176,7 @@ class Locus():
 
     def highlight_beam(self, ax):
         """Plots a red hexagon to highlight this specific scan."""
-        diameter = self.xrd_map.collimator
+        diameter = self.parent_map.resolution
         ellipse = patches.Ellipse(
             xy=self.xy_coords(),
             width=diameter,
@@ -225,12 +229,19 @@ class Locus():
             ax = new_axes()
         # Calculate axes limit
         center = self.xy_coords()
-        xMin = center[0] - self.IMAGE_WIDTH/2/self.xrd_map.dots_per_mm()
-        xMax = center[0] + self.IMAGE_WIDTH/2/self.xrd_map.dots_per_mm()
-        yMin = center[1] - self.IMAGE_HEIGHT/2/self.xrd_map.dots_per_mm()
-        yMax = center[1] + self.IMAGE_HEIGHT/2/self.xrd_map.dots_per_mm()
+        xMin = center[0] - self.IMAGE_WIDTH/2/self.parent_map.dots_per_mm()
+        xMax = center[0] + self.IMAGE_WIDTH/2/self.parent_map.dots_per_mm()
+        yMin = center[1] - self.IMAGE_HEIGHT/2/self.parent_map.dots_per_mm()
+        yMax = center[1] + self.IMAGE_HEIGHT/2/self.parent_map.dots_per_mm()
         axes_limits = (xMin, xMax, yMin, yMax)
-        ax.imshow(self.image(), extent=axes_limits)
+        try:
+            ax.imshow(self.image(), extent=axes_limits)
+        except FileNotFoundError as file_error:
+            # Plot error message
+            x = (xMax-xMin)/2
+            y = (yMax-yMin)/2
+            msg = 'Could not load image'
+            ax.text(x, y, file_error, horizontalalignment='center', verticalalignment='center')
         # Add plot annotations
         ax.set_title('Micrograph of Mapped Area')
         ax.set_xlabel('mm')

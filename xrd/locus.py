@@ -12,11 +12,11 @@ class XRDLocus(Locus):
         ret = super().__init__(*args, **kwargs)
         # Attach XRDScan object
         self.xrdscan = XRDScan(phases=phases, background_phases=background_phases,
-                               refinement=refinement, two_theta_range=two_theta_range,
-                               filename=self.filename)
+                               refinement=refinement, two_theta_range=two_theta_range,)
+                               # filename=self.filename)
         # Filename is not passed to XRDScan constructor to delay loading the datafile
-        # self.xrdscan.filename = self.filename
-        # self.load_diffractogram(self.filename)
+        self.xrdscan.filename = self.filename
+        self.load_diffractogram(self.filename)
         return ret
 
 
@@ -58,6 +58,14 @@ class XRDLocus(Locus):
         reliability = normalizer(self.signal_level)
         refinement_confidence = self.xrdscan.refinement.confidence()
         return reliability * refinement_confidence
+
+    @property
+    def metric_details(self):
+        """Returns a string describing how the metric was calculated."""
+        return self.refinement.details()
+
+    def plot_diffractogram(self, ax=None):
+        return self.xrdscan.plot_diffractogram(ax=ax)
 
     def axes_title(self):
         """Determine diffractogram axes title from cube coordinates."""
