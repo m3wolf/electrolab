@@ -592,8 +592,7 @@ class Map():
         metrics = numpy.clip(metrics, minimum, maximum)
         weights = [scan.reliability for scan in self.scans]
         if ax is None:
-            pyplot.figure()
-            ax = pyplot.gca()
+            ax = new_axes(height=4, width=7)
         ax.hist(metrics, bins=100, weights=weights)
         ax.set_xlim(minimum, maximum)
         ax.set_xlabel('Metric')

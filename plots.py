@@ -7,7 +7,10 @@ def new_axes(height=5, width=None):
     # Adjust width to accomodate colorbar
     if width is None:
         width = height/0.8
-    pyplot.figure(figsize=(width, height))
+    fig = pyplot.figure(figsize=(width, height))
+    # Set background to be transparent
+    fig.patch.set_alpha(0)
+    # Create axes
     ax = pyplot.gca()
     return ax
 
@@ -45,3 +48,4 @@ def plot_scans(scan_list, step_size=1, ax=None):
     # Decorate
     ax.set_xlabel(r'$2\theta$')
     ax.set_ylabel('counts')
+    return ax

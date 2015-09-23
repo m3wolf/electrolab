@@ -12,4 +12,4 @@ class FullProfDataFile():
         suitable for feeding into the FullProf refinement program.
         """
         df = scan.diffractogram
-        result = df.to_csv(self.filename, columns=['counts'], sep=' ')
+        result = df.to_csv(self.filename, columns=['counts'], sep=' ', header=False)
