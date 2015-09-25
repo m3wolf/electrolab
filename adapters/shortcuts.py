@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import os
 
-import adapters
+import adapters, exceptions
 
 FILE_ADAPTERS = {
     '.plt': adapters.BrukerPltFile,
