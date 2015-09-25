@@ -20,6 +20,9 @@ class SingularMatrixError(RefinementError):
         msg = "Singular matrix while refining {param}".format(param=self.param)
         return msg
 
+class DivergenceError(RefinementError):
+    pass
+
 class NoReflectionsError(RefinementError):
     """The refinement has I(obs) = 0. (Do you really have reflections?)"""
     def __str__(self):

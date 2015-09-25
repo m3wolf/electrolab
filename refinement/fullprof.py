@@ -80,6 +80,7 @@ class ProfileMatch(BaseRefinement):
     cell_re = re.compile('=> Cell parameters\s+:\s+((?:\s+[-0-9Ee.]+)+)')
     # Regular expressions for reading errors from log file
     singular_matrix_re = re.compile('==> Singular matrix!!, problem with (\S+)')
+    divergence_re = re.compile('=>  Unrecoverable divergence!!')
     @property
     def calculated_diffractogram(self):
         """Read a pcf file and return the refinement as a dataframe."""
@@ -125,7 +126,7 @@ class ProfileMatch(BaseRefinement):
                 context['Irf'] = 2 # Need to save codefile
                 self.write_hkl_file(phase, hklfilename)
         # Prepare pcr file
-        env = jinja2.Environment(loader=jinja2.PackageLoader('electrolab', ''))
+        env = jinja2.Environment(loader=jinja2.PackageLoader('scimap', ''))
         template = env.get_template('refinement/fullprof-template.pcr')
         pcrfilename = self.basename + '.pcr'
         with open(pcrfilename, mode='w') as pcrfile:
@@ -237,12 +238,17 @@ class ProfileMatch(BaseRefinement):
             with open(self.basename + '.log') as logfile:
                 log = logfile.read()
             singular_match = self.singular_matrix_re.search(log)
+            divergence_match = self.divergence_re.search(log)
             if singular_match:
-                # Singular matrix errors usually mean divergence on a given parameter
+                # Singular matrix errors usually means refinement to zero on a given parameter
                 param = singular_match.group(1)
                 raise exceptions.SingularMatrixError(param=param)
+            elif divergence_match:
+                # Divergence means the parameter cannot find a minimum
+                raise exceptions.DivergenceError()
             else:
-                raise exceptions.RefinementError()
+                msg = 'Refinement error in scan {}'.format(self.scan.filename)
+                raise exceptions.RefinementError(msg)
         # Search for final Χ² value
         chi_squared = float(self.chi_re.search(summary).group(1))
         if chi_squared == 'NaN':

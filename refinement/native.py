@@ -108,6 +108,9 @@ class NativeRefinement(BaseRefinement):
         self._subtracted = pandas.Series(originalData.counts - self._background)
         return originalData
 
+    def refine_peak_widths(self):
+        pass
+
     @property
     def background(self):
         bg = getattr(self, '_background', None)

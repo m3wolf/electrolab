@@ -4,7 +4,6 @@ import math
 import os
 import pickle
 
-import jinja2
 from matplotlib import pyplot, cm, patches, colors
 import numpy
 import pandas
@@ -12,10 +11,9 @@ import scipy
 
 import exceptions
 from mapping.coordinates import Cube
-from mapping.mapscan import MapScan, DummyMapScan
+from mapping.locus import Locus, DummyLocus
 from mapping.gtkmapwindow import GtkMapWindow
 from plots import new_axes, dual_axes
-from refinement.native import NativeRefinement
 
 def display_progress(objs, operation='Status'):
     """
@@ -34,54 +32,25 @@ def display_progress(objs, operation='Status'):
 
 
 class Map():
-    """
-    A physical sample that gets mapped by XRD, presumed to be circular
-    with center and diameter in millimeters. Collimator size given in mm.
-    scan_time determines seconds spent at each detector position. Detector
-    distance given in cm, frame_size in pixels.
-
-    The parameter 'phases' is a list of *uninitialized* Phase
-    classes. These will be initialized separately for each scan.
+    """A physical sample that gets mapped by some scientific process,
+    presumed to be circular with center and diameter in
+    millimeters. Resolution is the size of each cell, given in mm.
     """
     cmap_name = 'winter'
-    THETA1_MIN=0 # Source limits based on geometry
-    THETA1_MAX=50
-    THETA2_MIN=0 # Detector limits based on geometry
-    THETA2_MAX=55
-    camera_zoom = 6
-    two_theta_range = (10, 80)
-    frame_step = 20 # How much to move detector by in degrees
-    frame_width = 20 # 2-theta coverage of detector face
-    scan_time = 300 # In seconds
-    scans = []
-    cell_class = MapScan
+    camera_zoom = 1
+    loci = []
     hexagon_patches = None # Replaced by cached versions
     metric_normalizer = colors.Normalize(0, 1, clip=True)
     reliability_normalizer = colors.Normalize(0, 1, clip=True)
-    phases = []
-    background_phases = []
-    def __init__(self, center=(0, 0), diameter=12.7, collimator=0.5,
-                 two_theta_range=None, coverage=1,
-                 scan_time=None, sample_name='unknown',
-                 detector_distance=20, frame_size=1024,
-                 phases=[], background_phases=[],
-                 refinement=NativeRefinement):
+
+    def __init__(self, *, center=(0, 0), diameter=12.7, coverage=1,
+                 sample_name='unknown', resolution=1):
         self.center = center
         self.diameter = diameter
-        self.collimator = collimator
-        self.detector_distance=detector_distance
-        self.frame_size=frame_size
-        if len(phases) > 0:
-            self.phases = phases
-        if len(background_phases) > 0:
-            self.background_phases = background_phases
-        if scan_time is not None:
-            self.scan_time = scan_time
-        self.refinement = refinement
-        if two_theta_range is not None: self.two_theta_range = two_theta_range
         self.coverage = coverage
         self.sample_name = sample_name
-        self.create_scans()
+        self.resolution = resolution
+        self.create_loci()
 
     @property
     def name(self):
@@ -89,7 +58,7 @@ class Map():
 
     @property
     def rows(self):
-        """Determine number of rows from collimator size and sample diameter.
+        """Determine number of rows from resolution and sample diameter.
         Central spot counts as a row."""
         rows = self.diameter / self.unit_size / math.sqrt(3)
         centerDot = 1
@@ -98,41 +67,44 @@ class Map():
     @property
     def unit_size(self):
         """Size of a step in the path."""
-        unit_size = math.sqrt(3) * self.collimator / 2
+        unit_size = math.sqrt(3) * self.resolution / 2
         # Unit size should be bigger if we're not mapping 100%
         unit_size = unit_size / math.sqrt(self.coverage)
         return unit_size
 
-    def create_scans(self):
-        """Populate the scans array with new scans in a hexagonal array."""
-        self.scans = []
+    def new_locus(self, *, location, filebase):
+        """Create a new mapping cell with the given attributes."""
+        new_locus = Locus(location=location, parent_map=self,
+                          filebase=filebase)
+        return new_locus
+
+    def create_loci(self):
+        """Populate the loci array with new loci in a hexagonal array."""
+        self.loci = []
         for idx, coords in enumerate(self.path(self.rows)):
             # Try and determine filename from the sample name
-            fileBase = "map-{n:x}".format(n=idx)
-            # Initialize list of crystallographic phases
-            phases = [Phase() for Phase in self.phases]
-            background_phases = [Phase() for Phase in self.background_phases]
-            # Create XRD Scan object
-            new_scan = self.cell_class(location=coords, xrd_map=self,
-                                       filebase=fileBase, phases=phases,
-                                       background_phases=background_phases,
-                                       two_theta_range=self.two_theta_range,
-                                       refinement=self.refinement)
-            self.scans.append(new_scan)
+            filebase = "map-{n:x}".format(n=idx)
+            new_locus = self.new_locus(location=coords, filebase=filebase)
+            # new_scan = self.cell_class(location=coords, xrd_map=self,
+            #                            filebase=fileBase, phases=phases,
+            #                            background_phases=background_phases,
+            #                            two_theta_range=self.two_theta_range,
+            #                            refinement=self.refinement)
+            self.loci.append(new_locus)
 
-    def scan(self, cube):
-        """Find a scan in the array give a set of cubic coordinates"""
+    def locus(self, cube_coords):
+        """Find a mapping cell in the array give a set of cubic coordinates"""
         result = None
-        for scan in self.scans:
-            if scan.cube_coords == cube:
-                result = scan
+        for locus in self.loci:
+            if locus.cube_coords == cube_coords:
+                result = locus
                 break
         return result
 
-    def scan_by_xy(self, xy):
+    def locus_by_xy(self, xy):
         """Find the nearest scan by set of xy coords."""
-        scan = self.scan(Cube.from_xy(xy, unit_size=self.unit_size))
-        return scan
+        locus = self.locus(Cube.from_xy(xy, unit_size=self.unit_size))
+        return locus
 
     def path(self, rows):
         """Generator gives coordinates for a spiral path around the sample."""
@@ -171,96 +143,8 @@ class Map():
     def xy_lim(self):
         return self.diameter/2*1.5
 
-    def write_slamfile(self, f=None, quiet=False):
-        """
-        Format the sample into a slam file that GADDS can process.
-        """
-        # Import template
-        env = jinja2.Environment(loader=jinja2.PackageLoader('electrolab', ''))
-        template = env.get_template('mapping/mapping-template.slm')
-        self.create_scans()
-        context = self.get_context()
-        # Create file and directory if necessary
-        if f is None:
-            directory = self.directory()
-            if not os.path.exists(directory):
-                os.makedirs(directory)
-            filename = '{dir}/{samplename}.slm'.format(
-                dir=directory, samplename=self.sample_name
-            )
-            with open(filename, 'w') as f:
-                f.write(template.render(**context))
-        else:
-            f.write(template.render(**context))
-        # Print summary info
-        if not quiet:
-            msg = "Running {num} scans ({frames} frames each). ETA: {time}."
-            print(msg.format(num=context['num_scans'],
-                             time=context['total_time'],
-                             frames=context['number_of_frames']))
-            frameStart = context['frames'][0]['start']
-            frameEnd = context['frames'][-1]['end']
-            msg = "Integration range: {start}° to {end}°"
-            print(msg.format(start=frameStart, end=frameEnd))
-        return f
-
-    def get_context(self):
-        """Convert the object to a dictionary for the templating engine."""
-        # Estimate the total time
-        totalSecs = len(self.scans)*self.scan_time*self.get_number_of_frames()
-        days = math.floor(totalSecs/60/60/24)
-        remainder = totalSecs - days * 60 * 60 * 24
-        hours = math.floor(remainder/60/60)
-        remainder = remainder - hours * 60 * 60
-        mins = math.floor(remainder/60)
-        total_time = "{secs}s ({days}d {hours}h {mins}m)".format(secs=totalSecs,
-                                                                 days=days,
-                                                                 hours=hours,
-                                                                 mins=mins)
-        # List of frames to integrate
-        frames = []
-        for frame_num in range(0, self.get_number_of_frames()):
-            start = self.two_theta_range[0] + frame_num*self.frame_step
-            end = start + self.frame_step
-            frame = {
-                'start': start,
-                'end': end,
-                'number': frame_num,
-            }
-            frames.append(frame)
-        # Generate flood and spatial reference files to load
-        floodFilename = "{framesize:04d}_{distance:03d}._FL".format(
-            distance=self.detector_distance,
-            framesize=self.frame_size
-        )
-        spatialFilename = "{framesize:04d}_{distance:03d}._ix".format(
-            distance=self.detector_distance,
-            framesize=self.frame_size
-        )
-        # Prepare context dictionary
-        context = {
-            'scans': [],
-            'num_scans': len(self.scans),
-            'frames': frames,
-            'frame_step': self.frame_step,
-            'number_of_frames': self.get_number_of_frames(),
-            'xoffset': self.center[0],
-            'yoffset': self.center[1],
-            'theta1': self.get_theta1(),
-            'theta2': self.get_theta2_start(),
-            'aux': self.camera_zoom,
-            'scan_time': self.scan_time,
-            'total_time': total_time,
-            'sample_name': self.sample_name,
-            'flood_file': floodFilename,
-            'spatial_file': spatialFilename,
-        }
-        for idx, scan in enumerate(self.scans):
-            # Prepare scan-specific details
-            x, y = scan.xy_coords(unit_size=self.unit_size)
-            scan_metadata = {'x': x, 'y': y, 'filename': scan.filebase}
-            context['scans'].append(scan_metadata)
-        return context
+    def write_script(self, *args, **kwargs):
+        raise NotImplementedError
 
     def get_number_of_frames(self):
         num_frames = math.ceil(
@@ -340,8 +224,7 @@ class Map():
         data = {
             'diameter': self.diameter,
             'coverage': self.coverage,
-            'rows': self.rows,
-            'scans': [scan.data_dict for scan in self.scans],
+            'loci': [locus.data_dict for locus in self.loci],
         }
         # Compute filename and Check if file exists
         if filename is None:
@@ -355,18 +238,18 @@ class Map():
         # Generate filename if not supplied
         if filename is None:
             filename = "{sample_name}.map".format(sample_name=self.sample_name)
-            # Get the data from disk
+        # Get the data from disk
         with open(filename, 'rb') as loadFile:
             data = pickle.load(loadFile)
         self.diameter = data['diameter']
         self.coverage = data['coverage']
         # Create scan list
-        self.create_scans()
+        self.create_loci()
         # Restore each scan
-        for idx, dataDict in enumerate(data['scans']):
-            newScan = self.scans[idx]
-            newScan.data_dict = dataDict
-            self.scans.append(newScan)
+        for idx, dataDict in enumerate(data['loci']):
+            new_locus = self.loci[idx]
+            new_locus.restore_data_dict(dataDict)
+            self.loci.append(new_locus)
 
     def plot_map_with_image(self, scan=None, alpha=None):
         mapAxes, imageAxes = dual_axes()
@@ -393,52 +276,8 @@ class Map():
         self.plot_histogram(ax=histogramAxes)
         return (mapAxes, histogramAxes)
 
-    @property
-    def diffractogram(self):
-        """Returns self.bulk_diffractogram(). Polymorphism for XRDScan."""
-        bulk_series = self.bulk_diffractogram()
-        df = pandas.DataFrame(bulk_series, columns=['counts'])
-        return df
-
-    def bulk_diffractogram(self):
-        """
-        Calculate the bulk diffractogram by averaging each scan weighted
-        by reliability.
-        """
-        bulk_diffractogram = pandas.Series()
-        scanCount = 0
-        # Add a contribution from each map location
-        for scan in self.scans:
-            if scan.diffractogram_is_loaded:
-                scan_diffractogram = scan.diffractogram['counts']
-                corrected_diffractogram = scan_diffractogram * scan.reliability
-                scanCount = scanCount + 1
-                bulk_diffractogram = bulk_diffractogram.add(corrected_diffractogram, fill_value=0)
-        # Divide by the total number of scans included
-        bulk_diffractogram = bulk_diffractogram/scanCount
-        return bulk_diffractogram
-
-    def plot_diffractogram(self, ax=None):
-        """
-        Plot an averaged diffractogram of all the scans, weighted by
-        reliability.
-        """
-        bulk_diffractogram = self.bulk_diffractogram()
-        # Get default axis if none is given
-        if ax is None:
-            ax = new_axes()
-        if len(bulk_diffractogram) > 0:
-            bulk_diffractogram.plot(ax=ax)
-        else:
-            print("No bulk diffractogram data to plot")
-        # Highlight peaks
-        self.scans[0].refinement.highlight_peaks(ax=ax)
-        ax.set_xlabel(r'$2\theta$')
-        ax.set_ylabel('counts')
-        ax.set_title('Bulk diffractogram')
-        return ax
-
-    def plot_map(self, ax=None, highlightedScan=None, alpha=None):
+    def plot_map(self, ax=None, metric_range=None,
+                 highlightedLocus=None, alpha=None):
         """
         Generate a two-dimensional map of the electrode surface. Color is
         determined by each scans metric() method. If no axes are given
@@ -456,16 +295,16 @@ class Map():
         ax.set_ylim([-xy_lim, xy_lim])
         ax.set_xlabel('mm')
         ax.set_ylabel('mm')
-        num_scans = len(self.scans)
-        for scan in display_progress(self.scans, 'Mapping'):
-            scan.plot_hexagon(ax=ax)
+        num_scans = len(self.loci)
+        for locus in display_progress(self.loci, 'Mapping'):
+            locus.plot_hexagon(ax=ax)
         # If there's space between beam locations, plot beam location
         if self.coverage != 1:
-            for scan in self.scans:
-                scan.plot_beam(ax=ax)
+            for locus in self.loci:
+                locus.plot_beam(ax=ax)
         # If a highlighted scan was given, show it in a different color
-        if highlightedScan is not None:
-            highlightedScan.highlight_beam(ax=ax)
+        if highlightedLocus is not None:
+            highlightedLocus.highlight_beam(ax=ax)
         # Add circle for theoretical edge
         self.draw_edge(ax, color='blue')
         # Add colormap to the side of the axes
@@ -474,13 +313,13 @@ class Map():
         pyplot.colorbar(mappable, ax=ax)
         return ax
 
-    def plot_map_gtk(self):
+    def plot_map_gtk(self, WindowClass=GtkMapWindow):
         """
         Create a gtk window with plots and images for interactive data analysis.
         """
         # Show GTK window
         title = "Maps for sample '{}'".format(self.sample_name)
-        window = GtkMapWindow(xrd_map=self, title=title)
+        window = WindowClass(parent_map=self, title=title)
         window.show_all()
         window.main()
         # Close the current blank plot
@@ -505,10 +344,7 @@ class Map():
         """
         Determine the width of the scan images based on sample's camera zoom
         """
-        # (dpm taken from camera calibration using quadratic regression)
-        regression = lambda x: 3.640*x**2 + 13.869*x + 31.499
-        dots_per_mm = regression(self.camera_zoom)
-        return dots_per_mm
+        return 72*self.camera_zoom
 
     def composite_image(self, filename=None, recalculate=False):
         """
@@ -534,24 +370,24 @@ class Map():
                 # (it is unsigned int 16 to not overflow when images are added)
                 dtype = numpy.uint16
                 compositeImage = numpy.ndarray((compositeHeight, compositeWidth, 3),
-                                            dtype=dtype)
+                                               dtype=dtype)
                 # This array keeps track of how many images contribute to each pixel
                 counterArray = numpy.ndarray((compositeHeight, compositeWidth, 3),
-                                          dtype=dtype)
+                                             dtype=dtype)
                 # Set to white by default
                 compositeImage.fill(0)
                 # Step through each scan
-                for scan in display_progress(self.scans, operation="Building Composite Image"):
+                for locus in display_progress(self.loci, operation="Building Composite Image"):
                     # pad raw image to composite image size
-                    scanImage = scan.padded_image(height=compositeHeight,
-                                                  width=compositeWidth)
+                    locusImage = locus.padded_image(height=compositeHeight,
+                                                    width=compositeWidth)
                     # add padded image to composite image
-                    compositeImage = compositeImage + scanImage
+                    compositeImage = compositeImage + locusImage
                     # create padded image mask
-                    scanMask = scan.padded_image_mask(height=compositeHeight,
-                                                      width=compositeWidth)
+                    locusMask = locus.padded_image_mask(height=compositeHeight,
+                                                        width=compositeWidth)
                     # add padded image mask to counter image
-                    counterArray = counterArray + scanMask
+                    counterArray = counterArray + locusMask
                 # Divide by the total count for each pixel
                 compositeImage = compositeImage / counterArray
                 # Convert back to a uint8 array for displaying
@@ -583,13 +419,11 @@ class Map():
         return ax
 
     def plot_histogram(self, ax=None):
-        metrics = [scan.metric for scan in self.scans]
         minimum = self.metric_normalizer.vmin
-        # minimum = min(metrics)
         maximum = self.metric_normalizer.vmax
-        # maximum = max(metrics)
+        metrics = [locus.metric for locus in self.loci]
         metrics = numpy.clip(metrics, minimum, maximum)
-        weights = [scan.reliability for scan in self.scans]
+        weights = [locus.reliability for locus in self.loci]
         if ax is None:
             pyplot.figure()
             ax = pyplot.gca()
@@ -608,12 +442,6 @@ class DummyMap(Map):
     """
     Sample that returns a dummy map for testing.
     """
-    def bulk_diffractogram(self):
-        # Return some random data
-        twoTheta = numpy.linspace(10, 80, num=700)
-        counts = numpy.random.rand(len(twoTheta))
-        intensity = pandas.DataFrame(counts, index=twoTheta, columns=['counts'])
-        return intensity
 
     def composite_image(self):
         # Stub image to show for layout purposes
@@ -633,12 +461,12 @@ class DummyMap(Map):
 
     def plot_map(self, *args, **kwargs):
         # Ensure that "diffractogram is loaded" for each scan
-        for scan in self.scans:
-            scan.diffractogram_is_loaded = True
-            p = scan.cube_coords[0]
-            rows = scan.xrd_map.rows
+        for locus in self.loci:
+            locus.diffractogram_is_loaded = True
+            p = locus.cube_coords[0]
+            rows = locus.parent_map.rows
             r = p/2/rows + 0.5
-            scan.metric = r
+            locus.metric = r
         return super().plot_map(*args, **kwargs)
 
     def create_scans(self):

@@ -42,23 +42,25 @@ class cached_property():
             del self.cached_value
 
 
-class MapScan(XRDScan):
+class Locus():
     """
-    An XRD scan at one X,Y location. Several Scan objects make up a
-    Sample object.
+    An mapping cell at one X,Y location. Several Locus objects make up a
+    Map object.
     """
     IMAGE_HEIGHT = 480 # px
     IMAGE_WIDTH = 640 # px
     metric = 0
 
-    def __init__(self, location, xrd_map, filebase, *args, **kwargs):
+    def __init__(self, location, parent_map, filebase):
         self.cube_coords = location
-        self.xrd_map = xrd_map
+        self.parent_map = parent_map
         self.filebase = filebase
-        result = super().__init__(*args, **kwargs)
-        return result
 
-    @cached_property
+    @property
+    def signal_level(self):
+        return 1.0
+
+    @property
     def reliability(self):
         """Measure of reliability of the data ranging 0..1"""
         return 1.0
@@ -66,7 +68,7 @@ class MapScan(XRDScan):
     @property
     def filename(self):
         filename = "{samplename}-frames/{filebase}.plt".format(
-            samplename=self.xrd_map.sample_name,
+            samplename=self.parent_map.sample_name,
             filebase=self.filebase,
         )
         return filename
@@ -75,38 +77,23 @@ class MapScan(XRDScan):
     def data_dict(self):
         """Return a dictionary of calculated data, suitable for pickling."""
         dataDict = {
-            'diffractogram': self.diffractogram,
             'cube_coords': tuple(self.cube_coords),
-            'filename': self.filename,
             'filebase': self.filebase,
             'metric': self.metric,
-            'reliability': self.reliability,
-            'refinement': self.refinement.data_dict,
-            'phases': [phase.data_dict for phase in self.phases]
         }
         return dataDict
 
-    @data_dict.setter
-    def data_dict(self, dataDict):
+    def restore_data_dict(self, dataDict):
         """Restore calulated values from a data dictionary."""
-        self.diffractogram = dataDict['diffractogram']
-        self.diffractogram_is_loaded = dataDict['diffractogram'] is not None
         self.cube_coords = Cube(*dataDict['cube_coords'])
-        # self.filename = dataDict['filename']
         self.filebase = dataDict['filebase']
         self.metric = dataDict['metric']
-        self.reliability = dataDict.get('reliability', self.reliability)
-        self.refinement.data_dict = dataDict['refinement']
-        # Load phases
-        for idx, phase in enumerate(self.phases):
-            phase.data_dict = dataDict['phases'][idx]
-            # print(phase.w)
 
     def xy_coords(self, unit_size=None):
         """Convert internal coordinates to conventional cartesian coords"""
         # Get default unit vector magnitude if not given
         if unit_size is None:
-            unit = self.xrd_map.unit_size
+            unit = self.parent_map.unit_size
         else:
             unit = unit_size
         # Calculate x and y positions
@@ -120,9 +107,9 @@ class MapScan(XRDScan):
         Convert internal coordinates to cartesian coordinates relative to
         the sample stage of the instrument.
         """
-        xy = self.xy_coords(self.xrd_map.unit_size)
-        x = xy[0] + self.xrd_map.center[0]
-        y = xy[1] + self.xrd_map.center[1]
+        xy = self.xy_coords(self.parent_map.unit_size)
+        x = xy[0] + self.parent_map.center[0]
+        y = xy[1] + self.parent_map.center[1]
         return (x, y)
 
     def pixel_coords(self, height, width):
@@ -131,7 +118,7 @@ class MapScan(XRDScan):
         height and width. Assumes the sample center is at the center
         of the image.
         """
-        dots_per_mm = self.xrd_map.dots_per_mm()
+        dots_per_mm = self.parent_map.dots_per_mm()
         xy_coords = self.xy_coords()
         pixel_coords = {
             'height': round(height/2 - xy_coords[1] * dots_per_mm),
@@ -140,47 +127,22 @@ class MapScan(XRDScan):
         return pixel_coords
 
     @property
-    def diffractogram(self):
-        """Return a diffractogram based on naming scheme for mapping,
-        with caching."""
-        # Check for cached version
-        if self._df is not None:
-            df = self._df
-        else:
-            # Get file from disk
-            filename = self.filename
-            df = self.load_diffractogram(filename)
-        return df
-
-    @diffractogram.setter
-    def diffractogram(self, newDf):
-        self._df = newDf
-
-    def load_diffractogram(self, filename):
-        # Checking for existance of file allows for partial maps
-        if filename is not None and os.path.isfile(filename):
-            df = super().load_diffractogram(filename)
-        else:
-            df = None
-        return df
-
-    @property
     def metric_normalized(self):
         """Return the metric between 0 and 1."""
-        return self.xrd_map.metric_normalizer(self.metric)
+        return self.parent_map.metric_normalizer(self.metric)
 
     @property
     def metric_details(self):
         """Returns a string describing how the metric was calculated."""
-        return self.refinement.details()
+        return "Not implemented, override in subclasses."
 
     def plot_hexagon(self, ax):
         """Build and plot a hexagon for display on the mapping routine.
         Return the hexagon patch object."""
         # Check for cached data
-        radius = 0.595*self.xrd_map.unit_size
+        radius = 0.595*self.parent_map.unit_size
         # Determine how opaque to make the hexagon
-        if self.xrd_map.coverage == 1:
+        if self.parent_map.coverage == 1:
             alpha = self.reliability
         else:
             alpha = self.reliability/3
@@ -200,7 +162,7 @@ class MapScan(XRDScan):
         on the mapping routine.
         Return the patch object."""
         # Check for cached data
-        diameter = self.xrd_map.collimator
+        diameter = self.parent_map.resolution
         ellipse = patches.Ellipse(
             xy=self.xy_coords(),
             width=diameter,
@@ -214,8 +176,8 @@ class MapScan(XRDScan):
 
     def highlight_beam(self, ax):
         """Plots a red hexagon to highlight this specific scan."""
-        diameter = self.xrd_map.collimator
-        hexagon = patches.Ellipse(
+        diameter = self.parent_map.resolution
+        ellipse = patches.Ellipse(
             xy=self.xy_coords(),
             width=diameter,
             height=diameter,
@@ -224,30 +186,25 @@ class MapScan(XRDScan):
             edgecolor='red',
             facecolor='none'
         )
-        ax.add_patch(hexagon)
-        return hexagon
+        ax.add_patch(ellipse)
+        return ellipse
 
     def color(self):
         """
         Use the metric for this material to determine what color this scan
         should be on the resulting map.
         """
-        color = self.cached_data.get('color', None)
-        if color is None:
-            # Not cached, so recalculate
-            metric = self.metric
-            cmap = self.xrd_map.get_cmap()
-            color = cmap(self.xrd_map.metric_normalizer(metric))
-            self.cached_data['color'] = color
+        metric = self.metric
+        cmap = self.parent_map.get_cmap()
+        color = cmap(self.parent_map.metric_normalizer(metric))
         return color
 
     def axes_title(self):
-        """Determine diffractogram axes title from cube coordinates."""
-        title = 'XRD Diffractogram at ({i}, {j}, {k})'.format(
+        """Determine axes title from cube coordinates."""
+        title = 'Dataset at ({i}, {j}, {k})'.format(
             i=self.cube_coords[0],
             j=self.cube_coords[1],
             k=self.cube_coords[2],
-            metric=self.metric,
         )
         return title
 
@@ -256,7 +213,7 @@ class MapScan(XRDScan):
         Retrieve the image file taken by the diffractometer.
         """
         filename = '{dir}/{file_base}_01.jpg'.format(
-                dir=self.xrd_map.directory(),
+                dir=self.parent_map.directory(),
                 file_base=self.filebase
             )
         imageArray = scipy.misc.imread(filename)
@@ -272,12 +229,19 @@ class MapScan(XRDScan):
             ax = new_axes()
         # Calculate axes limit
         center = self.xy_coords()
-        xMin = center[0] - self.IMAGE_WIDTH/2/self.xrd_map.dots_per_mm()
-        xMax = center[0] + self.IMAGE_WIDTH/2/self.xrd_map.dots_per_mm()
-        yMin = center[1] - self.IMAGE_HEIGHT/2/self.xrd_map.dots_per_mm()
-        yMax = center[1] + self.IMAGE_HEIGHT/2/self.xrd_map.dots_per_mm()
+        xMin = center[0] - self.IMAGE_WIDTH/2/self.parent_map.dots_per_mm()
+        xMax = center[0] + self.IMAGE_WIDTH/2/self.parent_map.dots_per_mm()
+        yMin = center[1] - self.IMAGE_HEIGHT/2/self.parent_map.dots_per_mm()
+        yMax = center[1] + self.IMAGE_HEIGHT/2/self.parent_map.dots_per_mm()
         axes_limits = (xMin, xMax, yMin, yMax)
-        ax.imshow(self.image(), extent=axes_limits)
+        try:
+            ax.imshow(self.image(), extent=axes_limits)
+        except FileNotFoundError as file_error:
+            # Plot error message
+            x = (xMax-xMin)/2
+            y = (yMax-yMin)/2
+            msg = 'Could not load image'
+            ax.text(x, y, file_error, horizontalalignment='center', verticalalignment='center')
         # Add plot annotations
         ax.set_title('Micrograph of Mapped Area')
         ax.set_xlabel('mm')
@@ -319,9 +283,9 @@ class MapScan(XRDScan):
                                  image=scanImage)
 
 
-class DummyMapScan(MapScan):
+class DummyLocus(Locus):
     """
-    An XRD Scan but with fake data for testing.
+    An Locus but with fake data for testing.
     """
 
     @property
