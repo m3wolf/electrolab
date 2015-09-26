@@ -29,3 +29,4 @@ from mapping.map import Map, DummyMap, PeakPositionMap, PhaseRatioMap, FwhmMap
 # Electrochemistry methods and classes
 from electrochem.galvanostatrun import GalvanostatRun
 from electrochem.cycle import Cycle
+from electrochem.plots import plot_rate_capacities

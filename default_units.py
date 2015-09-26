@@ -10,6 +10,8 @@ import units, units.predefined
 units.predefined.define_units()
 # Grams
 mass = units.unit('g')
+# Time (hours)
+time = units.unit('h')
 # Milli-amp hours
 capacity = units.unit('mA') * units.unit('h')
 # Milli-amp hours per gram

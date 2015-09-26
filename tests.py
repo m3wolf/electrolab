@@ -253,15 +253,31 @@ class CycleTest(unittest.TestCase):
             99.736
         )
 
-class GalvanostatRunTest(unittest.TestCase):
+class GalvanostatRunTest(ElectrolabTestCase):
     # Currently just tests import statement
     def test_import(self):
         GalvanostatRun('electrochem/eclab-test-data.mpt')
 
     def test_read_mass(self):
         run = GalvanostatRun('electrochem/eclab-test-data.mpt')
-        self.assertEqual(
-            run.mass, unit('g')(0.02253)
+        self.assertEqual(run.mass, unit('g')(0.02253))
+
+    def test_read_capacity(self):
+        run = GalvanostatRun('electrochem/eclab-test-data.mpt')
+        self.assertEqual(run.theoretical_capacity, unit('mAh')(3.340))
+
+    def test_read_current(self):
+        run = GalvanostatRun('electrochem/eclab-test-data.mpt')
+        # These are practically equal but assertEqual fails due to rounding in units package
+        self.assertApproximatelyEqual(
+            run.charge_current,
+            unit('mA')(0.334),
+            tolerance=10**-15
+        )
+        self.assertApproximatelyEqual(
+            run.discharge_current,
+            unit('mA')(-0.334),
+            tolerance=10**-15
         )
 
 class SlamFileTest(unittest.TestCase):

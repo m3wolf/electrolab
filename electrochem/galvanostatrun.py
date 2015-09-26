@@ -9,6 +9,7 @@ import units.predefined
 from electrochem.cycle import Cycle
 from plots import new_axes
 import default_units
+from . import electrochem_units
 
 def axis_label(key):
     axis_labels = {
@@ -17,6 +18,7 @@ def axis_label(key):
     }
     # Look for label translation or return original key
     return axis_labels.get(key, key)
+
 
 class GalvanostatRun():
     """
@@ -32,6 +34,10 @@ class GalvanostatRun():
         # Remove the initial resting period
         restingIndexes = self._df.loc[self._df['mode']==3].index
         self._df.drop(restingIndexes, inplace=True)
+        # Get theoretical capacity from eclab file
+        self.theoretical_capacity = self.capacity_from_file()
+        # Get currents from eclab file
+        self.charge_current, self.discharge_current = self.currents_from_file()
         # Calculate capacity from charge and mass
         if mass:
             # User provided the mass
@@ -47,7 +53,7 @@ class GalvanostatRun():
         for cycle in cycles:
             new_cycle = Cycle(cycle[0], cycle[1])
             self.cycles.append(new_cycle)
-        super(GalvanostatRun, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
 
     def load_csv(self, filename, *args, **kwargs):
         """Wrapper around pandas read_csv that filters out crappy data"""
@@ -67,7 +73,7 @@ class GalvanostatRun():
 
     def mass_from_file(self):
         """Read the mpt file and extract the sample mass"""
-        regexp = re.compile('^Mass of active material : ([0-9.]+) ([kmu]?g)')
+        regexp = re.compile('^Mass of active material : ([0-9.]+) ([kmµ]?g)')
         mass = None
         with open(self.filename, encoding='latin-1') as f:
             for line in f:
@@ -75,15 +81,52 @@ class GalvanostatRun():
                 if match:
                     mass_num, mass_unit = match.groups()
                     # We found the match, now save it
-                    mass = units.unit(mass_unit)(float(match.groups()[0]))
+                    mass = units.unit(mass_unit)(float(mass_num))
                     break
         return mass
 
-    def charge_capacity(self, cycle=-1):
+    def capacity_from_file(self):
+        """Read the mpt file and extract the theoretical capacity."""
+        regexp = re.compile('^for DX = [0-9], DQ = ([0-9.]+) ([kmµ]?A.h)')
+        capacity = None
+        with open(self.filename, encoding='latin-1') as f:
+            for line in f:
+                match = regexp.match(line)
+                if match:
+                    cap_num, cap_unit = match.groups()
+                    cap_unit = cap_unit.replace('.', '')
+                    # We found the match now save it
+                    capacity = units.unit(cap_unit)(float(cap_num))
+        return capacity
+
+    def currents_from_file(self):
+        """Read the mpt file and extract the theoretical capacity."""
+        current_regexp = re.compile('^Is\s+[0-9.]+\s+([-0-9.]+)\s+([-0-9.]+)')
+        unit_regexp = re.compile('^unit Is\s+[kmuµ]?A\s+([kmuµ]?A)\s+([kmuµ]?A)')
+        with open(self.filename, encoding='latin-1') as f:
+            for line in f:
+                # Check if this line has either the currents or the units
+                current_match = current_regexp.match(line)
+                unit_match = unit_regexp.match(line)
+                if current_match:
+                    charge_num, discharge_num = current_match.groups()
+                if unit_match:
+                    charge_unit, discharge_unit = unit_match.groups()
+        charge_current = units.unit(charge_unit)(float(charge_num))
+        discharge_current = units.unit(discharge_unit)(float(discharge_num))
+        return charge_current, discharge_current
+
+    def discharge_capacity(self, cycle_idx=-1):
+        """
+        Return the discharge capacity of the given cycle (default last).
+        """
+        return self.cycles[cycle_idx].discharge_capacity()
+
+    def charge_capacity(self, cycle_idx=-1):
         """
         Return the charge capacity of the given cycle (default last).
         """
-        return self.cycles[cycle].charge_capacity()
+        return self.cycles[cycle_idx].charge_capacity()
 
     def plot_cycles(self, xcolumn, ycolumn, ax=None):
         """Plot each electrochemical cycle"""
