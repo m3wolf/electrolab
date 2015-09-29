@@ -18,6 +18,7 @@ def plot_rate_capacities(runs, ax=None, cycle_idx=0):
         capacities.append(capacity)
         # Determine C-rate (with units)
         time = run.theoretical_capacity / abs(run.charge_current)
+        print(time)
         rate = 1/(electrochem_units.hour(time))
         rates.append(rate)
     # Plot resulting data

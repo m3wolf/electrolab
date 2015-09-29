@@ -20,6 +20,7 @@ from xrd.locus import XRDLocus
 from xrd.peak import XRDPeak, PeakFit, remove_peak_from_df
 from xrd.reflection import Reflection, hkl_to_tuple
 from electrochem.galvanostatrun import GalvanostatRun
+from electrochem import electrochem_units
 from adapters.bruker_raw_file import BrukerRawFile
 from adapters.bruker_brml_file import BrukerBrmlFile
 from refinement import fullprof, native
@@ -239,6 +240,20 @@ class NativeRefinementTest(ElectrolabTestCase):
             hkl_list,
             [reflection.hkl_string for reflection in Corundum.reflection_list]
         )
+
+
+class ElectrochemUnitsTest(ElectrolabTestCase):
+    """Check that various values for current, capacity, etc are compatible."""
+    def setUp(self):
+        self.mAh = electrochem_units.mAh
+        self.hour = electrochem_units.hour
+        self.mA = unit('mA')
+        self.uA = unit('µA')
+
+    def test_milli_micro_amps(self):
+        time = self.mAh(10) / self.uA(1000)
+        self.assertApproximatelyEqual(self.hour(time), self.hour(10),
+                                      tolerance=10**-10)
 
 
 class CycleTest(unittest.TestCase):

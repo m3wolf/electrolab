@@ -155,8 +155,8 @@ class GalvanostatRun():
             capacities.append(cycle.discharge_capacity())
             efficiency = 100 * cycle.discharge_capacity() / cycle.charge_capacity()
             efficiencies.append(efficiency)
-        ax.plot(cycle_numbers, capacities, marker='o', linestyle='--')
-        ax2.plot(cycle_numbers, efficiencies)
+        ax.plot(cycle_numbers, capacities, marker='o', linestyle='--', label="Capacity")
+        ax2.plot(cycle_numbers, efficiencies, label="Per cent capacity recovered")
         # Format axes
         ax.set_xticks(cycle_numbers)
         ax.set_xlim(0, 1 + max(cycle_numbers))
