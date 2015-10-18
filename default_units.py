@@ -18,3 +18,6 @@ capacity = units.unit('mA') * units.unit('h')
 specific_capacity = units.unit('mA') * units.unit('h') / units.unit('g')
 # Volts
 potential = units.unit('V')
+# Electrode mass loading
+cm = units.unit('cm')
+electrode_loading = units.unit('mg')/(cm*cm)

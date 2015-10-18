@@ -4,6 +4,8 @@ import os
 
 import numpy
 import pandas
+import gi
+gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk, Gdk
 from matplotlib import figure
 from matplotlib.backends.backend_gtk3agg import FigureCanvasGTK3Agg as FigureCanvas

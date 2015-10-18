@@ -4,7 +4,8 @@ import math, unittest
 import os.path
 
 from matplotlib import colors
-from units import unit
+from units import unit, predefined
+predefined.define_units()
 
 import exceptions
 import scimap
@@ -19,12 +20,12 @@ from xrd.scan import XRDScan
 from xrd.locus import XRDLocus
 from xrd.peak import XRDPeak, PeakFit, remove_peak_from_df
 from xrd.reflection import Reflection, hkl_to_tuple
+from electrochem.electrode import CathodeLaminate, CoinCellElectrode
 from electrochem.galvanostatrun import GalvanostatRun
 from electrochem import electrochem_units
 from adapters.bruker_raw_file import BrukerRawFile
 from adapters.bruker_brml_file import BrukerBrmlFile
 from refinement import fullprof, native
-
 
 # Some phase definitions for testing
 class LMOHighV(CubicLMO):
@@ -56,6 +57,31 @@ class ElectrolabTestCase(unittest.TestCase):
             if diff > acceptable_diff:
                 msg = "{actual} is not close to {expected}"
                 self.fail(msg=msg.format(actual=actual, expected=expected))
+
+
+class ElectrodeTest(ElectrolabTestCase):
+    def setUp(self):
+        self.laminate = CathodeLaminate(mass_active_material=0.9,
+                                        mass_carbon=0.05,
+                                        mass_binder=0.05,
+                                        name="LMO-NEI")
+        self.electrode = CoinCellElectrode(total_mass=unit('mg')(15),
+                                           substrate_mass=unit('mg')(5),
+                                           laminate=self.laminate,
+                                           name="DummyElectrode",
+                                           diameter=unit('mm')(12.7))
+
+    def test_area(self):
+        area_unit = unit('cm') * unit('cm')
+        expected_area = area_unit(math.pi * (1.27/2)**2)
+        self.assertEqual(self.electrode.area(), expected_area)
+
+    def test_mass_loading(self):
+        """Ensure the electrode can calculate the loading in mg/cm^2."""
+        loading_units = unit('mg')/(unit('cm')*unit('cm'))
+        area = math.pi * (1.27/2)**2
+        expected = loading_units((15-5)*0.9 / area)
+        self.assertEqual(self.electrode.mass_loading(), expected)
 
 
 class PeakTest(ElectrolabTestCase):

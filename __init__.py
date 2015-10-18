@@ -6,6 +6,7 @@ import os
 sys.path.append(os.path.dirname(__file__))
 
 import default_units
+from electrochem.electrochem_units import *
 
 from xrd.peak import XRDPeak
 # from xrdpeak import PeakFit
@@ -27,6 +28,7 @@ from mapping.coordinates import Cube
 from mapping.map import Map, DummyMap, PeakPositionMap, PhaseRatioMap, FwhmMap
 
 # Electrochemistry methods and classes
+from electrochem.electrode import CathodeLaminate, CoinCellElectrode
 from electrochem.galvanostatrun import GalvanostatRun
 from electrochem.cycle import Cycle
 from electrochem.plots import plot_rate_capacities
