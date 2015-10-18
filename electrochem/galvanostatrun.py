@@ -168,3 +168,28 @@ class GalvanostatRun():
         ax2.legend(loc='lower right')
         ax2.set_ylabel('Coulombic efficiency (%)')
         return ax, ax2
+
+    def plot_differential_capacity(self, ax=None, ax2=None, cycle=None):
+        if not ax:
+            ax = new_axes()
+        if not ax2:
+            ax2 = ax.twiny()
+        # Let the user specify a cycle by index
+        if cycle is None:
+            cycles = self.cycles
+        else:
+            cycles = [self.cycles[cycle]]
+        for cycle in cycles:
+            # Plot regular charge/discharge curve
+            cycle.plot_cycle(xcolumn='capacity',
+                             ycolumn='Ewe/V',
+                             ax=ax)
+            # Plot differential capacity (sideways)
+            cycle.plot_cycle(xcolumn='d(Q-Qo)/dE/mA.h/V',
+                             ycolumn='Ewe/V',
+                             ax=ax2,
+                             linestyle='-.')
+        # Annotate plot
+        ax.set_xlabel('Capacity $/mAh\ g^{-1}$')
+        ax2.set_xlabel('Capacity differential $/mAh\ g^{-1}V^{-1}$')
+        ax.set_ylabel('Cathode potential vs $ Li/Li^+$')
