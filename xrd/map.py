@@ -238,7 +238,7 @@ class XRDMap(Map):
         self.set_metric_cell_parameter(parameter, phase_idx)
         # Determine normalization range
         if self.cell_parameter_normalizer is None:
-            metrics = [scan.metric for scan in self.scans]
+            metrics = [locus.metric for locus in self.loci]
             self.metric_normalizer = Normalize(min(metrics),
                                                max(metrics),
                                                clip=True)
