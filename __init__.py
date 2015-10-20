@@ -11,15 +11,15 @@ from electrochem.electrochem_units import *
 from xrd.peak import XRDPeak
 # from xrdpeak import PeakFit
 
-from phases.unitcell import CubicUnitCell, HexagonalUnitCell, TetragonalUnitCell
-from phases import standards, lmo
-
 from plots import new_axes, big_axes, dual_axes, plot_scans
 
 import filters
 
 from refinement import fullprof
 
+from xrd.unitcell import CubicUnitCell, HexagonalUnitCell, TetragonalUnitCell
+from xrd import standards, lmo
+from xrd.lmo import LMOPlateauMap
 from xrd.reflection import Reflection
 from xrd.scan import XRDScan, align_scans
 from xrd.map import XRDMap

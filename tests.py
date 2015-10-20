@@ -9,9 +9,9 @@ predefined.define_units()
 
 import exceptions
 import scimap
-from phases.standards import Corundum, Aluminum
-from phases.lmo import CubicLMO
-from phases.unitcell import UnitCell, CubicUnitCell, HexagonalUnitCell
+from xrd.standards import Corundum, Aluminum
+from xrd.lmo import CubicLMO
+from xrd.unitcell import UnitCell, CubicUnitCell, HexagonalUnitCell
 from mapping.map import Map, DummyMap, PeakPositionMap
 from mapping.coordinates import Cube
 from mapping.locus import Locus, cached_property

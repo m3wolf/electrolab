@@ -6,6 +6,7 @@ import pandas as pd
 import units
 import units.predefined
 
+import exceptions
 from electrochem.cycle import Cycle
 from plots import new_axes
 import default_units
@@ -37,7 +38,10 @@ class GalvanostatRun():
         # Get theoretical capacity from eclab file
         self.theoretical_capacity = self.capacity_from_file()
         # Get currents from eclab file
-        self.charge_current, self.discharge_current = self.currents_from_file()
+        try:
+            self.charge_current, self.discharge_current = self.currents_from_file()
+        except exceptions.ReadCurrentError as e:
+            pass
         # Calculate capacity from charge and mass
         if mass:
             # User provided the mass
@@ -103,6 +107,7 @@ class GalvanostatRun():
         """Read the mpt file and extract the theoretical capacity."""
         current_regexp = re.compile('^Is\s+[0-9.]+\s+([-0-9.]+)\s+([-0-9.]+)')
         unit_regexp = re.compile('^unit Is\s+[kmuµ]?A\s+([kmuµ]?A)\s+([kmuµ]?A)')
+        data_found = False
         with open(self.filename, encoding='latin-1') as f:
             for line in f:
                 # Check if this line has either the currents or the units
@@ -112,9 +117,15 @@ class GalvanostatRun():
                     charge_num, discharge_num = current_match.groups()
                 if unit_match:
                     charge_unit, discharge_unit = unit_match.groups()
-        charge_current = units.unit(charge_unit)(float(charge_num))
-        discharge_current = units.unit(discharge_unit)(float(discharge_num))
-        return charge_current, discharge_current
+                    data_found = True
+        if data_found:
+            charge_current = units.unit(charge_unit)(float(charge_num))
+            discharge_current = units.unit(discharge_unit)(float(discharge_num))
+            return charge_current, discharge_current
+        else:
+            # Current data could not be extracted from file
+            msg = "Could not read charge (and discharge!) currents from file {filename}."
+            raise exceptions.ReadCurrentError(msg.format(filename=self.filename))
 
     def discharge_capacity(self, cycle_idx=-1):
         """
@@ -128,15 +139,18 @@ class GalvanostatRun():
         """
         return self.cycles[cycle_idx].charge_capacity()
 
-    def plot_cycles(self, xcolumn, ycolumn, ax=None):
-        """Plot each electrochemical cycle"""
+    def plot_cycles(self, xcolumn='capacity', ycolumn='Ewe/V', ax=None, *args, **kwargs):
+        """
+        Plot each electrochemical cycle. Additional arguments gets passed
+        on to matplotlib's plot function.
+        """
         if not ax:
             ax = new_axes()
         ax.set_xlabel(axis_label(xcolumn))
         ax.set_ylabel(axis_label(ycolumn))
         legend = []
         for cycle in self.cycles:
-            ax = cycle.plot_cycle(xcolumn, ycolumn, ax)
+            ax = cycle.plot_cycle(xcolumn, ycolumn, ax, *args, **kwargs)
             legend.append(cycle.number)
         ax.legend(legend)
         return ax

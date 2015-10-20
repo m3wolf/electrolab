@@ -1,5 +1,9 @@
 # -*- coding: utf-8 -*-
 
+class ReadCurrentError(Exception):
+    """Cannot read a current from electrochemistry cycling file."""
+    pass
+
 class UnitCellError(ValueError):
     pass
 

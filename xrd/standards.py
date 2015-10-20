@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 
-from phases.phase import Phase
-from phases.unitcell import HexagonalUnitCell, CubicUnitCell
-from xrd.reflection import Reflection
+from .phase import Phase
+from .unitcell import HexagonalUnitCell, CubicUnitCell
+from .reflection import Reflection
 
 # Corundum standard
 class Corundum(Phase):

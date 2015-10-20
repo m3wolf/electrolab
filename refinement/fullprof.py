@@ -18,7 +18,7 @@ import plots
 import exceptions
 from mapping.datadict import DataDict
 from refinement.base import BaseRefinement
-from phases.phase import Phase
+from xrd.phase import Phase
 
 def load_refined_diffractogram(filename):
     return pd.read_csv(filename, skiprows=3, sep='\t')

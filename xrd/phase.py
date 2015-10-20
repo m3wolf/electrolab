@@ -8,8 +8,8 @@ import scipy
 
 import exceptions
 from mapping.datadict import DataDict
-from xrd.reflection import hkl_to_tuple
-from phases.unitcell import UnitCell
+from .reflection import hkl_to_tuple
+from .unitcell import UnitCell
 
 class PhaseDataDict(DataDict):
     def __get__(self, obj, cls):
