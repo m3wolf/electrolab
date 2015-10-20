@@ -158,7 +158,9 @@ class GalvanostatRun():
         ax.plot(cycle_numbers, capacities, marker='o', linestyle='--', label="Discharge capacity")
         ax2.plot(cycle_numbers, efficiencies, marker='^', linestyle='--', label="Coulombic efficiency")
         # Format axes
-        ax.set_xticks(cycle_numbers)
+        if max(cycle_numbers) < 20:
+            # Only show all of the ticks if there are less than 20
+            ax.set_xticks(cycle_numbers)
         ax.set_xlim(0, 1 + max(cycle_numbers))
         ax.set_ylim(0, 1.1 * max(capacities))
         ax.set_xlabel('Cycle')
