@@ -218,6 +218,7 @@ class XRDMap(Map):
     def plot_phase_ratio(self, phase_idx=0, *args, **kwargs):
         """Plot a map of the ratio of the given phase index to all the phases"""
         self.set_metric_phase_ratio(phase_idx=0)
+        self.metric_name = 'Phase ratio'
         # Determine normalization range
         if self.phase_ratio_normalizer is None:
             metrics = [scan.metric for scan in self.scans]
@@ -227,7 +228,8 @@ class XRDMap(Map):
         else:
             self.metric_normalizer = self.phase_ratio_normalizer
         # Plot the map
-        return self.plot_map(*args, **kwargs)
+        ax = self.plot_map(*args, **kwargs)
+        return ax
 
     def set_metric_cell_parameter(self, parameter='a', phase_idx=0):
         for locus in display_progress(self.loci, 'Calculating cell parameters'):
@@ -236,6 +238,7 @@ class XRDMap(Map):
 
     def plot_cell_parameter(self, parameter='a', phase_idx=0, *args, **kwargs):
         self.set_metric_cell_parameter(parameter, phase_idx)
+        self.metric_name = 'Unit-cell parameter {0} Å'.format(parameter)
         # Determine normalization range
         if self.cell_parameter_normalizer is None:
             metrics = [locus.metric for locus in self.loci]

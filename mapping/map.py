@@ -41,6 +41,7 @@ class Map():
     loci = []
     hexagon_patches = None # Replaced by cached versions
     metric_normalizer = colors.Normalize(0, 1, clip=True)
+    metric_name = 'Metric'
     reliability_normalizer = colors.Normalize(0, 1, clip=True)
 
     def __init__(self, *, center=(0, 0), diameter=12.7, coverage=1,
@@ -277,7 +278,7 @@ class Map():
         return (mapAxes, histogramAxes)
 
     def plot_map(self, ax=None, metric_range=None,
-                 highlightedLocus=None, alpha=None):
+                 highlighted_locus=None, alpha=None):
         """
         Generate a two-dimensional map of the electrode surface. Color is
         determined by each scans metric() method. If no axes are given
@@ -303,10 +304,10 @@ class Map():
             for locus in self.loci:
                 locus.plot_beam(ax=ax)
         # If a highlighted scan was given, show it in a different color
-        if highlightedLocus is not None:
-            highlightedLocus.highlight_beam(ax=ax)
+        if highlighted_locus is not None:
+            highlighted_locus.highlight_beam(ax=ax)
         # Add circle for theoretical edge
-        self.draw_edge(ax, color='blue')
+        self.draw_edge(ax, color='red')
         # Add colormap to the side of the axes
         mappable = cm.ScalarMappable(norm=self.metric_normalizer, cmap=cmap)
         mappable.set_array(numpy.arange(0, 2))
@@ -426,9 +427,16 @@ class Map():
         weights = [locus.reliability for locus in self.loci]
         if ax is None:
             ax = new_axes(height=4, width=7)
-        ax.hist(metrics, bins=100, weights=weights)
+        # Generate the histogram
+        n, bins, patches = ax.hist(metrics, bins=100, weights=weights)
+        # Set the colors based on the metric normalizer
+        for patch in patches:
+            x_position = patch.get_x()
+            cmap = self.get_cmap()
+            color = cmap(self.metric_normalizer(x_position))
+            patch.set_color(color)
         ax.set_xlim(minimum, maximum)
-        ax.set_xlabel('Metric')
+        ax.set_xlabel(self.metric_name)
         ax.set_ylabel('Occurrences')
         return ax
 

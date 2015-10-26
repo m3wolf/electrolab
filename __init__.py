@@ -11,7 +11,7 @@ from electrochem.electrochem_units import *
 from xrd.peak import XRDPeak
 # from xrdpeak import PeakFit
 
-from plots import new_axes, big_axes, dual_axes, plot_scans
+from plots import new_axes, big_axes, dual_axes, plot_scans, xrd_axes
 
 import filters
 
