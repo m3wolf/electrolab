@@ -13,6 +13,7 @@ import exceptions
 from mapping.coordinates import Cube
 from mapping.locus import Locus, DummyLocus
 from mapping.gtkmapwindow import GtkMapWindow
+from mapping.colormaps import cmaps
 from plots import new_axes, dual_axes
 
 def display_progress(objs, operation='Status'):
@@ -36,7 +37,7 @@ class Map():
     presumed to be circular with center and diameter in
     millimeters. Resolution is the size of each cell, given in mm.
     """
-    cmap_name = 'winter'
+    cmap_name = 'viridis'
     camera_zoom = 1
     loci = []
     hexagon_patches = None # Replaced by cached versions
@@ -184,7 +185,13 @@ class Map():
 
     def get_cmap(self):
         """Return a function that converts values in range 0 to 1 to colors."""
-        return pyplot.get_cmap(self.cmap_name)
+        if self.cmap_name in ['magma', 'inferno', 'plasma', 'viridis']:
+            # Non-standard color maps
+            cmap = cmaps[self.cmap_name]
+        else:
+            # Matplotlib built-in colormap
+            cmap = pyplot.get_cmap(self.cmap_name)
+        return cmap
 
     def prepare_mapping_data(self):
         """
