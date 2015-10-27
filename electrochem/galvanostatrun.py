@@ -209,3 +209,4 @@ class GalvanostatRun():
         ax.set_xlabel('Capacity $/mAh\ g^{-1}$')
         ax2.set_xlabel('Capacity differential $/mAh\ g^{-1}V^{-1}$')
         ax.set_ylabel('Cathode potential vs $ Li/Li^+$')
+        return ax, ax2

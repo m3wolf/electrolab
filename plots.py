@@ -1,6 +1,14 @@
 # -*- coding: utf-8 -*-
 
 from matplotlib import pyplot
+from matplotlib.ticker import ScalarFormatter
+
+class DegreeFormatter(ScalarFormatter):
+    """Matplotlib formatter for showing angles with the degree symbol."""
+    def __call__(self, *args, **kwargs):
+        formatted_value = super().__call__(*args, **kwargs)
+        formatted_value = "{value}°".format(value=formatted_value)
+        return formatted_value
 
 def remove_extra_spines(ax):
     """Removes the right and top borders from the axes."""

@@ -126,7 +126,7 @@ class XRDScan():
         if ax is None:
             ax = plots.big_axes()
         ax.set_xlim(left=df.index.min(), right=df.index.max())
-        # ax.set_ylim(bottom=0)
+        ax.xaxis.set_major_formatter(plots.DegreeFormatter())
         ax.plot(df.index, df.loc[:, 'counts'])
         # Plot refinement
         self.refinement.plot(ax=ax)
