@@ -26,6 +26,7 @@ from xrd.map import XRDMap
 
 from mapping.coordinates import Cube
 from mapping.map import Map, DummyMap, PeakPositionMap, PhaseRatioMap, FwhmMap
+from mapping import colormaps
 
 # Electrochemistry methods and classes
 from electrochem.electrode import CathodeLaminate, CoinCellElectrode
