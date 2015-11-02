@@ -9,6 +9,7 @@ import jinja2
 
 import exceptions
 from mapping.map import Map, display_progress
+from plots import new_axes
 from xrd.locus import XRDLocus
 from xrd.gtkmapwindow import GtkXrdMapWindow
 from refinement.native import NativeRefinement
