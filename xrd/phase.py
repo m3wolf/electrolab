@@ -52,17 +52,6 @@ class Phase():
             name = '[blank]'
         return "<{}: {}>".format(self.__class__.__name__, name)
 
-    # @property
-    # def data_dict(self):
-    #     new_dict = {
-    #         'scale_factor': self.scale_factor,
-    #         'u': self.u,
-    #         'v': self.v,
-    #         'w': self.w,
-    #         'unit_cell': self.unit_cell.data_dict
-    #     }
-    #     return new_dict
-
     def reflection_by_hkl(self, hkl_input):
         for reflection in self.reflection_list:
             if reflection.hkl == hkl_to_tuple(hkl_input):

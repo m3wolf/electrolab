@@ -74,7 +74,6 @@ class NativeRefinement(BaseRefinement):
                 # Optimization failed for some reason
                 raise exceptions.RefinementError(result.message)
 
-
     def refine_scale_factors(self):
         # Make sure background is refined first
         if not self.is_refined['background']:
@@ -110,6 +109,14 @@ class NativeRefinement(BaseRefinement):
 
     def refine_peak_widths(self):
         pass
+
+    def fwhm(self, phase_idx=0):
+        """Use the previously fitted peaks to describe full-width and
+        half-maximum."""
+        phase = self.scan.phases[phase_idx]
+        peak = self.peak(phase.diagnostic_reflection, phase_idx=phase_idx)
+        # print('TODO: Get diagnostic peak instead of', peak)
+        return peak.fwhm()
 
     @property
     def background(self):
@@ -147,16 +154,36 @@ class NativeRefinement(BaseRefinement):
     def details(self):
         return "Native refinement"
 
-    @property
-    def peak_list(self):
+    def peak_list_by_phase(self):
+        """List of fitted peaks organized by phase."""
         peak_list = getattr(self, '_peak_list', None)
         if peak_list is None:
             peak_list = self.fit_peaks()
+        return peak_list
+
+    @property
+    def peak_list(self):
+        """List of fitted peaks across all phases"""
+        peak_list = self.peak_list_by_phase()
         # Flatten the list of phases/peaks
         full_list = []
         for phase in peak_list:
             full_list += phase
         return full_list
+
+    def peak(self, reflection, phase_idx=0):
+        """Returns a specific fitted peak."""
+        peak_list = self.peak_list_by_phase()[phase_idx]
+        peaks = [peak for peak in peak_list if peak.reflection == reflection]
+        # Check for sanity
+        if len(peaks) < 1:
+            raise ValueError(
+                'Peak for reflection {} was not found'.format(reflection)
+            )
+        elif len(peaks) > 1:
+            raise IndexError('Mutliple peaks found for {}'.format(reflection))
+        # Sanity checks passed so return to only value
+        return peaks[0]
 
     def fit_peaks(self):
         """
@@ -208,6 +235,14 @@ class NativeRefinement(BaseRefinement):
             ax.plot(two_theta, background)
         # Highlight peaks
         self.highlight_peaks(ax=ax)
+        # Plot peak fittings
+        dataframes = []
+        for peak in self.peak_list:
+            dataframes.append(peak.dataframe(background=spline))
+            # peak.plot_overall_fit(ax=ax, background=spline)
+        if dataframes:
+            df = pandas.concat(dataframes)
+            df.plot(ax=ax)
         return ax
 
     def highlight_peaks(self, ax):

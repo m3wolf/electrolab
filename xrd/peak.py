@@ -2,12 +2,14 @@
 
 from collections import namedtuple
 
+import pandas
 import numpy as np
 from scipy import optimize
 from matplotlib import pyplot
 
 import exceptions
 from xrd.tube import tubes, KALPHA2_RATIO
+import plots
 
 # How strongly to penalize negative peak heights, etc
 BASE_PENALTY = 300
@@ -18,11 +20,20 @@ def remove_peak_from_df(reflection, df):
     peak = reflection.two_theta_range
     df.drop(df[peak[0]:peak[1]].index, inplace=True)
 
+def gaussian_fwhm(width_parameter):
+    """Calculates full-width half max based on width parameter."""
+    # Taken from wikipedia page for "Gaussian Function".
+    return 2.35482 * width_parameter
+
+def cauchy_fwhm(width_parameter):
+    """Calculates full-width half max based on width parameter."""
+    return 2*width_parameter
+
 class PeakFit():
     Parameters = namedtuple('Parameters', ('height', 'center', 'width'))
     height = 450
     center = 35.15
-    width = 0.02
+    width = 0.22
 
     def __repr__(self):
         return "<{cls}: {two_theta}°>".format(cls=self.__class__.__name__,
@@ -110,8 +121,8 @@ class PseudoVoigtFit(PeakFit):
     height_g = 450
     height_c = 450
     center = 35.15
-    width_g = 0.01
-    width_c = 0.01
+    width_g = 0.05
+    width_c = 0.05
     eta = 0.5
     Parameters = namedtuple('PseudoVoigtParameters', ('height_g', 'height_c',
                                                       'center',
@@ -125,6 +136,13 @@ class PseudoVoigtFit(PeakFit):
     @property
     def width(self):
         return self.width_g + self.width_c
+
+    def fwhm(self):
+        # Gaussian component
+        fwhm = self.eta * gaussian_fwhm(self.width_g)
+        # Cauchy component
+        fwhm += (1-self.eta) * cauchy_fwhm(self.width_c)
+        return fwhm
 
     @property
     def parameters(self):
@@ -210,7 +228,7 @@ class XRDPeak():
     fit_list = []
 
     def __init__(self, reflection=None):
-        self.reflection=reflection
+        self.reflection = reflection
 
     def __repr__(self):
         name = "<{cls}: {angle}°>".format(
@@ -231,11 +249,20 @@ class XRDPeak():
 
     @property
     def center_kalpha(self):
-       """Determine the peak center based on relative intensities of kalpha1
-       and kalpha2."""
-       total = self.fit_list[0].center + KALPHA2_RATIO*self.fit_list[1].center
-       center = total/(1+KALPHA2_RATIO)
-       return center
+        """Determine the peak center based on relative intensities of kalpha1
+        and kalpha2."""
+        total = self.fit_list[0].center + KALPHA2_RATIO*self.fit_list[1].center
+        center = total/(1+KALPHA2_RATIO)
+        return center
+
+    def fwhm(self):
+        """Full width at half-maximum. Currently, uses the sum of kα1 and kα2,
+        which is not accurate if the peaks overlap significantly.
+        """
+        width = 0
+        for fit in self.fit_list:
+            width += fit.fwhm()
+        return width
 
     def split_parameters(self, params):
         """
@@ -327,16 +354,22 @@ class XRDPeak():
                         num=1000)
         return x
 
-    def plot_overall_fit(self, ax=None, background=None):
+    def dataframe(self, background=None):
+        """Get a dataframe of the predicted peak fits."""
         x = self.x_range()
-        if ax is None:
-            ax = pyplot.gca()
         y = np.zeros_like(x)
         for fit in self.fit_list:
             y += fit.evaluate(x)
             if background is not None:
-                y += background(x)
-        ax.plot(x, y, label="overall fit")
+                # I don't know why I have to divide by 2 here but it works(!?)
+                y += background(x)/2
+        return pandas.DataFrame(data=y, index=x, columns=['counts'])
+
+    def plot_overall_fit(self, ax=None, background=None):
+        df = self.dataframe(background=background)
+        if ax is None:
+            ax = plots.new_axes()
+        ax.plot(df.index, df.counts, label="overall fit")
 
     def plot_fit(self, ax=None, background=None):
         """Plot the subpeaks on the given axes. background(x) will be added to

@@ -27,6 +27,9 @@ class SingularMatrixError(RefinementError):
 class DivergenceError(RefinementError):
     pass
 
+class PCRFileError(RefinementError):
+    pass
+
 class NoReflectionsError(RefinementError):
     """The refinement has I(obs) = 0. (Do you really have reflections?)"""
     def __str__(self):

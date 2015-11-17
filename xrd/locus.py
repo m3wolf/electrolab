@@ -16,6 +16,7 @@ class XRDLocus(Locus):
                                # filename=self.filename)
         # Filename is not passed to XRDScan constructor to delay loading the datafile
         self.xrdscan.filename = self.filename
+        self.xrdscan.refinement.basename = os.path.splitext(self.filename)[0]
         self.load_diffractogram(self.filename)
         return ret
 

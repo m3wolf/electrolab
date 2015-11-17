@@ -27,6 +27,7 @@ class XRDMap(Map):
     locus_class = XRDLocus
     cell_parameter_normalizer = None
     phase_ratio_normalizer = None
+    fwhm_normalizer = None
     THETA1_MIN=0 # Source limits based on geometry
     THETA1_MAX=50
     THETA2_MIN=0 # Detector limits based on geometry
@@ -222,10 +223,8 @@ class XRDMap(Map):
         self.metric_name = 'Phase ratio'
         # Determine normalization range
         if self.phase_ratio_normalizer is None:
-            metrics = [scan.metric for scan in self.scans]
-            self.metric_normalizer = Normalize(min(metrics),
-                                               max(metrics),
-                                               clip=True)
+            self.metric_normalizer = self.fullrange_normalizer()
+            self.calculate_normalizer()
         else:
             self.metric_normalizer = self.phase_ratio_normalizer
         # Plot the map
@@ -242,19 +241,27 @@ class XRDMap(Map):
         self.metric_name = 'Unit-cell parameter {0} Å'.format(parameter)
         # Determine normalization range
         if self.cell_parameter_normalizer is None:
-            metrics = [locus.metric for locus in self.loci]
-            self.metric_normalizer = Normalize(min(metrics),
-                                               max(metrics),
-                                               clip=True)
+            self.metric_normalizer = self.fullrange_normalizer()
         else:
             self.metric_normalizer = self.cell_parameter_normalizer
         # Now plot the map
         return self.plot_map(*args, **kwargs)
 
-    def set_metric_fwhm(self, phase_idx=0, *args, **kwargs):
-        for locus in display_progress(self.loci, 'Culculating peak widths'):
+    def set_metric_fwhm(self, phase_idx=0):
+        for locus in display_progress(self.loci, 'Calculating peak widths'):
             phase = locus.phases[phase_idx]
-            locus.metric = locus.refinement.fwhm(phase=phase)
+            locus.metric = locus.refinement.fwhm()
+
+    def plot_fwhm(self, phase_idx=0, *args, **kwargs):
+        self.set_metric_fwhm(phase_idx=phase_idx)
+        self.metric_name = 'Full-width half max (°)'
+        # Determine normalization range
+        if self.fwhm_normalizer is None:
+            self.metric_normalizer = self.fullrange_normalizer()
+        else:
+            self.metric_normalizer = self.fwhm_normalizer
+        # Now plot the map
+        return self.plot_map(*args, **kwargs)
 
     def plot_map_gtk(self):
         return super().plot_map_gtk(WindowClass=GtkXrdMapWindow)
@@ -289,6 +296,7 @@ class XRDMap(Map):
                 locus.refinement.refine_peak_widths()
                 current_step = 'unit cells'
                 locus.refinement.refine_unit_cells()
+                # if len(locus.phases) > 2:
                 current_step = 'scale factors'
                 locus.refinement.refine_scale_factors()
             except exceptions.SingularMatrixError as e:
@@ -300,4 +308,7 @@ class XRDMap(Map):
                     coords=locus.cube_coords,
                     step=current_step
                 )
+                print(msg)
+            except exceptions.PCRFileError as e:
+                msg = "Could not read resulting pcr file: {}".format(e)
                 print(msg)

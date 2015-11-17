@@ -23,5 +23,5 @@ class BaseRefinement():
     def plot(self):
         raise NotImplementedError
 
-    def fwhm(self, phase):
+    def fwhm(self, phase=0):
         raise NotImplementedError

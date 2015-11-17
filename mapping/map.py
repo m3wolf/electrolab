@@ -197,7 +197,6 @@ class Map():
         """
         Perform initial calculations on mapping data and save results to file.
         """
-        # self.calculate_reliabilities()
         self.composite_image()
 
     def calculate_metrics(self):
@@ -258,6 +257,14 @@ class Map():
             new_locus = self.loci[idx]
             new_locus.restore_data_dict(dataDict)
             self.loci.append(new_locus)
+
+    def fullrange_normalizer(self):
+        """Determine an appropriate normalizer by looking at the range of metrics."""
+        metrics = [locus.metric for locus in self.loci]
+        new_normalizer = colors.Normalize(min(metrics),
+                                          max(metrics),
+                                          clip=True)
+        return new_normalizer
 
     def plot_map_with_image(self, scan=None, alpha=None):
         mapAxes, imageAxes = dual_axes()

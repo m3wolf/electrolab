@@ -214,6 +214,11 @@ class ProfileMatch(BaseRefinement):
 
     def refine_scale_factors(self):
         context = self.pcrfile_context()
+        # Refining scale factors for only 1 phases won't work
+        if len(context['phases']) < 2:
+            raise exceptions.RefinementError(
+                'Cannot refine scale factors with {} phase(s)'.format(len(context['phases']))
+            )
         # Must be in constant intensities mode to refine a scale factor
         context['num_params'] = len(context['phases'])
         for idx, phase in enumerate(context['phases']):
@@ -280,9 +285,14 @@ class ProfileMatch(BaseRefinement):
             match = width_matches[idx].split()
             width_params = [float(x) for x in match[::2]]
             width_stdevs = [float(x) for x in match[1::2]]
-            phase.u = width_params[0]
-            phase.v = width_params[1]
-            phase.w = width_params[2]
+            try:
+                phase.u = width_params[0]
+                phase.v = width_params[1]
+                phase.w = width_params[2]
+            except IndexError:
+                # Index error usually means some sort of ******* parameter
+                msg = "Could not read refined peak widths"
+                raise exceptions.PCRFileError(msg)
         # Search for unit-cell parameters
         cell_matches = self.cell_re.findall(summary)
         if len(cell_matches) < len(self.scan.phases):
