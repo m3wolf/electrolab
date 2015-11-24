@@ -33,3 +33,8 @@ from electrochem.electrode import CathodeLaminate, CoinCellElectrode
 from electrochem.galvanostatrun import GalvanostatRun
 from electrochem.cycle import Cycle
 from electrochem.plots import plot_rate_capacities
+
+# X-ray microscopy
+from txm.xradia import XRMFile
+from txm import xanes_frameset
+from txm.xanes_frameset import XanesFrameset

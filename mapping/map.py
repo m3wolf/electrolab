@@ -15,22 +15,7 @@ from mapping.locus import Locus, DummyLocus
 from mapping.gtkmapwindow import GtkMapWindow
 from mapping.colormaps import cmaps
 from plots import new_axes, dual_axes
-
-def display_progress(objs, operation='Status'):
-    """
-    Display the progress of the current operation via print statements.
-    """
-    ctr = 1
-    total = len(objs)
-    for obj in objs:
-        status = '{operation}: {curr}/{total} ({percent:.0f}%)'.format(
-            operation=operation, curr=ctr, total=total, percent=(ctr)/total*100
-        )
-        print(status, end='\r')
-        ctr += 1
-        yield obj
-    print() # Newline to avoid writing over progress
-
+from utilities import display_progress
 
 class Map():
     """A physical sample that gets mapped by some scientific process,

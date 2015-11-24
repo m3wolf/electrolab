@@ -38,3 +38,10 @@ class NoReflectionsError(RefinementError):
 
 class FileFormatError(ValueError):
     pass
+
+## X-ray microscopy error
+class FrameFileNotFound(IOError):
+    pass
+
+class FileExistsError(IOError):
+    pass

@@ -8,6 +8,7 @@ import matplotlib
 matplotlib.use('Agg')
 
 from matplotlib import colors
+import numpy as np
 from units import unit, predefined
 predefined.define_units()
 
@@ -30,6 +31,7 @@ from electrochem import electrochem_units
 from adapters.bruker_raw_file import BrukerRawFile
 from adapters.bruker_brml_file import BrukerBrmlFile
 from refinement import fullprof, native
+from txm.frame import average_frames, TXMFrame
 
 # Some phase definitions for testing
 class LMOHighV(CubicLMO):
@@ -49,6 +51,43 @@ class LMOMidV(CubicLMO):
 
 class LMOLowAngle(CubicLMO):
     diagnostic_hkl = '311'
+
+
+class TXMFrameTest(unittest.TestCase):
+    def test_average_frames(self):
+        # Define three frames for testing
+        frame1 = TXMFrame()
+        frame1.image_data = np.array([
+            [1, 2, 3],
+            [3, 4, 5],
+            [2, 5, 7],
+        ])
+        frame2 = TXMFrame()
+        frame2.image_data = np.array([
+            [3, 5, 7],
+            [7, 9, 11],
+            [5, 11, 15],
+        ])
+        frame3 = TXMFrame()
+        frame3.image_data = np.array([
+            [7, 11, 15],
+            [15, 19, 23],
+            [11, 23, 31],
+        ])
+        avg_frame = average_frames(frame1, frame2, frame3)
+        expected_array = np.array([
+            [11/3, 18/3, 25/3],
+            [25/3, 32/3, 39/3],
+            [18/3, 39/3, 53/3],
+        ])
+        # Check that it returns an array with same shape
+        self.assertEqual(
+            frame1.image_data.shape,
+            avg_frame.image_data.shape
+        )
+        # Check that the averaging is correct
+
+        self.assertTrue(np.array_equal(avg_frame.image_data, expected_array))
 
 
 class ElectrolabTestCase(unittest.TestCase):
