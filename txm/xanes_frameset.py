@@ -45,7 +45,7 @@ def find_average_scans(filename, file_list, flavor='ssrl'):
             current_files = [current_file]
     return current_files
 
-def import_from_directory(dirname, hdf_filename=None):
+def import_from_directory(dirname, hdf_filename=None, flavor='ssrl'):
     """Import all files in the given directory and process into framesets."""
     format_classes = {
         '.xrm': XRMFile
@@ -72,12 +72,14 @@ def import_from_directory(dirname, hdf_filename=None):
         raise exceptions.FileExistsError(msg.format(hdf_filename))
     full_frameset = XanesFrameset(filename=hdf_filename)
     total_files = len(file_list)
+    # Prepare a temporary background_frames group
+    full_frameset.hdf_file().create_group('background_frames')
     # Now do the importing
     while(len(file_list) > 0):
         current_file = file_list[0]
         name, extension = os.path.splitext(current_file)
         # Average multiple frames together if necessary
-        files_to_average = find_average_scans(current_file, file_list)
+        files_to_average = find_average_scans(current_file, file_list, flavor=flavor)
         frames_to_average = []
         # Convert to Frame() objects
         for filepath in files_to_average:
@@ -87,19 +89,25 @@ def import_from_directory(dirname, hdf_filename=None):
                 frames_to_average.append(frame)
         # Average scans
         averaged_frame = average_frames(*frames_to_average)
-        # Subtract background
-        # Remove from queue, add to frameset, and display status
+        # Remove from queue and add to frameset
         for filepath in files_to_average:
             file_list.remove(filepath)
-        full_frameset.add_frame(averaged_frame)
-        template = 'Pre-processing frames: {curr}/{total} ({percent:.0f}%)'
+        if averaged_frame.is_background:
+            group = 'background_frames'
+        else:
+            group = 'frames'
+        full_frameset.add_frame(averaged_frame, group=group)
+        # Display current progress
+        template = 'Averaging frames: {curr}/{total} ({percent:.0f}%)'
         status = template.format(
             curr=total_files - len(file_list),
             total=total_files,
             percent=(1 - (len(file_list)/total_files))*100
         )
         print(status, end='\r')
-        break
+        # Subtract background
+        
+
     # # Sort the frames into framesets by location
     # framesets = defaultdict(list)
     # for frame in frame_list:
@@ -168,10 +176,10 @@ class XanesFrameset():
             file.create_group('frames')
         return file
 
-    def add_frame(self, frame):
+    def add_frame(self, frame, group='frames'):
         setname_template = "{energy}eV{serial}"
         with self.hdf_file() as file:
-            frames_group = file['frames']
+            frames_group = file[group]
             # Find a unique frame dataset
             setname = setname_template.format(
                 energy=frame.energy,
@@ -182,12 +190,9 @@ class XanesFrameset():
                 counter += 1
                 setname = setname_template.format(
                     energy=frame.energy,
-                    serial="-" + counter
+                    serial="-" + str(counter)
                 )
             # Name found, so create the actual dataset
-            dataset = frames_group.create_dataset(name=setname,
-                                                  dtype=frame.image_data.dtype,
-                                                  shape=frame.image_data.shape)
-            frame.dataset_name = setname
-            # Save data and metadata
-            frame.save_to_dataset(dataset=dataset)
+            new_dataset = frame.create_dataset(setname=setname,
+                                               hdf_group=frames_group)
+            return setname

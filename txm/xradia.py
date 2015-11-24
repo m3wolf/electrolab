@@ -72,7 +72,7 @@ class XRMFile():
     def is_background(self):
         """Look at the file name for clues to whether this is a background
         frame."""
-        result = re.search('bkg', self.filename)
+        result = re.search('bkg|_ref_', self.filename)
         return bool(result)
 
     def sample_position(self):
