@@ -38,11 +38,16 @@ def big_axes():
 def xrd_axes():
     return new_axes(width=8)
 
-def dual_axes():
+def dual_axes(orientation='horizontal'):
     """Two new axes for mapping, side-by-side."""
-    fig, (ax1, ax2) = pyplot.subplots(1, 2)
-    fig.set_figwidth(13.8)
-    fig.set_figheight(5)
+    if orientation == 'vertical':
+        fig, (ax1, ax2) = pyplot.subplots(2, 1)
+        fig.set_figwidth(6.9)
+        fig.set_figheight(13.8)
+    else:
+        fig, (ax1, ax2) = pyplot.subplots(1, 2)
+        fig.set_figwidth(13.8)
+        fig.set_figheight(5)
     # Remove redundant borders
     remove_extra_spines(ax1)
     remove_extra_spines(ax2)

@@ -5,10 +5,12 @@ import re
 import pandas as pd
 from matplotlib import pyplot
 import h5py
+import numpy as np
 
 from .xradia import XRMFile
 from utilities import display_progress
 from .frame import TXMFrame, average_frames
+from .gtk_viewer import GtkTxmViewer
 import exceptions
 
 def find_average_scans(filename, file_list, flavor='ssrl'):
@@ -70,10 +72,13 @@ def import_from_directory(dirname, hdf_filename=None, flavor='ssrl'):
     if os.path.exists(hdf_filename):
         msg = "Refusing to overwrite file {}"
         raise exceptions.FileExistsError(msg.format(hdf_filename))
-    full_frameset = XanesFrameset(filename=hdf_filename)
+    full_frameset = XanesFrameset(filename=hdf_filename, group='intensity_frames')
     total_files = len(file_list)
-    # Prepare a temporary background_frames group
-    full_frameset.hdf_file().create_group('background_frames')
+    # Prepare a frame groups
+    hdf_file = full_frameset.hdf_file()
+    hdf_file.create_group('intensity_frames')
+    hdf_file.create_group('background_frames')
+    print(list(hdf_file.keys()))
     # Now do the importing
     while(len(file_list) > 0):
         current_file = file_list[0]
@@ -95,7 +100,7 @@ def import_from_directory(dirname, hdf_filename=None, flavor='ssrl'):
         if averaged_frame.is_background:
             group = 'background_frames'
         else:
-            group = 'frames'
+            group = full_frameset.group_name
         full_frameset.add_frame(averaged_frame, group=group)
         # Display current progress
         template = 'Averaging frames: {curr}/{total} ({percent:.0f}%)'
@@ -105,9 +110,8 @@ def import_from_directory(dirname, hdf_filename=None, flavor='ssrl'):
             percent=(1 - (len(file_list)/total_files))*100
         )
         print(status, end='\r')
-        # Subtract background
-        for frame in frameset:
-            print(frame.energy)
+    print('Averaging frames: {curr}/{total} [done]'.format(curr=total_files,
+                                                           total=total_files))
 
     # # Sort the frames into framesets by location
     # framesets = defaultdict(list)
@@ -142,20 +146,36 @@ class XanesFrameset():
     def __iter__(self):
         """Get each frame from the HDF5 file"""
         hdf_file = self.hdf_file()
-        for dataset_name in hdf_file['frames'].keys():
-            yield TXMFrame.load_from_dataset(hdf_file['frames'][dataset_name])
+        for dataset_name in self.hdf_group().keys():
+            yield TXMFrame.load_from_dataset(self.hdf_group()[dataset_name])
+
+    def __len__(self):
+        return len(self.hdf_group().keys())
 
     def __getitem__(self, index):
         hdf_file = self.hdf_file()
-        dataset_name = list(hdf_file['frames'].keys())[index]
-        return TXMFrame.load_from_dataset(hdf_file['frames'][dataset_name])
+        dataset_name = list(self.hdf_group().keys())[index]
+        return TXMFrame.load_from_dataset(self.hdf_group()[dataset_name])
+
+    def fork_group(self, name):
+        # Create an empty group
+        try:
+            del self.hdf_file()[name]
+        except KeyError:
+            pass
+        # Copy the old data
+        self.hdf_file().copy(self.group_name, name)
+        # Update the group name
+        self.group_name = name
 
     def subtract_background(self, dataset_name='background_frames'):
+        new_group = self.fork_group('absorbance_frames')
         bg_group = self.hdf_file()[dataset_name]
         for energy in display_progress(self.hdf_group().keys(), "Subtracting background:"):
             sample_dataset = self.hdf_group()[energy]
             bg_dataset = bg_group[energy]
-            sample_dataset.write_direct(sample_dataset.value - bg_dataset.value)
+            new_data = np.log10(bg_dataset.value/sample_dataset.value)
+            sample_dataset.write_direct(new_data)
 
     def plot_full_image(self):
         return pyplot.imshow(self.df.mean())
@@ -184,7 +204,9 @@ class XanesFrameset():
     def hdf_group(self):
         return self.hdf_file()[self.group_name]
 
-    def add_frame(self, frame, group='frames'):
+    def add_frame(self, frame, group=None):
+        if group is None:
+            group = self.group_name
         setname_template = "{energy}eV{serial}"
         with self.hdf_file() as file:
             frames_group = file[group]
@@ -204,3 +226,7 @@ class XanesFrameset():
             new_dataset = frame.create_dataset(setname=setname,
                                                hdf_group=frames_group)
             return setname
+
+    def gtk_viewer(self):
+        viewer = GtkTxmViewer(frameset=self)
+        viewer.show()

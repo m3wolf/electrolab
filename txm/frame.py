@@ -4,6 +4,8 @@ import os
 import numpy as np
 from matplotlib import pyplot
 
+import plots
+
 position = namedtuple('position', ('x', 'y', 'z'))
 
 def average_frames(*frames):
@@ -79,8 +81,10 @@ class TXMFrame():
             z=self.approximate_position.z,
         )
 
-    def plot_image(self):
-        return pyplot.imshow(self.image_data, cmap='gray')
+    def plot_image(self, ax=None):
+        if ax is None:
+            ax=plots.new_axes()
+        return ax.imshow(self.image_data, cmap='gray')
 
     def create_dataset(self, setname, hdf_group):
         """Save data and metadata to an HDF dataset."""
