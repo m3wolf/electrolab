@@ -106,7 +106,8 @@ def import_from_directory(dirname, hdf_filename=None, flavor='ssrl'):
         )
         print(status, end='\r')
         # Subtract background
-        
+        for frame in frameset:
+            print(frame.energy)
 
     # # Sort the frames into framesets by location
     # framesets = defaultdict(list)
@@ -134,8 +135,9 @@ def build_dataframe(frames):
 
 class XanesFrameset():
 
-    def __init__(self, filename):
+    def __init__(self, filename, group='frames'):
         self.hdf_filename = filename
+        self.group_name = group
 
     def __iter__(self):
         """Get each frame from the HDF5 file"""
@@ -148,9 +150,12 @@ class XanesFrameset():
         dataset_name = list(hdf_file['frames'].keys())[index]
         return TXMFrame.load_from_dataset(hdf_file['frames'][dataset_name])
 
-    def subtract_background(self, background_frames):
-        bg_df = build_dataframe(background_frames)
-        self.df = self.df.subtract(bg_df)
+    def subtract_background(self, dataset_name='background_frames'):
+        bg_group = self.hdf_file()[dataset_name]
+        for energy in display_progress(self.hdf_group().keys(), "Subtracting background:"):
+            sample_dataset = self.hdf_group()[energy]
+            bg_dataset = bg_group[energy]
+            sample_dataset.write_direct(sample_dataset.value - bg_dataset.value)
 
     def plot_full_image(self):
         return pyplot.imshow(self.df.mean())
@@ -175,6 +180,9 @@ class XanesFrameset():
             file = h5py.File(self.hdf_filename, 'w-')
             file.create_group('frames')
         return file
+
+    def hdf_group(self):
+        return self.hdf_file()[self.group_name]
 
     def add_frame(self, frame, group='frames'):
         setname_template = "{energy}eV{serial}"
