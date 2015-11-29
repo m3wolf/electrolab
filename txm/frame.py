@@ -5,6 +5,7 @@ import numpy as np
 from matplotlib import pyplot
 
 import plots
+from hdf import HDFAttribute
 
 position = namedtuple('position', ('x', 'y', 'z'))
 
@@ -23,54 +24,38 @@ def average_frames(*frames):
     new_frame.image_data = new_image
     return new_frame
 
-class ImageDatasetAttribute():
-    """A descriptor that returns an HDF5 attribute if possible or else an
-    in-memory value. An optional `wrapper` argument will wrap the data
-    in this function before getting it.
-    """
-    def __init__(self, attribute_name, default=0, wrapper=None):
-        self.attribute_name = attribute_name
-        self.default_value = default
-        self.wrapper = wrapper
-
-    def __get__(self, obj, owner):
-        attrs = getattr(obj.image_data, 'attrs', obj._attrs)
-        value = attrs.get(self.attribute_name, self.default_value)
-        if self.wrapper:
-            value = self.wrapper(value)
-        return value
-
-    def __set__(self, obj, value):
-        attrs = getattr(obj.image_data, 'attrs', obj._attrs)
-        attrs[self.attribute_name] = value
-
 
 class TXMFrame():
-
     """A single microscopy image at a certain energy."""
     image_data = np.zeros(shape=(1024,1024))
     _attrs = {}
-    energy = ImageDatasetAttribute('energy', default=0)
-    original_filename = ImageDatasetAttribute('original_filename', default=None)
-    sample_position = ImageDatasetAttribute('sample_position',
-                                            default=position(0, 0, 0),
-                                            wrapper=lambda coords: position(*coords))
-    approximate_position = ImageDatasetAttribute('approximate_position',
-                                                default=position(0, 0, 0),
-                                                 wrapper=lambda coords: position(*coords))
-    is_background = ImageDatasetAttribute('is_background', default=False)
+    energy = HDFAttribute('energy', default=0.0)
+    approximate_energy = HDFAttribute('approximate_energy', default=0.0)
+    original_filename = HDFAttribute('original_filename', default=None)
+    sample_position = HDFAttribute('sample_position',
+                                   default=position(0, 0, 0),
+                                   wrapper=lambda coords: position(*coords))
+    approximate_position = HDFAttribute('approximate_position',
+                                        default=position(0, 0, 0),
+                                        wrapper=lambda coords: position(*coords))
+    is_background = HDFAttribute('is_background', default=False)
+
     def __init__(self, file=None):
         if file:
             self.energy = file.energy()
+            self.approximate_energy = round(self.energy, 1)
             self.original_filename = os.path.basename(file.filename)
             self.image_data = file.image_data()
             self.sample_position = file.sample_position()
+            self.sample_name = file.sample_name
+            self.position_name = file.position_name
+            # self.reference_path = file.reference_path
             self.approximate_position = position(
                 round(self.sample_position.x, -1),
                 round(self.sample_position.y, -1),
                 round(self.sample_position.z, -1)
             )
-            self.is_background = file.is_background()
+            self.is_background = file.is_background
 
     def __repr__(self):
         name = "<TXMFrame: {energy} eV at ({x}, {y}, {z})"
@@ -81,18 +66,35 @@ class TXMFrame():
             z=self.approximate_position.z,
         )
 
-    def plot_image(self, ax=None):
+    def transmission_data(self, background_group):
+        bg_data = self.background_dataset(group=background_group)
+        return bg_data/np.exp(self.image_data)
+
+    def background_dataset(self, group):
+        key = self.image_data.name.split('/')[-1]
+        return group[key]
+
+    @property
+    def hdf_node(self):
+        return self.image_data
+
+    def plot_image(self, data=None, ax=None, *args, **kwargs):
+        """Plot a frame's data image. Use frame.image_data if no data are
+        given."""
         if ax is None:
             ax=plots.new_axes()
-        return ax.imshow(self.image_data, cmap='gray')
+        if data is None:
+            data = self.image_data
+        return ax.imshow(self.image_data, *args, cmap='gray', **kwargs)
 
     def create_dataset(self, setname, hdf_group):
         """Save data and metadata to an HDF dataset."""
+        attrs = getattr(self.image_data, 'attrs', self._attrs)
         self.image_data = hdf_group.create_dataset(name=setname,
                                                    data=self.image_data)
         # Set metadata attributes
-        for attr_name in self._attrs.keys():
-            self.image_data.attrs[attr_name] = self._attrs[attr_name]
+        for attr_name in attrs.keys():
+            self.image_data.attrs[attr_name] = attrs[attr_name]
 
     @classmethod
     def load_from_dataset(Cls, dataset):
@@ -100,3 +102,8 @@ class TXMFrame():
         new_frame = Cls()
         new_frame.image_data = dataset
         return new_frame
+
+    def background_data(self):
+        """Return numpy array containing transmission data for reference
+        frame."""
+        

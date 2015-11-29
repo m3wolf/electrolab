@@ -12,10 +12,17 @@ import exceptions
 # https://github.com/data-exchange/data-exchange/blob/master/xtomo/src/xtomo_reader.py
 
 class XRMFile():
-    """Single X-ray micrscopy frame."""
-    def __init__(self, filename):
+    """Single X-ray micrscopy frame created using XRadia XRM format."""
+    aps_regex = re.compile("(\d{8})_([a-zA-Z0-9_]+)_([a-zA-Z0-9]+)_(\d{4}).xrm")
+    def __init__(self, filename, flavor):
         self.filename = filename
+        self.flavor = flavor
         self.ole_file = OleFileIO.OleFileIO(self.filename)
+        # Filename parameters
+        params = self.parameters_from_filename()
+        self.sample_name = params['sample_name']
+        self.position_name = params['position_name']
+        self.is_background = params['is_background']
 
     def __enter__(self):
         return self
@@ -28,6 +35,50 @@ class XRMFile():
 
     def __repr__(self):
         return "<XRMFile: '{}'>".format(os.path.basename(self.filename))
+
+    def parameters_from_filename(self):
+        """Determine various metadata from the frames filename (sample name etc)."""
+        if self.flavor == 'aps':
+            # APS beamline 8-BM-B
+            result = self.aps_regex.search(self.filename)
+            params = {
+                'date_string': result.group(1),
+                'sample_name': result.group(2),
+                'position_name': result.group(3),
+                'is_background': result.group(3) == 'bkg',
+                'energy': float(result.group(4)),
+            }
+        elif self.flavor == 'ssrl':
+            # Beamline 6-2c at SSRL
+            self.ssrl_regex_bg = re.compile(
+                'rep(\d{2})_(\d{6})_ref_([a-zA-Z0-9_]+)_([0-9.]+)_eV_(\d{3})of(\d{3})\.xrm'
+            )
+            self.ssrl_regex_sample = re.compile(
+                'rep(\d{2})_([a-zA-Z0-9_]+)_([0-9.]+)_eV_(\d{3})of(\d{3}).xrm'
+            )
+            # Check for background frames
+            bg_result = self.ssrl_regex_bg.search(self.filename)
+            if bg_result:
+                params = {
+                    'date_string': '',
+                    'sample_name': bg_result.group(3),
+                    'position_name': '',
+                    'is_background': True,
+                    'energy': float(bg_result.group(4)),
+                }
+            else:
+                sample_result = self.ssrl_regex_sample.search(self.filename)
+                params = {
+                    'date_string': '',
+                    'sample_name': sample_result.group(2),
+                    'position_name': '',
+                    'is_background': False,
+                    'energy': float(sample_result.group(3)),
+                }
+        else:
+            msg = "Unknown flavor for filename: {}"
+            raise exceptions.FileFormatError(msg.format(self.filename))
+        return params
 
     def ole_value(self, stream, fmt=None):
         """Get arbitrary data from the ole file and convert from bytes."""
@@ -69,11 +120,11 @@ class XRMFile():
         img_data = np.reshape(img_data, dimensions)
         return img_data
 
-    def is_background(self):
-        """Look at the file name for clues to whether this is a background
-        frame."""
-        result = re.search('bkg|_ref_', self.filename)
-        return bool(result)
+    # def is_background(self):
+    #     """Look at the file name for clues to whether this is a background
+    #     frame."""
+    #     result = re.search('bkg|_ref_', self.filename)
+    #     return bool(result)
 
     def sample_position(self):
         position = namedtuple('position', ('x', 'y', 'z'))

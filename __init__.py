@@ -36,5 +36,5 @@ from electrochem.plots import plot_rate_capacities
 
 # X-ray microscopy
 from txm.xradia import XRMFile
-from txm import xanes_frameset
+from txm.importers import import_txm_framesets
 from txm.xanes_frameset import XanesFrameset
