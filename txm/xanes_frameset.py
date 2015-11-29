@@ -27,7 +27,7 @@ class XanesFrameset():
     active_groupname = HDFAttribute('active_groupname')
     background_groupname = HDFAttribute('background_groupname')
 
-    def __init__(self, filename, groupname=None):
+    def __init__(self, filename, groupname):
         self.hdf_filename = filename
         self.group_name = groupname
         # Check to make sure a valid group is given
@@ -66,11 +66,36 @@ class XanesFrameset():
         self.background_groupname = bg_groupname
         self.fork_group('absorbance_frames')
         bg_group = self.hdf_file()[bg_groupname]
-        for energy in display_progress(self.active_group().keys(), "Subtracting background:"):
+        for energy in display_progress(self.active_group().keys(), "Subtracting background"):
             sample_dataset = self.active_group()[energy]
             bg_dataset = bg_group[energy]
             new_data = np.log10(bg_dataset.value/sample_dataset.value)
             sample_dataset.write_direct(new_data)
+
+    def align_frame_positions(self):
+        """Correct for inaccurate motion in the sample motors."""
+        self.fork_group('aligned_frames')
+        # Determine average positions
+        total_x = 0; total_y = 0; n=0
+        for frame in display_progress(self, 'Computing true center'):
+            n+=1
+            total_x += frame.sample_position.x
+            total_y += frame.sample_position.y
+        global_x = total_x / n
+        global_y = total_y / n
+        for frame in display_progress(self, 'Aligning frames'):
+            um_per_pixel_x = 40/frame.image_data.shape[1]
+            um_per_pixel_y = 40/frame.image_data.shape[0]
+            offset_x = int(round((global_x - frame.sample_position.x)/um_per_pixel_x))
+            offset_y = int(round((global_y - frame.sample_position.y)/um_per_pixel_y))
+            frame.shift_data(x_offset=offset_x, y_offset=offset_y)
+            # Store updated position info
+            new_position = (
+                frame.sample_position.x + offset_x * um_per_pixel_x,
+                frame.sample_position.y + offset_y * um_per_pixel_y,
+                frame.sample_position.z
+            )
+            frame.sample_position = new_position
 
     def plot_full_image(self):
         return pyplot.imshow(self.df.mean())
@@ -82,15 +107,7 @@ class XanesFrameset():
         bg_group = self.background_group()
         for frame in self:
             energies.append(frame.energy)
-            # Calculate bulk absorbance for the frame
-            #   (probably the right way to do it)
-            # bg_transmission = np.sum(frame.background_dataset(group=bg_group))
-            # transmission_data = frame.transmission_data(background_group=bg_group)
-            # sample_transmission = np.sum(transmission_data)
-            # intensities.append(math.log(bg_transmission/sample_transmission))
-            #
             # Sum absorbances for datasets
-            #   (definitely the faster way to do it)
             intensity = np.sum(frame.image_data)/np.prod(frame.image_data.shape)
             intensities.append(intensity)
         # Combine into a series

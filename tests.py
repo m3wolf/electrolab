@@ -11,6 +11,7 @@ from matplotlib import colors
 import numpy as np
 from units import unit, predefined
 predefined.define_units()
+import h5py
 
 import exceptions
 import scimap
@@ -32,6 +33,7 @@ from adapters.bruker_raw_file import BrukerRawFile
 from adapters.bruker_brml_file import BrukerBrmlFile
 from refinement import fullprof, native
 from txm.frame import average_frames, TXMFrame
+from txm.importers import import_txm_framesets
 from txm import xanes_frameset
 
 # Some phase definitions for testing
@@ -59,8 +61,10 @@ class TXMFrameTest(unittest.TestCase):
     def setUp(self):
         self.hdf_filename = 'test-sample-frames/txm-frame-test.hdf'
         assert not os.path.exists(self.hdf_filename)
+        self.hdf_file = h5py.File(self.hdf_filename)
 
     def tearDown(self):
+        self.hdf_file.close()
         try:
             os.remove(self.hdf_filename)
         except FileNotFoundError:
@@ -100,10 +104,30 @@ class TXMFrameTest(unittest.TestCase):
         # Check that the averaging is correct
         self.assertTrue(np.array_equal(avg_frame.image_data, expected_array))
 
-    def test_sorts_by_location(self):
-        xanes_frameset.import_from_directory('test-sample-frames')
-        file = h5py.File(self.hdf_filename)
-        print(list(file.keys()))
+    def test_shift_data(self):
+        frame = TXMFrame()
+        frame.image_data = self.hdf_file.create_dataset(
+            name = 'shifting_data',
+            data = np.array([
+                [1, 2],
+                [5, 7]
+            ])
+        )
+        # Shift in x direction
+        frame.shift_data(1, 0)
+        expected_data = [
+            [0, 1],
+            [0, 5]
+        ]
+        self.assertTrue(np.array_equal(frame.image_data, expected_data))
+        # Shift in negative y direction
+        frame.shift_data(0, -1)
+        expected_data = [
+            [0, 5],
+            [0, 0]
+        ]
+        self.assertTrue(np.array_equal(frame.image_data, expected_data))
+
 
 class ElectrolabTestCase(unittest.TestCase):
     def assertApproximatelyEqual(self, actual, expected, tolerance=0.01, msg=None):

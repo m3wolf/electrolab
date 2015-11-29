@@ -1,5 +1,6 @@
 from collections import namedtuple
 import os
+import math
 
 import numpy as np
 from matplotlib import pyplot
@@ -86,6 +87,25 @@ class TXMFrame():
         if data is None:
             data = self.image_data
         return ax.imshow(self.image_data, *args, cmap='gray', **kwargs)
+
+    def shift_data(self, x_offset, y_offset):
+        """Move the image within the view field by the given offsets in pixels.
+        New values are filled in with zeroes."""
+        # Make sure ints were passed
+        original_shape = self.image_data.shape
+        # Expand the array to allow for rolling
+        new_shapes = (
+            (0, abs(y_offset)),
+            (0, abs(x_offset))
+        )
+        new_data = np.pad(self.image_data, new_shapes, mode='constant')
+        # Roll along x axis
+        new_data = np.roll(new_data, x_offset, axis=1)
+        # Roll along y axis
+        new_data = np.roll(new_data, y_offset, axis=0)
+        # Resize back to original shape
+        new_data = np.array(new_data[0:original_shape[0], 0:original_shape[1]])
+        self.image_data.write_direct(new_data)
 
     def create_dataset(self, setname, hdf_group):
         """Save data and metadata to an HDF dataset."""
