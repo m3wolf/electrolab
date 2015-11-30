@@ -11,4 +11,4 @@ def display_progress(objs, operation='Status'):
         print(status, end='\r')
         ctr += 1
         yield obj
-    print() # Newline to avoid writing over progress
+    print('{operation}: {total}/{total} [done]') # Newline to avoid writing over progress

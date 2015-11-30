@@ -9,6 +9,7 @@ import numpy as np
 
 class GtkTxmViewer():
     play_mode = False
+    show_particles = False
     """View a XANES frameset using a Gtk GUI."""
     def __init__(self, frameset):
         self.frameset = frameset
@@ -36,9 +37,11 @@ class GtkTxmViewer():
             'last-frame': self.last_frame,
             'first-frame': self.first_frame,
             'key-release': self.key_pressed,
+            'toggle-particles': self.toggle_particles,
             'update-window': self.update_window
         }
         self.builder.connect_signals(handlers)
+        self.image = self.current_frame().plot_image(ax=self.image_ax,  animated=True)
         self.update_window()
         # self.window.connect('delete-event', Gtk.main_quit)
 
@@ -56,6 +59,10 @@ class GtkTxmViewer():
             self.previous_frame()
         elif event.keyval == Gdk.KEY_Right:
             self.next_frame()
+
+    def toggle_particles(self, widget):
+        self.show_particles = not self.show_particles
+        self.update_window()
 
     def play_frames(self, widget):
         self.play_mode = widget.get_property('active')
@@ -102,10 +109,13 @@ class GtkTxmViewer():
         y_label.set_text(str(current_frame.sample_position.y))
         z_label = self.builder.get_object('ZPosLabel')
         z_label.set_text(str(current_frame.sample_position.z))
-        # Re-draw the current image
-        self.image_ax.clear()
-        self.current_frame().plot_image(ax=self.image_ax, norm=self.normalizer)
         self.image_ax.figure.canvas.draw()
+        # Re-draw each frame
+        # self.image_ax.clear()
+        self.image.set_data(self.current_frame().image_data)
+        # img_ax = self.current_frame().plot_image(ax=self.image_ax, norm=self.normalizer)
+        # if self.show_particles:
+        #     self.current_frame().plot_particle_labels(ax=img_ax.axes)
 
     def show(self):
         self.window.show_all()

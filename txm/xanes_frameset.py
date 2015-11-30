@@ -51,6 +51,9 @@ class XanesFrameset():
         dataset_name = list(self.active_group().keys())[index]
         return TXMFrame.load_from_dataset(self.active_group()[dataset_name])
 
+    def switch_group(self, name):
+        self.active_groupname = name
+
     def fork_group(self, name):
         # Create an empty group
         try:
@@ -96,6 +99,17 @@ class XanesFrameset():
                 frame.sample_position.z
             )
             frame.sample_position = new_position
+
+    def label_particles(self):
+        # Create a new group
+        if 'particle_labels' in self.hdf_group().keys():
+            del self.hdf_group()['particle_labels']
+        labels_group = self.hdf_group().create_group('particle_labels')
+        for frame in display_progress(self, 'Identifying particles'):
+            key = frame.image_data.name.split('/')[-1]
+            data = frame.calculate_particle_labels()
+            dataset = labels_group.create_dataset(name=key, data=data)
+            frame.particle_labels_path = dataset.name
 
     def plot_full_image(self):
         return pyplot.imshow(self.df.mean())

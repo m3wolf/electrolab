@@ -4,6 +4,10 @@ import math
 
 import numpy as np
 from matplotlib import pyplot
+from scipy import ndimage
+# from skimage import filters, data, measure, feature, morphology, segmentation
+import skimage.filters, skimage.data, skimage.measure, skimage.feature
+import skimage.morphology, skimage.segmentation
 
 import plots
 from hdf import HDFAttribute
@@ -40,6 +44,7 @@ class TXMFrame():
                                         default=position(0, 0, 0),
                                         wrapper=lambda coords: position(*coords))
     is_background = HDFAttribute('is_background', default=False)
+    particle_labels_path = HDFAttribute('particle_labels_path', default=None)
 
     def __init__(self, file=None):
         if file:
@@ -88,6 +93,16 @@ class TXMFrame():
             data = self.image_data
         return ax.imshow(self.image_data, *args, cmap='gray', **kwargs)
 
+    def plot_particle_labels(self, ax=None, *args, **kwargs):
+        """Plot the identified particles (as an overlay if ax is given)."""
+        if ax is None:
+            opacity = 1
+            ax = plot.new_axes()
+        else:
+            opacity = 0.3
+        data = self.particle_labels()
+        return ax.imshow(data, *args, alpha=opacity, **kwargs)
+
     def shift_data(self, x_offset, y_offset):
         """Move the image within the view field by the given offsets in pixels.
         New values are filled in with zeroes."""
@@ -123,7 +138,42 @@ class TXMFrame():
         new_frame.image_data = dataset
         return new_frame
 
-    def background_data(self):
-        """Return numpy array containing transmission data for reference
-        frame."""
-        
+    def particle_labels(self):
+        if self.particle_labels_path is None:
+            res = self.calculate_particle_labels()
+        else:
+            res = self.image_data.file[self.particle_labels_path]
+        return res
+
+    def particles(self):
+        labels = self.particle_labels()
+        print(labels)
+        props = skimage.measure.regionprops(labels)
+        return props
+
+    def calculate_particle_labels(self):
+        """Generate and save a scikit-image style labels frame identifying the
+        different particles."""
+        # Identify foreground vs background with Otsu filter
+        #Otsu filer
+        otsu_threshold = skimage.filters.threshold_otsu(self.image_data.value)
+        mask = self.image_data.value > otsu_threshold
+        # Fill in the shapes a little
+        mask = skimage.morphology.closing(mask, skimage.morphology.square(5))
+        # Remove features at the edge of the frame since they can be incomplete
+        mask = skimage.segmentation.clear_border(mask)
+        # Discard small particles
+        mask = skimage.morphology.remove_small_objects(mask, min_size=1024)
+        # Fill in the shapes a lot to round them out
+        mask = skimage.morphology.closing(mask, skimage.morphology.disk(10))
+        # Compute each pixel's distance from the edge of a blob
+        distances = ndimage.distance_transform_edt(mask)
+        # Use the local distance maxima as peak centers and compute labels
+        local_maxima = skimage.feature.peak_local_max(distances,
+                                                      indices=False,
+                                                      footprint=np.ones((64, 64)),
+                                                      labels=mask)
+        markers = skimage.measure.label(local_maxima)
+        labels = skimage.morphology.watershed(-distances, markers, mask=mask)
+        result = labels
+        return result
