@@ -1,3 +1,7 @@
+from collections import namedtuple
+
+xycoord = namedtuple('xycoord', ('x', 'y'))
+
 def display_progress(objs, operation='Status'):
     """
     Display the progress of the current operation via print statements.
@@ -11,4 +15,6 @@ def display_progress(objs, operation='Status'):
         print(status, end='\r')
         ctr += 1
         yield obj
-    print('{operation}: {total}/{total} [done]') # Newline to avoid writing over progress
+        # Newline to avoid writing over progress
+    print('{operation}: {total}/{total} [done]'.format(operation=operation,
+                                                       total=total))

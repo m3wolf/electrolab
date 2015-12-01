@@ -78,3 +78,10 @@ def plot_scans(scan_list, step_size=0, ax=None):
     ax.set_xlabel(r'$2\theta$')
     ax.set_ylabel('counts')
     return ax
+
+def plot_txm_intermediates(images):
+    for key in images.keys():
+        fig = pyplot.figure()
+        ax = fig.gca()
+        ax.imshow(images[key], cmap='gray')
+        ax.set_title(key)

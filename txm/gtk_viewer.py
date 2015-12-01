@@ -26,8 +26,6 @@ class GtkTxmViewer():
         slider = self.builder.get_object('FrameSlider')
         self.current_adj = self.builder.get_object('CurrentFrame')
         self.current_adj.set_property('upper', len(self.frameset))
-        # slider.set_property('slider-length', len(self.frameset))
-        # slider.set_property('value-pos', self.current_idx)
         # Set event handlers
         handlers = {
             'gtk-quit': Gtk.main_quit,
@@ -41,18 +39,18 @@ class GtkTxmViewer():
             'update-window': self.update_window
         }
         self.builder.connect_signals(handlers)
-        self.image = self.current_frame().plot_image(ax=self.image_ax,  animated=True)
+        # self.image = self.current_frame().plot_image(ax=self.image_ax,  animated=True)
         self.update_window()
         # self.window.connect('delete-event', Gtk.main_quit)
 
     @property
     def current_idx(self):
         value = self.current_adj.get_property('value')
-        return int(value - 1)
+        return int(value)
 
     @current_idx.setter
     def current_idx(self, value):
-        self.current_adj.set_property('value', value+1)
+        self.current_adj.set_property('value', value)
 
     def key_pressed(self, widget, event):
         if event.keyval == Gdk.KEY_Left:
@@ -69,7 +67,6 @@ class GtkTxmViewer():
         GObject.timeout_add(0, self.next_frame, None)
 
     def first_frame(self, widget):
-        print('first frame')
         self.current_idx = 0
         self.update_window()
 
@@ -109,17 +106,23 @@ class GtkTxmViewer():
         y_label.set_text(str(current_frame.sample_position.y))
         z_label = self.builder.get_object('ZPosLabel')
         z_label.set_text(str(current_frame.sample_position.z))
-        self.image_ax.figure.canvas.draw()
         # Re-draw each frame
-        # self.image_ax.clear()
-        self.image.set_data(self.current_frame().image_data)
-        # img_ax = self.current_frame().plot_image(ax=self.image_ax, norm=self.normalizer)
+        self.image_ax.clear()
+        self.image_ax.set_aspect(1)
+        # self.image.set_data(self.current_image())
+        img_ax = self.current_frame().plot_image(ax=self.image_ax,
+                                                 norm=self.normalizer,
+                                                 show_particles=self.show_particles)
         # if self.show_particles:
         #     self.current_frame().plot_particle_labels(ax=img_ax.axes)
+        self.image_ax.figure.canvas.draw()
 
     def show(self):
         self.window.show_all()
         Gtk.main()
+
+    def current_image(self):
+        return self.images[self.current_idx]
 
     def current_frame(self):
         return self.frameset[self.current_idx]

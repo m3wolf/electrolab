@@ -9,7 +9,7 @@ from matplotlib.colors import Normalize
 import h5py
 import numpy as np
 
-from utilities import display_progress
+from utilities import display_progress, xycoord
 from .frame import TXMFrame, average_frames
 from .gtk_viewer import GtkTxmViewer
 import exceptions
@@ -74,6 +74,33 @@ class XanesFrameset():
             bg_dataset = bg_group[energy]
             new_data = np.log10(bg_dataset.value/sample_dataset.value)
             sample_dataset.write_direct(new_data)
+
+    def align_to_particle(self, particle_idx=0):
+        """Use the centroid position of given particle to align all the
+        frames."""
+        self.fork_group('aligned_particle_{}'.format(particle_idx))
+        # Determine average positions
+        total_x = 0; total_y = 0; n=0
+        for frame in display_progress(self, 'Computing true center'):
+            particle = frame.particles()[particle_idx]
+            n+=1
+            total_x += particle.centroid().x
+            total_y += particle.centroid().y
+        global_center = xycoord(x=total_x/n, y=total_y/n)
+        # Align all frames to average position
+        for frame in display_progress(self, 'Aligning frames'):
+            particle = frame.particles()[particle_idx]
+            offset_x = int(round(global_center.x - particle.centroid().x))
+            offset_y = int(round(global_center.y - particle.centroid().y))
+            frame.shift_data(x_offset=offset_x, y_offset=offset_y)
+            # Store updated position info
+            um_per_pixel = frame.um_per_pixel()
+            new_position = (
+                frame.sample_position.x + offset_x * um_per_pixel.x,
+                frame.sample_position.y + offset_y * um_per_pixel.y,
+                frame.sample_position.z
+            )
+            frame.sample_position = new_position
 
     def align_frame_positions(self):
         """Correct for inaccurate motion in the sample motors."""
@@ -152,7 +179,6 @@ class XanesFrameset():
     def background_group(self):
         return self.hdf_file()[self.background_groupname]
 
-    @property
     def hdf_node(self):
         """For use with HDFAttribute descriptor."""
         return self.hdf_group()

@@ -11,12 +11,12 @@ class HDFAttribute():
         self.wrapper = wrapper
 
     def __get__(self, obj, owner):
-        attrs = getattr(obj.hdf_node, 'attrs', obj._attrs)
+        attrs = getattr(obj.hdf_node(), 'attrs', obj._attrs)
         value = attrs.get(self.attribute_name, self.default_value)
         if self.wrapper:
             value = self.wrapper(value)
         return value
 
     def __set__(self, obj, value):
-        attrs = getattr(obj.hdf_node, 'attrs', obj._attrs)
+        attrs = getattr(obj.hdf_node(), 'attrs', obj._attrs)
         attrs[self.attribute_name] = value
