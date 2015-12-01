@@ -72,7 +72,7 @@ def import_txm_framesets(directory, hdf_filename=None, flavor='ssrl'):
                                              groupname=identifier)
                 new_frameset.active_groupname = 'raw_frames'
                 sample_framesets[identifier] = new_frameset
-            # Add this frame to the appropriate
+            # Add this frame to the appropriate group
             sample_framesets[identifier].add_frame(averaged_frame)
         # Display current progress
         template = 'Averaging frames: {curr}/{total} ({percent:.0f}%)'
@@ -86,6 +86,7 @@ def import_txm_framesets(directory, hdf_filename=None, flavor='ssrl'):
                                                            total=total_files))
     frameset_list = list(sample_framesets.values())
     # Apply reference collection and convert to absorbance frames
+    print('Imported samples', [fs.hdf_group().name for fs in frameset_list])
     for frameset in frameset_list:
         frameset.subtract_background(bg_groupname)
     return frameset_list

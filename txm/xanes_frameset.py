@@ -26,7 +26,7 @@ class XanesFrameset():
     _attrs = {}
     active_groupname = HDFAttribute('active_groupname')
     background_groupname = HDFAttribute('background_groupname')
-
+    active_labels = HDFAttribute('active_labels')
     def __init__(self, filename, groupname):
         self.hdf_filename = filename
         self.group_name = groupname
@@ -65,11 +65,24 @@ class XanesFrameset():
         # Update the group name
         self.active_groupname = name
 
+    def fork_labels(self, name):
+        # Create a new group
+        if name in self.hdf_group().keys():
+            del self.hdf_group()[name]
+        labels_group = self.hdf_group().create_group(name)
+        # Update label paths for frame datasets
+        for frame in self:
+            key = frame.image_data.name.split('/')[-1]
+            data = frame.calculate_particle_labels()
+            dataset = labels_group.create_dataset(name=key, data=data)
+            frame.particle_labels_path = dataset.name
+        return labels_group
+
     def subtract_background(self, bg_groupname):
         self.background_groupname = bg_groupname
         self.fork_group('absorbance_frames')
         bg_group = self.hdf_file()[bg_groupname]
-        for energy in display_progress(self.active_group().keys(), "Subtracting background"):
+        for energy in display_progress(self.active_group().keys(), "Applying reference corrections"):
             sample_dataset = self.active_group()[energy]
             bg_dataset = bg_group[energy]
             new_data = np.log10(bg_dataset.value/sample_dataset.value)
@@ -92,19 +105,17 @@ class XanesFrameset():
             particle = frame.particles()[particle_idx]
             offset_x = int(round(global_center.x - particle.centroid().x))
             offset_y = int(round(global_center.y - particle.centroid().y))
-            frame.shift_data(x_offset=offset_x, y_offset=offset_y)
-            # Store updated position info
-            um_per_pixel = frame.um_per_pixel()
-            new_position = (
-                frame.sample_position.x + offset_x * um_per_pixel.x,
-                frame.sample_position.y + offset_y * um_per_pixel.y,
-                frame.sample_position.z
-            )
-            frame.sample_position = new_position
+            # Shift image data and particle labels
+            frame.shift_data(x_offset=offset_x,
+                             y_offset=offset_y)
+            frame.shift_data(x_offset=offset_x,
+                             y_offset=offset_y,
+                             dataset=frame.particle_labels())
 
     def align_frame_positions(self):
         """Correct for inaccurate motion in the sample motors."""
         self.fork_group('aligned_frames')
+        self.fork_labels('aligned_labels')
         # Determine average positions
         total_x = 0; total_y = 0; n=0
         for frame in display_progress(self, 'Computing true center'):
@@ -132,16 +143,26 @@ class XanesFrameset():
         if 'particle_labels' in self.hdf_group().keys():
             del self.hdf_group()['particle_labels']
         labels_group = self.hdf_group().create_group('particle_labels')
+        # Detect particles and update links in frame datasets
         for frame in display_progress(self, 'Identifying particles'):
             key = frame.image_data.name.split('/')[-1]
             data = frame.calculate_particle_labels()
             dataset = labels_group.create_dataset(name=key, data=data)
             frame.particle_labels_path = dataset.name
 
+    def rebin(self, shape=None, factor=None):
+        """Resample all images into new shape. Arguments `shape` and `factor`
+        passed to txm.frame.TXMFrame.rebin().
+        """
+        self.fork_group('rebinned')
+        for frame in display_progress(self, "Rebinning"):
+            frame.rebin(shape=shape, factor=factor)
+
     def plot_full_image(self):
         return pyplot.imshow(self.df.mean())
 
     def xanes_spectrum(self):
+
         """Collapse the dataset down to a two-d spectrum."""
         energies = []
         intensities = []
@@ -197,7 +218,7 @@ class XanesFrameset():
     def add_frame(self, frame):
         setname_template = "{energy}_eV{serial}"
         frames_group = self.active_group()
-        # Find a unique frame dataset
+        # Find a unique frame dataset name
         setname = setname_template.format(
             energy=frame.approximate_energy,
             serial=""

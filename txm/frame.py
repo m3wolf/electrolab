@@ -108,14 +108,15 @@ class TXMFrame():
         right = center.x + x_pixels * um_per_pixel.x / 2
         bottom = center.y - y_pixels * um_per_pixel.y / 2
         top = center.y + y_pixels * um_per_pixel.y / 2
-        ax.imshow(data, *args, cmap='gray', **kwargs,
-                  extent=[left, right, bottom, top])
+        extent = [left, right, bottom, top]
+        im_ax = ax.imshow(data, *args, cmap='gray', extent=extent, **kwargs)
         # Plot particles
         if show_particles:
-            self.plot_particle_labels(ax=ax, extent=[left, right, bottom, top])
+            self.plot_particle_labels(ax=im_ax.axes, extent=extent)
         # Set labels, etc
         ax.set_xlabel('µm')
         ax.set_ylabel('µm')
+        im_ax.set_extent(extent)
         return ax
 
     def plot_particle_labels(self, ax=None, *args, **kwargs):
@@ -125,31 +126,63 @@ class TXMFrame():
             ax = plots.new_axes()
         else:
             opacity = 0.3
-        data = self.particle_labels()
-        x = [particle.sample_position().x for particle in self.particles()]
-        y = [particle.sample_position().y for particle in self.particles()]
-        ax.imshow(data, *args, alpha=opacity, **kwargs)
-        ax.plot(x, y, linestyle="None", marker='o')
-        return ax
+        if self.particle_labels_path:
+            data = self.particle_labels()
+            x = [particle.sample_position().x for particle in self.particles()]
+            y = [particle.sample_position().y for particle in self.particles()]
+            im_ax = ax.imshow(data, *args, alpha=opacity, **kwargs)
+            ax.plot(x, y, linestyle="None", marker='o')
+            ret = im_ax
+        else:
+            ret = None
+        return ret
 
-    def shift_data(self, x_offset, y_offset):
+    def shift_data(self, x_offset, y_offset, dataset=None):
         """Move the image within the view field by the given offsets in pixels.
         New values are filled in with zeroes.
+
+        Arguments
+        ---------
+        x_offset : int
+            Distance to move in pixels in x-diraction
+        y_offset : int
+            Distance to move in pixels in y-diraction
+        dataset : Dataset
+            Optional dataset to manipulate . If None, self.image_data will
+            be used (default None)
+
         """
-        # # Make sure ints were passed
-        # original_shape = self.image_data.shape
-        # # Expand the array to allow for rolling
-        # new_shapes = (
-        #     (0, abs(y_offset)),
-        #     (0, abs(x_offset))
-        # )
-        # new_data = np.pad(self.image_data, new_shapes, mode='constant')
+        if dataset is None:
+            dataset = self.image_data
         # Roll along x axis
-        new_data = np.roll(self.image_data, x_offset, axis=1)
+        new_data = np.roll(dataset, x_offset, axis=1)
         # Roll along y axis
         new_data = np.roll(new_data, y_offset, axis=0)
         # Commit shift image
+        dataset.write_direct(new_data)
+        # Update stored position information
+        um_per_pixel = self.um_per_pixel()
+        new_position = position(
+            x=self.sample_position.x + y_offset * um_per_pixel.x,
+            y=self.sample_position.y + y_offset * um_per_pixel.y,
+            z=self.sample_position.z
+        )
+        self.sample_position = new_position
+        return dataset.value
+
+    def rebin(self, shape=None, factor=None):
+        """Resample image into new shape. (1, 1) would be unity operation."""
+        assert False, 'Write unit tests!'
+        data = self.image_data.value
+        sh = (shape[0],
+              data.shape[0]//shape[0],
+              shape[1],
+              data.shape[1]//shape[1])
+        new_data = data.reshape(sh).mean(-1).mean(1)
+        # Resize existing dataset
+        self.image_data.resize(shape)
         self.image_data.write_direct(new_data)
+        return new_data
 
     def um_per_pixel(self):
         """Use image size and nominal image field-of view of 40µm x 40µm to
@@ -163,7 +196,8 @@ class TXMFrame():
         """Save data and metadata to an HDF dataset."""
         attrs = getattr(self.image_data, 'attrs', self._attrs)
         self.image_data = hdf_group.create_dataset(name=setname,
-                                                   data=self.image_data)
+                                                   data=self.image_data,
+                                                   maxshape=self.image_data.shape)
         # Set metadata attributes
         for attr_name in attrs.keys():
             self.image_data.attrs[attr_name] = attrs[attr_name]
@@ -271,11 +305,11 @@ class TXMFrame():
         else:
             result = labels
         # Save updated particle labels if a path is known
-        # if self.particle_labels_path:
-        try:
-            labels_group = self.image_data.file[self.particle_labels_path]
-        except KeyError:
-            pass
-        else:
-            labels_group.write_direct(labels)
+        if self.particle_labels_path:
+            try:
+                labels_group = self.image_data.file[self.particle_labels_path]
+            except KeyError:
+                pass
+            else:
+                labels_group.write_direct(labels)
         return result
