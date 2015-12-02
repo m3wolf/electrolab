@@ -24,18 +24,20 @@ def build_dataframe(frames):
 
 class XanesFrameset():
     _attrs = {}
-    active_groupname = HDFAttribute('active_groupname')
+    active_groupname = None # HDFAttribute('active_groupname')
+    latest_groupname = HDFAttribute('latest_groupname')
     background_groupname = HDFAttribute('background_groupname')
-    active_labels = HDFAttribute('active_labels')
+    latest_labels = HDFAttribute('latest_labels')
     def __init__(self, filename, groupname):
         self.hdf_filename = filename
-        self.group_name = groupname
+        self.parent_groupname = groupname
         # Check to make sure a valid group is given
         with self.hdf_file() as hdf_file:
             if not groupname in hdf_file.keys():
                 msg = "Created new frameset group: {}"
                 print(msg.format(groupname))
                 hdf_file.create_group(groupname)
+        self.active_groupname = self.latest_groupname
 
     def __iter__(self):
         """Get each frame from the HDF5 file"""
@@ -55,6 +57,9 @@ class XanesFrameset():
         self.active_groupname = name
 
     def fork_group(self, name):
+        """Create a new, copy of the current active group inside the HDF
+        parent with name: `name`.
+        """
         # Create an empty group
         try:
             del self.hdf_group()[name]
@@ -63,19 +68,23 @@ class XanesFrameset():
         # Copy the old data
         self.hdf_group().copy(self.active_groupname, name)
         # Update the group name
-        self.active_groupname = name
+        self.latest_groupname = name
+        self.switch_group(name)
 
     def fork_labels(self, name):
         # Create a new group
         if name in self.hdf_group().keys():
             del self.hdf_group()[name]
-        labels_group = self.hdf_group().create_group(name)
+        self.hdf_group().copy(self.latest_labels, name)
+        labels_group = self.hdf_group()[name]
         # Update label paths for frame datasets
         for frame in self:
             key = frame.image_data.name.split('/')[-1]
-            data = frame.calculate_particle_labels()
-            dataset = labels_group.create_dataset(name=key, data=data)
-            frame.particle_labels_path = dataset.name
+            # data = frame.calculate_particle_labels()
+            # dataset = labels_group.create_dataset(name=key, data=data)
+            new_label_name = labels_group[key].name
+            frame.particle_labels_path = new_label_name
+        self.latest_labels = name
         return labels_group
 
     def subtract_background(self, bg_groupname):
@@ -92,6 +101,7 @@ class XanesFrameset():
         """Use the centroid position of given particle to align all the
         frames."""
         self.fork_group('aligned_particle_{}'.format(particle_idx))
+        self.fork_labels('aligned_labels_{}'.format(particle_idx))
         # Determine average positions
         total_x = 0; total_y = 0; n=0
         for frame in display_progress(self, 'Computing true center'):
@@ -143,6 +153,7 @@ class XanesFrameset():
         if 'particle_labels' in self.hdf_group().keys():
             del self.hdf_group()['particle_labels']
         labels_group = self.hdf_group().create_group('particle_labels')
+        self.latest_labels = 'particle_labels'
         # Detect particles and update links in frame datasets
         for frame in display_progress(self, 'Identifying particles'):
             key = frame.image_data.name.split('/')[-1]
@@ -191,11 +202,11 @@ class XanesFrameset():
             # HDF File does not exist, make a new one
             print('Creating new HDF5 file: {}'.format(self.hdf_filename))
             file = h5py.File(self.hdf_filename, 'w-')
-            file.create_group(self.group_name)
+            file.create_group(self.parent_groupname)
         return file
 
     def hdf_group(self):
-        return self.hdf_file()[self.group_name]
+        return self.hdf_file()[self.parent_groupname]
 
     def background_group(self):
         return self.hdf_file()[self.background_groupname]

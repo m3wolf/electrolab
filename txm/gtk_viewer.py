@@ -10,6 +10,7 @@ import numpy as np
 class GtkTxmViewer():
     play_mode = False
     show_particles = False
+    display_type = 'corrected'
     """View a XANES frameset using a Gtk GUI."""
     def __init__(self, frameset):
         self.frameset = frameset
@@ -26,6 +27,21 @@ class GtkTxmViewer():
         slider = self.builder.get_object('FrameSlider')
         self.current_adj = self.builder.get_object('CurrentFrame')
         self.current_adj.set_property('upper', len(self.frameset))
+        # Populate the combobox with list of available HDF groups
+        self.group_combo = self.builder.get_object('ActiveGroupCombo')
+        self.group_list = Gtk.ListStore(str, str)
+        for group in self.frameset.hdf_group().keys():
+            uppercase = " ".join([word.capitalize() for word in group.split('_')])
+            tree_iter = self.group_list.append([uppercase, group])
+            # Save active group for later initialization
+            if group == self.frameset.active_groupname:
+                self.active_group = tree_iter
+        # Add background frames as an option
+        self.group_list.append(['Background Frames', 'background_frames'])
+        self.group_combo.set_model(self.group_list)
+        # Set initial active group name
+        self.group_combo.set_active_iter(self.active_group)
+        self.active_groupname = self.frameset.active_groupname
         # Set event handlers
         handlers = {
             'gtk-quit': Gtk.main_quit,
@@ -36,12 +52,23 @@ class GtkTxmViewer():
             'first-frame': self.first_frame,
             'key-release': self.key_pressed,
             'toggle-particles': self.toggle_particles,
-            'update-window': self.update_window
+            'update-window': self.update_window,
+            'change-active-group': self.change_active_group,
         }
         self.builder.connect_signals(handlers)
         # self.image = self.current_frame().plot_image(ax=self.image_ax,  animated=True)
         self.update_window()
         # self.window.connect('delete-event', Gtk.main_quit)
+
+    def change_active_group(self, widget, object=None):
+        """Update to a new frameset HDF group after user has changed combobox."""
+        new_group = self.group_list[widget.get_active_iter()][1]
+        self.active_groupname = new_group
+        if not new_group == 'background_frames':
+            self.frameset.switch_group(new_group)
+        # Re-normalize for new frameset and display new set to user
+        self.normalizer = self.frameset.normalizer()
+        self.update_window()
 
     @property
     def current_idx(self):
@@ -109,12 +136,17 @@ class GtkTxmViewer():
         # Re-draw each frame
         self.image_ax.clear()
         self.image_ax.set_aspect(1)
-        # self.image.set_data(self.current_image())
-        img_ax = self.current_frame().plot_image(ax=self.image_ax,
-                                                 norm=self.normalizer,
+        # Determine what type of data to present
+        key = self.current_frame().image_data.name.split('/')[-1]
+        norm = self.normalizer
+        if self.active_groupname == 'background_frames':
+            data = self.frameset.hdf_file()[self.frameset.background_groupname][key]
+        else:
+            data = None
+        img_ax = self.current_frame().plot_image(data = data,
+                                                 ax=self.image_ax,
+                                                 norm=norm,
                                                  show_particles=self.show_particles)
-        # if self.show_particles:
-        #     self.current_frame().plot_particle_labels(ax=img_ax.axes)
         self.image_ax.figure.canvas.draw()
 
     def show(self):
