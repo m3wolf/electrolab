@@ -116,17 +116,54 @@ class TXMFrameTest(unittest.TestCase):
         # Shift in x direction
         frame.shift_data(1, 0)
         expected_data = [
-            [0, 1],
-            [0, 5]
+            [2, 1],
+            [7, 5]
         ]
         self.assertTrue(np.array_equal(frame.image_data, expected_data))
         # Shift in negative y direction
         frame.shift_data(0, -1)
         expected_data = [
-            [0, 5],
-            [0, 0]
+            [7, 5],
+            [2, 1]
         ]
         self.assertTrue(np.array_equal(frame.image_data, expected_data))
+
+    def test_rebinning(self):
+        frame = TXMFrame()
+        # Check for rebinning by shape
+        original_data = [
+            [1., 1., 3., 3.],
+            [2, 2, 5, 5],
+            [5, 6, 7, 9],
+            [8, 12, 11, 10],
+        ]
+        frame.image_data = self.hdf_file.create_dataset(
+            name = 'rebinning_data',
+            chunks = True,
+            data = original_data
+        )
+        frame.rebin(shape=(2, 2))
+        expected_data = [
+            [6/4, 16/4],
+            [31/4, 37/4]
+        ]
+        self.assertTrue(np.array_equal(frame.image_data, expected_data))
+        # Check for rebinning by factor
+        frame.image_data = self.hdf_file.create_dataset(
+            name = 'rebinning_data_factor',
+            chunks = True,
+            data = original_data
+        )
+        frame.rebin(factor=2)
+        self.assertTrue(np.array_equal(frame.image_data, expected_data))
+        # Check for error with no arguments
+        with self.assertRaises(ValueError):
+            frame.rebin()
+        # Check for error if trying to rebin to larger shapes
+        with self.assertRaisesRegex(ValueError, 'larger than original shape'):
+            frame.rebin(factor=0.5)
+        with self.assertRaisesRegex(ValueError, 'larger than original shape'):
+            frame.rebin(shape=(6, 6))
 
 
 class ElectrolabTestCase(unittest.TestCase):

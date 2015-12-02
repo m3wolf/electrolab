@@ -1,4 +1,4 @@
-from collections import namedtuple
+from collections import namedtuple, OrderedDict
 import os
 import math
 import warnings
@@ -11,7 +11,7 @@ from skimage.morphology import (closing, remove_small_objects, square, disk,
                                 watershed, dilation)
 from skimage.exposure import rescale_intensity
 from skimage.measure import regionprops, label
-from skimage.filters import threshold_otsu, threshold_adaptive, rank
+from skimage.filters import threshold_otsu, threshold_adaptive, rank, threshold_li
 from skimage.feature import peak_local_max
 from skimage.segmentation import clear_border
 from matplotlib.colors import Normalize
@@ -171,16 +171,42 @@ class TXMFrame():
         return dataset.value
 
     def rebin(self, shape=None, factor=None):
-        """Resample image into new shape. (1, 1) would be unity operation."""
-        assert False, 'Write unit tests!'
+        """Resample image into new shape. One of the kwargs `shape` or
+        `factor` is required. Process is most effective when factors
+        are powers of 2 (2, 4, 8, 16, etc).
+
+        Kwargs:
+        -------
+        shape (tuple): The target shape for the new array. Will
+            override `factor` if both are provided.
+        factor (int): Factor by which to decrease the frame size. factor=2 would
+            take a (1024, 1024) to (512, 512)
+
+        """
+        original_shape = self.image_data.shape
+        if shape is None and factor is None:
+            # Raise an error if not arguments are passed.
+            raise ValueError("Must pass one of `shape` or `factor`")
+        elif shape is None:
+            # Determine new shape from factor if not provided.
+            new_shape = tuple(int(dim/factor) for dim in original_shape)
+        else:
+            new_shape = shape
+        # Check that the new shape is not larger than the old shape
+        for idx, dim in enumerate(new_shape):
+            if dim > original_shape[idx]:
+                msg = 'New shape {new} is larger than original shape {original}.'
+                msg = msg.format(new=new_shape, original=original_shape)
+                raise ValueError(msg)
         data = self.image_data.value
-        sh = (shape[0],
-              data.shape[0]//shape[0],
-              shape[1],
-              data.shape[1]//shape[1])
+        # Determine new dimensions
+        sh = (new_shape[0],
+              data.shape[0]//new_shape[0],
+              new_shape[1],
+              data.shape[1]//new_shape[1])
         new_data = data.reshape(sh).mean(-1).mean(1)
         # Resize existing dataset
-        self.image_data.resize(shape)
+        self.image_data.resize(new_shape)
         self.image_data.write_direct(new_data)
         return new_data
 
@@ -258,14 +284,18 @@ def calculate_particle_labels(data, return_intermediates=False,
     #     warnings.simplefilter("ignore")
     #     equalized = skimage.exposure.equalize_adapthist(rescaled, clip_limit=0.05)
     # Identify foreground vs background with Otsu filter
-    threshold = threshold_otsu(equalized)
+    # threshold = threshold_otsu(equalized)
+    threshold = threshold_li(equalized)
     mask = equalized > threshold
     # Fill in the shapes a little
     closed = dilation(mask, square(5))
     # Remove features at the edge of the frame since they can be incomplete
     border_cleared = clear_border(closed)
     # Discard small particles
-    large_only = remove_small_objects(border_cleared, min_size=8192)
+    # Determine minimum size for discarding objects
+    average_shape = sum(border_cleared.shape)/len(border_cleared.shape)
+    min_size = 8. * average_shape
+    large_only = remove_small_objects(border_cleared, min_size=min_size)
     # Fill in the shapes a lot to round them out
     reclosed = closing(large_only, disk(20))
     # Expand the particles to make sure we capture the edges
@@ -287,21 +317,20 @@ def calculate_particle_labels(data, return_intermediates=False,
     markers = label(local_maxima)
     labels = watershed(-mean_distances, markers, mask=dilated)
     if return_intermediates:
-        result = {
-            'original': original,
-            'equalized': equalized,
-            'mask': mask,
-            'closed': closed,
-            'border_cleared': border_cleared,
-            'large_only': large_only,
-            'reclosed': reclosed,
-            'dilated': dilated,
-            'mean_distances': mean_distances,
-            'distances': distances,
-            'local_maxima': local_maxima,
-            'markers': markers,
-            'labels': labels,
-        }
+        result = OrderedDict()
+        result['original'] = original
+        result['equalized'] = equalized
+        result['mask'] = mask
+        result['closed'] = closed
+        result['border_cleared'] = border_cleared
+        result['large_only'] = large_only
+        result['reclosed'] = reclosed
+        result['dilated'] = dilated
+        result['mean_distances'] = mean_distances
+        result['distances'] = distances
+        result['local_maxima'] = local_maxima
+        result['markers'] = markers
+        result['labels'] = labels
     else:
         result = labels
     return result
