@@ -2,6 +2,8 @@ import os
 from collections import defaultdict
 import re
 import math
+import multiprocessing
+import queue
 
 import pandas as pd
 from matplotlib import pyplot
@@ -10,7 +12,7 @@ import h5py
 import numpy as np
 
 from utilities import display_progress, xycoord
-from .frame import TXMFrame, average_frames
+from .frame import TXMFrame, average_frames, calculate_particle_labels
 from .gtk_viewer import GtkTxmViewer
 import exceptions
 from hdf import HDFAttribute
@@ -27,7 +29,7 @@ class XanesFrameset():
     active_groupname = None # HDFAttribute('active_groupname')
     latest_groupname = HDFAttribute('latest_groupname')
     background_groupname = HDFAttribute('background_groupname')
-    latest_labels = HDFAttribute('latest_labels')
+    latest_labels = HDFAttribute('latest_labels', default='particle_labels')
     def __init__(self, filename, groupname):
         self.hdf_filename = filename
         self.parent_groupname = groupname
@@ -80,8 +82,6 @@ class XanesFrameset():
         # Update label paths for frame datasets
         for frame in self:
             key = frame.image_data.name.split('/')[-1]
-            # data = frame.calculate_particle_labels()
-            # dataset = labels_group.create_dataset(name=key, data=data)
             new_label_name = labels_group[key].name
             frame.particle_labels_path = new_label_name
         self.latest_labels = name
@@ -150,16 +150,65 @@ class XanesFrameset():
 
     def label_particles(self):
         # Create a new group
-        if 'particle_labels' in self.hdf_group().keys():
-            del self.hdf_group()['particle_labels']
-        labels_group = self.hdf_group().create_group('particle_labels')
-        self.latest_labels = 'particle_labels'
-        # Detect particles and update links in frame datasets
-        for frame in display_progress(self, 'Identifying particles'):
+        if self.latest_labels in self.hdf_group().keys():
+            del self.hdf_group()[self.latest_labels]
+        labels_group = self.hdf_group().create_group(self.latest_labels)
+        # Callables for determining particle labels
+        def worker(payload):
+            key, data = payload
+            new_data = calculate_particle_labels(data)
+            return (key, new_data)
+
+        def process_result(payload):
+            # Save the calculated data
+            key, data = payload
+            dataset = self.hdf_group()[self.latest_labels].create_dataset(key, data=data)
+            status = 'Identifying particles {curr}/{total} ({percent:.0f}%)'.format(
+                curr=total_results - results_left, total=total_results,
+                percent=(1-results_left/total_results)*100
+            )
+            print(status, end='\r')
+        # Prepare multirprocessing objects
+        num_consumers = multiprocessing.cpu_count() * 2
+        frame_queue = multiprocessing.JoinableQueue(maxsize=num_consumers* 2)
+        result_queue = multiprocessing.Queue()
+        consumers = [FrameConsumer(target=worker, task_queue=frame_queue, result_queue=result_queue)
+                     for i in range(num_consumers)]
+        for consumer in consumers:
+            consumer.start()
+        # Load frames into the queue to be processed
+        total_results = len(self)
+        results_left = len(self) # Counter for ending routine
+        for frame in self:
+            data = frame.image_data.value
             key = frame.image_data.name.split('/')[-1]
-            data = frame.calculate_particle_labels()
-            dataset = labels_group.create_dataset(name=key, data=data)
-            frame.particle_labels_path = dataset.name
+            frame_queue.put((key, data))
+            # Check for a saved result
+            try:
+                result = result_queue.get(block=False)
+            except queue.Empty:
+                pass
+            else:
+                process_result(result)
+                results_left -= 1
+        # Send poison pill to stop workers
+        for i in range(num_consumers):
+            frame_queue.put(None)
+        # Wait for all processing to finish
+        frame_queue.join()
+        # Finish processing results
+        while results_left > 0:
+            result = result_queue.get()
+            process_result(result)
+            results_left -= 1
+        print('Identifying particles: {total}/{total} [done]'.format(
+            total=total_results))
+        # Detect particles and update links in frame datasets
+        # for frame in display_progress(self, 'Identifying particles'):
+        #     key = frame.image_data.name.split('/')[-1]
+        #     data = frame.calculate_particle_labels()
+        #     dataset = labels_group.create_dataset(name=key, data=data)
+        #     frame.particle_labels_path = dataset.name
 
     def rebin(self, shape=None, factor=None):
         """Resample all images into new shape. Arguments `shape` and `factor`
@@ -262,3 +311,26 @@ class XanesFrameset():
     def gtk_viewer(self):
         viewer = GtkTxmViewer(frameset=self)
         viewer.show()
+
+
+## Multiprocessing modules
+class FrameConsumer(multiprocessing.Process):
+    def __init__(self, target, task_queue, result_queue, **kwargs):
+        ret = super().__init__(target=target, **kwargs)
+        self.task_queue = task_queue
+        self.result_queue = result_queue
+        self.target = target
+        return ret
+
+    def run(self):
+        """Retrieve and process a frame from the queue or exit if poison pill
+        None is passed."""
+        while True:
+            payload = self.task_queue.get()
+            if payload is None:
+                # Poison pill, so exit
+                self.task_queue.task_done()
+                break
+            result = self.target(payload)
+            self.result_queue.put(result)
+            self.task_queue.task_done()

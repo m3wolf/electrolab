@@ -211,7 +211,7 @@ class TXMFrame():
 
     def particle_labels(self):
         if self.particle_labels_path is None:
-            res = self.calculate_particle_labels()
+            res = calculate_particle_labels(self.image_data.value)
         else:
             res = self.image_data.file[self.particle_labels_path]
         return res
@@ -224,92 +224,84 @@ class TXMFrame():
             particles.append(Particle(regionprops=prop, frame=self))
         return particles
 
-    def calculate_particle_labels(self, return_intermediates=False,
-                                  min_distance=20):
-        """Identify and label material particles in the image data.
+def calculate_particle_labels(data, return_intermediates=False,
+                              min_distance=20):
+    """Identify and label material particles in the image data.
 
-        Generate and save a scikit-image style labels frame
-        identifying the different particles. `return_all=True` returns
-        a list of intermediates images (dict) instead of just the
-        final result. Returns the final computed labels image, or a
-        dictionary of all images (see kwarg return_intermediates.
+    Generate and save a scikit-image style labels frame
+    identifying the different particles. `return_all=True` returns
+    a list of intermediates images (dict) instead of just the
+    final result. Returns the final computed labels image, or a
+    dictionary of all images (see kwarg return_intermediates.
 
-        Parameters
-        ----------
-        return_intermediates : bool
-            Return intermediate images as a dict (default False)
-        min_distance : int
-            How far away in pixels particle centers need to be in
-            order to register as different particles (default 25)
+    Parameters
+    ----------
+    return_intermediates : bool
+        Return intermediate images as a dict (default False)
+    min_distance : int
+        How far away in pixels particle centers need to be in
+        order to register as different particles (default 25)
 
-        """
-        # Shift image into range -1 to 1
-        # normalizer = Normalize(vmin=self.image_data.value.min(),
-        #                        vmax=self.image_data.value.max())
-        original = self.image_data.value
-        # equalized = skimage.exposure.equalize_hist(self.image_data.value)
-        # Contrast stretching
-        in_range = (self.image_data.value.min(), self.image_data.value.max())
-        rescaled = rescale_intensity(original, in_range=in_range, out_range=(0, 1))
-        equalized = rescaled
-        # Stretch out the contrast to make identification easier
-        # with warnings.catch_warnings():
-        #     # Raises a lot of precision loss warnings that are irrelevant
-        #     warnings.simplefilter("ignore")
-        #     equalized = skimage.exposure.equalize_adapthist(rescaled, clip_limit=0.05)
-        # Identify foreground vs background with Otsu filter
-        threshold = threshold_otsu(equalized)
-        mask = equalized > threshold
-        # Fill in the shapes a little
-        closed = dilation(mask, square(5))
-        # Remove features at the edge of the frame since they can be incomplete
-        border_cleared = clear_border(closed)
-        # Discard small particles
-        large_only = remove_small_objects(border_cleared, min_size=8192)
-        # Fill in the shapes a lot to round them out
-        reclosed = closing(large_only, disk(20))
-        # Expand the particles to make sure we capture the edges
-        dilated = dilation(reclosed, disk(10))
-        # Compute each pixel's distance from the edge of a blob
-        distances = ndimage.distance_transform_edt(dilated)
-        in_range = (distances.min(), distances.max())
-        distances = rescale_intensity(distances, in_range=in_range, out_range=(0, 1))
-        # Blur the distances to help avoid split particles
-        mean_distances = rank.mean(distances, disk(5))
-        # Use the local distance maxima as peak centers and compute labels
-        local_maxima = peak_local_max(
-            mean_distances,
-            indices=False,
-            min_distance=min_distance,
-            # footprint=np.ones((64, 64)),
-            labels=dilated
-        )
-        markers = label(local_maxima)
-        labels = watershed(-mean_distances, markers, mask=dilated)
-        if return_intermediates:
-            result = {
-                'original': original,
-                'equalized': equalized,
-                'mask': mask,
-                'closed': closed,
-                'border_cleared': border_cleared,
-                'large_only': large_only,
-                'reclosed': reclosed,
-                'dilated': dilated,
-                'mean_distances': mean_distances,
-                'distances': distances,
-                'local_maxima': local_maxima,
-                'markers': markers,
-                'labels': labels,
-            }
-        else:
-            result = labels
-        # Save updated particle labels if a path is known
-        if self.particle_labels_path:
-            try:
-                labels_group = self.image_data.file[self.particle_labels_path]
-            except KeyError:
-                pass
-            else:
-                labels_group.write_direct(labels)
-        return result
+    """
+    # Shift image into range -1 to 1
+    # normalizer = Normalize(vmin=self.image_data.value.min(),
+    #                        vmax=self.image_data.value.max())
+    original = data
+    # equalized = skimage.exposure.equalize_hist(self.image_data.value)
+    # Contrast stretching
+    in_range = (data.min(), data.max())
+    rescaled = rescale_intensity(original, in_range=in_range, out_range=(0, 1))
+    equalized = rescaled
+    # Stretch out the contrast to make identification easier
+    # with warnings.catch_warnings():
+    #     # Raises a lot of precision loss warnings that are irrelevant
+    #     warnings.simplefilter("ignore")
+    #     equalized = skimage.exposure.equalize_adapthist(rescaled, clip_limit=0.05)
+    # Identify foreground vs background with Otsu filter
+    threshold = threshold_otsu(equalized)
+    mask = equalized > threshold
+    # Fill in the shapes a little
+    closed = dilation(mask, square(5))
+    # Remove features at the edge of the frame since they can be incomplete
+    border_cleared = clear_border(closed)
+    # Discard small particles
+    large_only = remove_small_objects(border_cleared, min_size=8192)
+    # Fill in the shapes a lot to round them out
+    reclosed = closing(large_only, disk(20))
+    # Expand the particles to make sure we capture the edges
+    dilated = dilation(reclosed, disk(10))
+    # Compute each pixel's distance from the edge of a blob
+    distances = ndimage.distance_transform_edt(dilated)
+    in_range = (distances.min(), distances.max())
+    distances = rescale_intensity(distances, in_range=in_range, out_range=(0, 1))
+    # Blur the distances to help avoid split particles
+    mean_distances = rank.mean(distances, disk(5))
+    # Use the local distance maxima as peak centers and compute labels
+    local_maxima = peak_local_max(
+        mean_distances,
+        indices=False,
+        min_distance=min_distance,
+        # footprint=np.ones((64, 64)),
+        labels=dilated
+    )
+    markers = label(local_maxima)
+    labels = watershed(-mean_distances, markers, mask=dilated)
+    if return_intermediates:
+        result = {
+            'original': original,
+            'equalized': equalized,
+            'mask': mask,
+            'closed': closed,
+            'border_cleared': border_cleared,
+            'large_only': large_only,
+            'reclosed': reclosed,
+            'dilated': dilated,
+            'mean_distances': mean_distances,
+            'distances': distances,
+            'local_maxima': local_maxima,
+            'markers': markers,
+            'labels': labels,
+        }
+    else:
+        result = labels
+    return result
