@@ -40,6 +40,9 @@ class Particle():
     def bbox(self):
         return BoundingBox(*self.regionprops.bbox)
 
+    def mask(self):
+        return self.regionprops.image
+
     def plot_image(self, show_particles=False, *args, **kwargs):
         """Calls the regular plotting routine but with cropped data."""
         return self.frame.plot_image(data=self.crop_image(),

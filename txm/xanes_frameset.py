@@ -90,7 +90,6 @@ class XanesFrameset():
         self.hdf_group().copy(self.active_groupname, name)
         # Update the group name
         self.latest_groupname = name
-        print(self.latest_groupname)
         self.switch_group(name)
 
     def fork_labels(self, name):
@@ -277,10 +276,17 @@ class XanesFrameset():
         energies = []
         intensities = []
         for frame in self:
-            energies.append(frame.energy)
+            data = frame.image_data.value
+            if self.active_particle_idx:
+                particle = frame.particles()[self.active_particle_idx]
+                # Apply mask
+                mask = np.logical_not(particle.mask())
+                data[mask] = 0
             # Sum absorbances for datasets
-            intensity = np.sum(frame.image_data)/np.prod(frame.image_data.shape)
+            intensity = np.sum(data)/np.prod(data.shape)
+            # Add to cumulative arrays
             intensities.append(intensity)
+            energies.append(frame.energy)
         # Combine into a series
         series = pd.Series(intensities, index=energies)
         return series
