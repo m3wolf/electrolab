@@ -55,6 +55,7 @@ class TXMFrame():
                                         wrapper=lambda coords: position(*coords))
     is_background = HDFAttribute('is_background', default=False)
     particle_labels_path = HDFAttribute('particle_labels_path', default=None)
+    active_particle_idx = HDFAttribute('active_particle_idx', default=None)
 
     def __init__(self, file=None, frameset=None):
         if file:
@@ -147,6 +148,10 @@ class TXMFrame():
         # Shrink images to bounding box size
         self.image_data.resize((bottom-top, right-left))
         labels.resize((bottom-top, right-left))
+        # Reassign the active particle index (assume largest particle)
+        areas = [particle.area() for particle in self.particles()]
+        new_idx = areas.index(max(areas))
+        self.active_particle_idx = new_idx
 
     def shift_data(self, x_offset, y_offset, dataset=None):
         """Move the image within the view field by the given offsets in pixels.
@@ -300,7 +305,7 @@ def calculate_particle_labels(data, return_intermediates=False,
     threshold = threshold_li(equalized)
     mask = equalized > threshold
     # Fill in the shapes a little
-    closed = dilation(mask, square(5))
+    closed = closing(mask, square(3))
     # Remove features at the edge of the frame since they can be incomplete
     border_cleared = clear_border(closed)
     # Discard small particles

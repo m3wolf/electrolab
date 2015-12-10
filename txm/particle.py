@@ -37,6 +37,10 @@ class Particle():
         center = self.regionprops.centroid
         return xycoord(x=center[1], y=center[0])
 
+    def area(self):
+        area = self.regionprops.area
+        return area
+
     def bbox(self):
         return BoundingBox(*self.regionprops.bbox)
 

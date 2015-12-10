@@ -277,9 +277,18 @@ class XanesFrameset():
         intensities = []
         for frame in self:
             data = frame.image_data.value
-            if self.active_particle_idx:
+            # Find the active particle (if any)
+            if frame.active_particle_idx is not None:
+                # Frame-specific particle
+                particle = frame.particles()[frame.active_particle_idx]
+            elif self.active_particle_idx is not None:
+                # Frameset global particle
                 particle = frame.particles()[self.active_particle_idx]
-                # Create mask that's the same size as the image
+            else:
+                # No particle
+                particle = None
+            # Create mask that's the same size as the image
+            if particle:
                 bbox = particle.bbox()
                 mask = np.zeros_like(data)
                 mask[bbox.top:bbox.bottom, bbox.left:bbox.right] = particle.mask()
@@ -361,10 +370,11 @@ class XanesFrameset():
         global_min = 0
         global_max = 99999999999
         for frame in self:
-            local_min = np.min(frame.image_data)
+            data = frame.image_data.value
+            local_min = np.min(data)
             if local_min < global_min:
                 global_min = local_min
-            local_max = np.max(frame.image_data)
+            local_max = np.max(data)
             if local_max < global_max:
                 global_max = local_max
         return Normalize(global_min, global_max)
