@@ -359,7 +359,7 @@
               </packing>
             </child>
             <child>
-              <object class="GtkBox" id="box3">
+              <object class="GtkBox" id="ExtrasBox">
                 <property name="visible">True</property>
                 <property name="can_focus">False</property>
                 <child>
@@ -384,7 +384,7 @@
                     <property name="can_focus">False</property>
                     <property name="active">0</property>
                     <items>
-                      <item id="&lt;Enter ID&gt;" translatable="yes">Bkac</item>
+                      <item id="&lt;Enter ID&gt;" translatable="yes">Absorbance Frames</item>
                     </items>
                     <signal name="changed" handler="change-active-group" swapped="no"/>
                   </object>
@@ -402,18 +402,44 @@
               </packing>
             </child>
             <child>
-              <object class="GtkScrolledWindow" id="CanvasWindow">
+              <object class="GtkBox" id="box3">
                 <property name="visible">True</property>
-                <property name="can_focus">True</property>
-                <property name="shadow_type">in</property>
+                <property name="can_focus">False</property>
                 <child>
-                  <placeholder/>
+                  <object class="GtkScrolledWindow" id="ImageWindow">
+                    <property name="visible">True</property>
+                    <property name="can_focus">True</property>
+                    <property name="shadow_type">in</property>
+                    <child>
+                      <placeholder/>
+                    </child>
+                  </object>
+                  <packing>
+                    <property name="expand">True</property>
+                    <property name="fill">True</property>
+                    <property name="position">0</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkScrolledWindow" id="XanesWindow">
+                    <property name="visible">True</property>
+                    <property name="can_focus">True</property>
+                    <property name="shadow_type">in</property>
+                    <child>
+                      <placeholder/>
+                    </child>
+                  </object>
+                  <packing>
+                    <property name="expand">True</property>
+                    <property name="fill">True</property>
+                    <property name="position">1</property>
+                  </packing>
                 </child>
               </object>
               <packing>
                 <property name="expand">True</property>
                 <property name="fill">True</property>
-                <property name="position">2</property>
+                <property name="position">3</property>
               </packing>
             </child>
           </object>

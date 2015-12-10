@@ -23,10 +23,11 @@ class GtkTxmViewer():
         self.window.set_default_size(1000, 1000)
         # Put the non-glade things in the window
         self.create_axes()
-        # Set some values
+        # Set some initial values
         slider = self.builder.get_object('FrameSlider')
         self.current_adj = self.builder.get_object('CurrentFrame')
         self.current_adj.set_property('upper', len(self.frameset))
+        self.xanes_spectrum = frameset.xanes_spectrum()
         # Populate the combobox with list of available HDF groups
         self.group_combo = self.builder.get_object('ActiveGroupCombo')
         self.group_list = Gtk.ListStore(str, str)
@@ -58,7 +59,7 @@ class GtkTxmViewer():
         self.builder.connect_signals(handlers)
         # self.image = self.current_frame().plot_image(ax=self.image_ax,  animated=True)
         self.update_window()
-        # self.window.connect('delete-event', Gtk.main_quit)
+        self.window.connect('delete-event', Gtk.main_quit)
 
     def change_active_group(self, widget, object=None):
         """Update to a new frameset HDF group after user has changed combobox."""
@@ -66,6 +67,8 @@ class GtkTxmViewer():
         self.active_groupname = new_group
         if not new_group == 'background_frames':
             self.frameset.switch_group(new_group)
+        # Save new xanes spectrum
+        self.xanes_spectrum = self.frameset.xanes_spectrum()
         # Re-normalize for new frameset and display new set to user
         self.normalizer = self.frameset.normalizer()
         self.update_window()
@@ -114,13 +117,24 @@ class GtkTxmViewer():
             return False
 
     def create_axes(self):
+        # For drawing images
         fig = figure.Figure(figsize=(13.8, 10))
         canvas = FigureCanvas(fig)
         canvas.set_size_request(400,400)
-        sw = self.builder.get_object("CanvasWindow")
-        sw.add(canvas)
-        # Draw a test plot
+        image_window = self.builder.get_object("ImageWindow")
+        image_window.add(canvas)
         self.image_ax = fig.gca()
+        # For drawing XANES spectra
+        fig = figure.Figure(figsize=(6, 4))
+        canvas = FigureCanvas(fig)
+        canvas.set_size_request(300, 300)
+        xanes_window = self.builder.get_object("XanesWindow")
+        xanes_window.add(canvas)
+        self.xanes_ax = fig.gca()
+        self.draw_xanes_spectrum()
+
+    def draw_xanes_spectrum(self):
+        self.frameset.plot_xanes_spectrum(ax=self.xanes_ax)
 
     def update_window(self, widget=None):
         current_frame = self.current_frame()
@@ -148,6 +162,15 @@ class GtkTxmViewer():
                                                  norm=norm,
                                                  show_particles=self.show_particles)
         self.image_ax.figure.canvas.draw()
+        # Remove old highlighted point from Xanes spectrum
+        previous_highlight = getattr(self, 'xanes_highlight', None)
+        if previous_highlight:
+            previous_highlight[0].remove()
+        # Update the highlighted point on the Xanes spectrum plot
+        energy = current_frame.energy
+        intensity = self.xanes_spectrum[energy]
+        self.xanes_highlight = self.xanes_ax.plot([energy], [intensity], 'ro')
+        self.xanes_ax.figure.canvas.draw()
 
     def show(self):
         self.window.show_all()

@@ -14,6 +14,7 @@ import numpy as np
 from utilities import display_progress, xycoord
 from .frame import TXMFrame, average_frames, calculate_particle_labels
 from .gtk_viewer import GtkTxmViewer
+from plots import new_axes
 import exceptions
 from hdf import HDFAttribute
 
@@ -271,7 +272,6 @@ class XanesFrameset():
         return pyplot.imshow(self.df.mean())
 
     def xanes_spectrum(self):
-
         """Collapse the dataset down to a two-d spectrum."""
         energies = []
         intensities = []
@@ -279,8 +279,12 @@ class XanesFrameset():
             data = frame.image_data.value
             if self.active_particle_idx:
                 particle = frame.particles()[self.active_particle_idx]
-                # Apply mask
-                mask = np.logical_not(particle.mask())
+                # Create mask that's the same size as the image
+                bbox = particle.bbox()
+                mask = np.zeros_like(data)
+                mask[bbox.top:bbox.bottom, bbox.left:bbox.right] = particle.mask()
+                # Apply mask to the image data
+                mask = np.logical_not(mask)
                 data[mask] = 0
             # Sum absorbances for datasets
             intensity = np.sum(data)/np.prod(data.shape)
@@ -291,9 +295,11 @@ class XanesFrameset():
         series = pd.Series(intensities, index=energies)
         return series
 
-    def plot_xanes_spectrum(self):
+    def plot_xanes_spectrum(self, ax=None):
         spectrum = self.xanes_spectrum()
-        ax = spectrum.plot()
+        if ax is None:
+            ax = new_axes()
+        ax.plot(spectrum, marker='o', linestyle="None")
         ax.set_xlabel('Energy /eV')
         ax.set_ylabel('Overall absorbance')
         return ax
