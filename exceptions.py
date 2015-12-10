@@ -45,3 +45,6 @@ class FrameFileNotFound(IOError):
 
 class FileExistsError(IOError):
     pass
+
+class NoParticleError(Exception):
+    pass

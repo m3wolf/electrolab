@@ -29,6 +29,8 @@ class XanesFrameset():
     active_groupname = None # HDFAttribute('active_groupname')
     latest_groupname = HDFAttribute('latest_groupname')
     background_groupname = HDFAttribute('background_groupname')
+    active_particle_idx = HDFAttribute('active_particle_idx', default=None,
+                                       group_func='active_group')
     latest_labels = HDFAttribute('latest_labels', default='particle_labels')
     def __init__(self, filename, groupname):
         self.hdf_filename = filename
@@ -55,6 +57,23 @@ class XanesFrameset():
         dataset_name = list(self.active_group().keys())[index]
         return TXMFrame.load_from_dataset(self.active_group()[dataset_name])
 
+    @property
+    def active_labels_groupname(self):
+        """The group name for the latest frameset of detected particle labels."""
+        # Save as an HDF5 attribute
+        group = self.active_group()
+        return group.attrs.get('active_labels', None)
+
+    @active_labels_groupname.setter
+    def active_labels_groupname(self, value):
+        group = self.active_group()
+        group.attrs['active_labels'] = value
+
+    def particle(self, particle_idx=0):
+        """Prepare a particle frameset for the given particle index."""
+        fs = ParticleFrameset(parent=self, particle_idx=particle_idx)
+        return fs
+
     def switch_group(self, name):
         self.active_groupname = name
 
@@ -71,13 +90,14 @@ class XanesFrameset():
         self.hdf_group().copy(self.active_groupname, name)
         # Update the group name
         self.latest_groupname = name
+        print(self.latest_groupname)
         self.switch_group(name)
 
     def fork_labels(self, name):
         # Create a new group
         if name in self.hdf_group().keys():
             del self.hdf_group()[name]
-        self.hdf_group().copy(self.latest_labels, name)
+        self.hdf_group().copy(self.active_labels_groupname, name)
         labels_group = self.hdf_group()[name]
         # Update label paths for frame datasets
         for frame in self:
@@ -85,6 +105,7 @@ class XanesFrameset():
             new_label_name = labels_group[key].name
             frame.particle_labels_path = new_label_name
         self.latest_labels = name
+        self.active_labels_groupname = name
         return labels_group
 
     def subtract_background(self, bg_groupname):
@@ -102,6 +123,7 @@ class XanesFrameset():
         frames."""
         self.fork_group('aligned_particle_{}'.format(particle_idx))
         self.fork_labels('aligned_labels_{}'.format(particle_idx))
+        self.active_particle_idx = particle_idx
         # Determine average positions
         total_x = 0; total_y = 0; n=0
         for frame in display_progress(self, 'Computing true center'):
@@ -121,6 +143,29 @@ class XanesFrameset():
             frame.shift_data(x_offset=offset_x,
                              y_offset=offset_y,
                              dataset=frame.particle_labels())
+
+    def crop_to_particle(self):
+        """Reduce the image size to just show the particle in question."""
+        # Verify that frameset has been aligned to a particle
+        if self.active_particle_idx is None:
+            msg =  "Frameset has not been associated with a particle."
+            msg += "Please run `align_to_frameset` first."
+            raise exceptions.NoParticleError(msg)
+        else:
+            particle_idx = self.active_particle_idx
+        # Create new HDF5 groups
+        self.fork_group('cropped_particle_{}'.format(particle_idx))
+        self.fork_labels('cropped_labels_{}'.format(particle_idx))
+        # Determine largest bounding box based on all energies
+        boxes = [frame.particles()[particle_idx].bbox()
+                  for frame in self]
+        left = min([box.left for box in boxes])
+        top = min([box.top for box in boxes])
+        bottom = max([box.bottom for box in boxes])
+        right = max([box.right for box in boxes])
+        # Roll each image to have the particle top left
+        for frame in display_progress(self, 'Cropping frames'):
+            frame.crop(top=top, left=left, bottom=bottom, right=right)
 
     def align_frame_positions(self):
         """Correct for inaccurate motion in the sample motors."""
@@ -149,10 +194,12 @@ class XanesFrameset():
             frame.sample_position = new_position
 
     def label_particles(self):
+        labels_groupname = 'particle_labels'
+        if labels_groupname in self.hdf_group().keys():
+            del self.hdf_group()[labels_groupname]
+        self.active_labels_groupname = labels_groupname
         # Create a new group
-        if self.latest_labels in self.hdf_group().keys():
-            del self.hdf_group()[self.latest_labels]
-        labels_group = self.hdf_group().create_group(self.latest_labels)
+        labels_group = self.hdf_group().create_group(labels_groupname)
         # Callables for determining particle labels
         def worker(payload):
             key, data = payload
@@ -162,7 +209,8 @@ class XanesFrameset():
         def process_result(payload):
             # Save the calculated data
             key, data = payload
-            dataset = self.hdf_group()[self.latest_labels].create_dataset(key, data=data)
+            labels = self.hdf_group()[labels_groupname]
+            dataset = labels.create_dataset(key, data=data, compression='gzip')
             status = 'Identifying particles {curr}/{total} ({percent:.0f}%)'.format(
                 curr=total_results - results_left, total=total_results,
                 percent=(1-results_left/total_results)*100
@@ -183,6 +231,8 @@ class XanesFrameset():
             data = frame.image_data.value
             key = frame.image_data.name.split('/')[-1]
             frame_queue.put((key, data))
+            # Write path to saved particle labels
+            frame.particle_labels_path = labels_group.name + "/" + key
             # Check for a saved result
             try:
                 result = result_queue.get(block=False)
@@ -226,7 +276,6 @@ class XanesFrameset():
         """Collapse the dataset down to a two-d spectrum."""
         energies = []
         intensities = []
-        bg_group = self.background_group()
         for frame in self:
             energies.append(frame.energy)
             # Sum absorbances for datasets

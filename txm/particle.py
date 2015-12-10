@@ -1,8 +1,12 @@
+from collections import namedtuple
+
 from utilities import xycoord
 
 """
 Describes a single particle detected by image processing (skimage).
 """
+
+BoundingBox = namedtuple('BoundingBox', ('top', 'left', 'bottom', 'right'))
 
 class Particle():
     """A single secondary particle detected by image
@@ -33,11 +37,8 @@ class Particle():
         center = self.regionprops.centroid
         return xycoord(x=center[1], y=center[0])
 
-    def crop_image(self):
-        image = self.frame.image_data.value
-        ymin, xmin, ymax, xmax = self.regionprops.bbox
-        image = image[ymin:ymax, xmin:xmax]
-        return image
+    def bbox(self):
+        return BoundingBox(*self.regionprops.bbox)
 
     def plot_image(self, show_particles=False, *args, **kwargs):
         """Calls the regular plotting routine but with cropped data."""

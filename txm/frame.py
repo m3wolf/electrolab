@@ -137,9 +137,20 @@ class TXMFrame():
             ret = None
         return ret
 
+    def crop(self, top, left, bottom, right):
+        """Reduce the image size to given box (in pixels)."""
+        labels = self.particle_labels()
+        # Move particle and labels to top left
+        self.shift_data(x_offset=-left, y_offset=-top)
+        self.shift_data(x_offset=-left, y_offset=-top,
+                        dataset=self.particle_labels())
+        # Shrink images to bounding box size
+        self.image_data.resize((bottom-top, right-left))
+        labels.resize((bottom-top, right-left))
+
     def shift_data(self, x_offset, y_offset, dataset=None):
         """Move the image within the view field by the given offsets in pixels.
-        New values are filled in with zeroes.
+        New values are rolled around to the other side.
 
         Arguments
         ---------
@@ -223,7 +234,8 @@ class TXMFrame():
         attrs = getattr(self.image_data, 'attrs', self._attrs)
         self.image_data = hdf_group.create_dataset(name=setname,
                                                    data=self.image_data,
-                                                   maxshape=self.image_data.shape)
+                                                   maxshape=self.image_data.shape,
+                                                   compression="gzip")
         # Set metadata attributes
         for attr_name in attrs.keys():
             self.image_data.attrs[attr_name] = attrs[attr_name]
