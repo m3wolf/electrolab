@@ -33,6 +33,7 @@ from adapters.bruker_raw_file import BrukerRawFile
 from adapters.bruker_brml_file import BrukerBrmlFile
 from refinement import fullprof, native
 from txm.frame import average_frames, TXMFrame
+from txm.xanes_frameset import XanesFrameset
 from txm.importers import import_txm_framesets
 from txm import xanes_frameset
 
@@ -56,19 +57,51 @@ class LMOLowAngle(CubicLMO):
     diagnostic_hkl = '311'
 
 
-class TXMFrameTest(unittest.TestCase):
-
+class HDFTestCase(unittest.TestCase):
+    """A test case that sets up and tears down an HDF file."""
     def setUp(self):
         self.hdf_filename = 'test-sample-frames/txm-frame-test.hdf'
-        assert not os.path.exists(self.hdf_filename)
+        if os.path.exists(self.hdf_filename):
+            os.remove(self.hdf_filename)
         self.hdf_file = h5py.File(self.hdf_filename)
 
     def tearDown(self):
         self.hdf_file.close()
-        try:
+        if os.path.exists(self.hdf_filename):
             os.remove(self.hdf_filename)
-        except FileNotFoundError:
-            pass
+
+
+class TXMMapTest(HDFTestCase):
+    def setUp(self):
+        ret = super().setUp()
+        # Create an HDF Frameset for testing
+        self.fs = XanesFrameset(filename=self.hdf_filename,
+                                groupname='mapping-test')
+        for i in range(0, 3):
+            frame = TXMFrame()
+            frame.energy = i + 8000
+            ds = np.zeros(shape=(3, 3))
+            ds[:] = i + 1
+            frame.image_data = ds
+            self.fs.add_frame(frame)
+        self.fs[1].image_data.write_direct(np.array([
+            [0, 1, 4],
+            [1, 2.5, 1],
+            [4, 6, 0]
+        ]))
+        return ret
+
+    def test_max_energy(self):
+        expected = [
+            [8002, 8002, 8001],
+            [8002, 8002, 8002],
+            [8001, 8001, 8002]
+        ]
+        result = self.fs.whiteline_map()
+        print(result)
+        self.assertTrue(np.array_equal(result, expected))
+
+class TXMFrameTest(HDFTestCase):
 
     def test_average_frames(self):
         # Define three frames for testing

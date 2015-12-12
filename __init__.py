@@ -40,3 +40,4 @@ from txm.xradia import XRMFile
 from txm.importers import import_txm_framesets
 from txm.xanes_frameset import XanesFrameset
 from txm.frame import TXMFrame, calculate_particle_labels
+from txm.edges import k_edges

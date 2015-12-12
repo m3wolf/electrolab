@@ -10,6 +10,7 @@ from matplotlib import pyplot
 from matplotlib.colors import Normalize
 import h5py
 import numpy as np
+from skimage import morphology, filters
 
 from utilities import display_progress, xycoord
 from .frame import TXMFrame, average_frames, calculate_particle_labels
@@ -33,9 +34,10 @@ class XanesFrameset():
     active_particle_idx = HDFAttribute('active_particle_idx', default=None,
                                        group_func='active_group')
     latest_labels = HDFAttribute('latest_labels', default='particle_labels')
-    def __init__(self, filename, groupname):
+    def __init__(self, filename, groupname, edge=None):
         self.hdf_filename = filename
         self.parent_groupname = groupname
+        self.edge = edge
         # Check to make sure a valid group is given
         with self.hdf_file() as hdf_file:
             if not groupname in hdf_file.keys():
@@ -278,12 +280,12 @@ class XanesFrameset():
         for frame in self:
             data = frame.image_data.value
             if self.active_particle_idx:
+                # Apply mask to the image data
                 particle = frame.particles()[self.active_particle_idx]
                 # Create mask that's the same size as the image
                 bbox = particle.bbox()
                 mask = np.zeros_like(data)
                 mask[bbox.top:bbox.bottom, bbox.left:bbox.right] = particle.mask()
-                # Apply mask to the image data
                 mask = np.logical_not(mask)
                 data[mask] = 0
             # Sum absorbances for datasets
@@ -303,6 +305,56 @@ class XanesFrameset():
         ax.set_xlabel('Energy /eV')
         ax.set_ylabel('Overall absorbance')
         return ax
+
+    def edge_jump_filter(self):
+        """Calculate an image mask filter that represents the difference in
+        signal across the X-ray edge."""
+        # Sort frames into pre-edge and post-edge
+        pre_edge = self.edge.pre_edge
+        post_edge = self.edge.post_edge
+        pre_images = []
+        post_images = []
+        for frame in self:
+            if pre_edge[0] <= frame.energy <= pre_edge[1]:
+                pre_images.append(frame.image_data)
+            elif post_edge[0] <= frame.energy <= post_edge[0]:
+                post_images.append(frame.image_data)
+        # Convert lists to numpy arrays
+        pre_images = np.array(pre_images)
+        post_images = np.array(post_images)
+        # Find average frames pre-edge/post-edge values
+        pre_average = np.mean(pre_images, axis=0)
+        post_average = np.mean(post_images, axis=0)
+        # Subtract pre-edge from post-edge
+        filtered_img = post_average - pre_average
+        # Apply normalizer? (maybe later)
+        return filtered_img
+
+    def plot_map(self, ax=None):
+        if ax is None:
+            ax = new_axes()
+        # Plot average absorbance
+        self[-1].plot_image(ax=ax)
+        # Calculate the whiteline position for each pixel
+        map_data = self.whiteline_map()
+        # Apply edge jump mask
+        edge_jump = self.edge_jump_filter()
+        threshold = filters.threshold_otsu(edge_jump)
+        mask = edge_jump > threshold
+        mask = morphology.dilation(mask)
+        mask = np.logical_not(mask)
+        masked_map = np.ma.array(map_data, mask=mask)
+        ax.imshow(masked_map, cmap="plasma")
+
+    def whiteline_map(self):
+        # Determine indices of max frame per pixel
+        imagestack = np.array([frame.image_data for frame in self])
+        indices = np.argmax(imagestack, axis=0)
+        # Map indices to energies
+        map_energy = np.vectorize(lambda idx: self[idx].energy,
+                                  otypes=[np.float])
+        energies = map_energy(indices)
+        return energies
 
     def hdf_file(self):
         # Determine filename
