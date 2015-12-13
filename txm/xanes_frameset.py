@@ -11,7 +11,7 @@ from matplotlib.colors import Normalize
 from mapping.colormaps import cmaps
 import h5py
 import numpy as np
-from skimage import morphology, filters, feature
+from skimage import morphology, filters, feature, transform
 
 from utilities import display_progress, xycoord
 from .frame import TXMFrame, average_frames, calculate_particle_labels
@@ -116,28 +116,63 @@ class XanesFrameset():
         self.background_groupname = bg_groupname
         self.fork_group('absorbance_frames')
         bg_group = self.hdf_file()[bg_groupname]
-        for energy in display_progress(self.active_group().keys(), "Applying reference corrections"):
+        for energy in display_progress(self.active_group().keys(),
+                                       "Applying reference corrections"):
             sample_dataset = self.active_group()[energy]
             bg_dataset = bg_group[energy]
             new_data = np.log10(bg_dataset.value/sample_dataset.value)
             sample_dataset.write_direct(new_data)
 
+    def correct_magnification(self):
+        """Correct for changes in magnification at different energies.
+
+        As the X-ray energy increases, the focal length of the zone
+        plate changes and so the image is zoomed-out at higher
+        energies. This method applies a correction to each frame to
+        make the magnification similar to that of the first frame.
+        """
+        # Fork groups
+        self.fork_group('aligned_frames')
+        # Regression parameters
+        slope=-0.00010558834052580277; intercept=1.871559636328671
+        for frame in display_progress(self, 'Correcting magnification'):
+            data = frame.image_data
+            # Determine degree of magnification required
+            magnification = frame.energy * slope + intercept
+            original_shape = xycoord(x=data.shape[1], y=data.shape[0])
+            # Expand the image by magnification degree and re-center
+            translation = xycoord(
+                x=original_shape.x/2*(1-magnification),
+                y=original_shape.y/2*(1-magnification),
+            )
+            transformation = transform.SimilarityTransform(
+                scale=magnification,
+                translation=translation
+            )
+            # Apply the transformation
+            frame.image_data.write_direct(transform.warp(data, transformation, order=3))
+
     def align_frames(self, particle_idx=0, reference_frame=0):
+
         """Use phase correlation algorithm to line up the frames."""
         # Create new data groups to hold shifted image data
         self.fork_group('aligned_particle_{}'.format(particle_idx))
         self.fork_labels('aligned_labels_{}'.format(particle_idx))
-        # pixel precision first
         reference_image = self[reference_frame].image_data.value
+        # Regression parameters for magnification correction
+        slope=-0.00010558834052580277; intercept=1.871559636328671
         for frame in display_progress(self, 'Aligning frames'):
+            # Calculate translation
             results = feature.register_translation(reference_image,
                                                    frame.image_data.value)
             shift, error, diffphase = results
-            # shift the frame image to be aligned with the reference frame
-            shift = xycoord(shift[1], shift[0])
-            frame.shift_data(x_offset=shift.x, y_offset=shift.y)
-            frame.shift_data(x_offset=shift.x, y_offset=shift.y,
-                             dataset=frame.particle_labels())
+            shift = xycoord(-shift[1], -shift[0])
+            # Apply net transformation
+            transformation = transform.SimilarityTransform(translation=shift)
+            frame.image_data.write_direct(transform.warp(frame.image_data,
+                                                         transformation,
+                                                         order=3,
+                                                         mode="wrap"))
 
     def align_to_particle_centroid(self, particle_idx=0):
         """Use the centroid position of given particle to align all the
@@ -382,11 +417,10 @@ class XanesFrameset():
     def plot_histogram(self, ax=None, norm_range=(None, None)):
         if ax is None:
             ax = new_axes()
-        norm = Normalize(norm_range[0], norm_range[1])
-        mapped_image = self.masked_map()
-        # Set colors on histogram
-        n, bins, patches = ax.hist(mapped_image.flat(), bins=self.edge.energies())
         # Set normalizer
+        norm = Normalize(norm_range[0], norm_range[1])
+        n, bins, patches = ax.hist(mapped_image.flat(), bins=self.edge.energies())
+        # Set colors on histogram
         for patch in patches:
             x_position = patch.get_x()
             cmap = cmaps[self.cmap]

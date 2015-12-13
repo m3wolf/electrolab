@@ -16,6 +16,8 @@ from plots import (new_axes, big_axes, dual_axes, plot_scans, xrd_axes,
 
 import filters
 
+from utilities import xycoord
+
 from refinement import fullprof
 
 from xrd.unitcell import CubicUnitCell, HexagonalUnitCell, TetragonalUnitCell
