@@ -7,7 +7,7 @@ import numpy as np
 from matplotlib import pyplot
 from scipy import ndimage
 from skimage import img_as_float
-from skimage.morphology import (closing, remove_small_objects, square, disk,
+from skimage.morphology import (closing, remove_small_objects, square, disk, star,
                                 watershed, dilation)
 from skimage.exposure import rescale_intensity
 from skimage.measure import regionprops, label
@@ -55,6 +55,7 @@ class TXMFrame():
                                         wrapper=lambda coords: position(*coords))
     is_background = HDFAttribute('is_background', default=False)
     particle_labels_path = HDFAttribute('particle_labels_path', default=None)
+    active_particle_idx = HDFAttribute('active_particle_idx', default=None)
 
     def __init__(self, file=None, frameset=None):
         if file:
@@ -166,9 +167,9 @@ class TXMFrame():
         if dataset is None:
             dataset = self.image_data
         # Roll along x axis
-        new_data = np.roll(dataset, x_offset, axis=1)
+        new_data = np.roll(dataset, int(x_offset), axis=1)
         # Roll along y axis
-        new_data = np.roll(new_data, y_offset, axis=0)
+        new_data = np.roll(new_data, int(y_offset), axis=0)
         # Commit shift image
         dataset.write_direct(new_data)
         # Update stored position information
@@ -300,7 +301,8 @@ def calculate_particle_labels(data, return_intermediates=False,
     threshold = threshold_li(equalized)
     mask = equalized > threshold
     # Fill in the shapes a little
-    closed = dilation(mask, square(5))
+    # closed = dilation(mask, square(3))
+    closed = mask
     # Remove features at the edge of the frame since they can be incomplete
     border_cleared = clear_border(closed)
     # Discard small particles

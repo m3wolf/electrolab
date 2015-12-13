@@ -22,6 +22,12 @@ class Edge():
         self.pre_edge = pre_edge
         self.post_edge = post_edge
 
+    def energies(self):
+        energies = []
+        for region in self.regions:
+            energies += range(region[0], region[1]+region[2], region[2])
+        return sorted(list(set(energies)))
+
 k_edges = {
     'Ni': Edge(
         (8250, 8310, 20),

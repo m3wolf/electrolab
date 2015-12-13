@@ -32,6 +32,7 @@ from electrochem import electrochem_units
 from adapters.bruker_raw_file import BrukerRawFile
 from adapters.bruker_brml_file import BrukerBrmlFile
 from refinement import fullprof, native
+from txm.edges import Edge
 from txm.frame import average_frames, TXMFrame
 from txm.xanes_frameset import XanesFrameset
 from txm.importers import import_txm_framesets
@@ -70,6 +71,19 @@ class HDFTestCase(unittest.TestCase):
         if os.path.exists(self.hdf_filename):
             os.remove(self.hdf_filename)
 
+
+class XrayEdgeTest(unittest.TestCase):
+    def test_energies(self):
+        edge = Edge(
+            (8250, 8290, 20),
+            (8290, 8295, 1),
+            pre_edge=None, post_edge=None,
+            name="Test edge",
+        )
+        self.assertEqual(
+            edge.energies(),
+            [8250, 8270, 8290, 8291, 8292, 8293, 8294, 8295]
+        )
 
 class TXMMapTest(HDFTestCase):
     def setUp(self):

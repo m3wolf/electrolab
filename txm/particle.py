@@ -40,6 +40,12 @@ class Particle():
     def bbox(self):
         return BoundingBox(*self.regionprops.bbox)
 
+    def area(self):
+        return self.regionprops.area
+
+    def convex_area(self):
+        return self.regionprops.convex_area
+
     def mask(self):
         return self.regionprops.image
 
