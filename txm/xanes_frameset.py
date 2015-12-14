@@ -385,7 +385,7 @@ class XanesFrameset():
         for frame in self:
             if pre_edge[0] <= frame.energy <= pre_edge[1]:
                 pre_images.append(frame.image_data)
-            elif post_edge[0] <= frame.energy <= post_edge[0]:
+            elif post_edge[0] <= frame.energy <= post_edge[1]:
                 post_images.append(frame.image_data)
         # Convert lists to numpy arrays
         pre_images = np.array(pre_images)

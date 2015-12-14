@@ -284,7 +284,7 @@ class TXMFrame():
         return particles
 
 def calculate_particle_labels(data, return_intermediates=False,
-                              min_distance=20):
+                              min_distance=0.016):
     """Identify and label material particles in the image data.
 
     Generate and save a scikit-image style labels frame
@@ -297,9 +297,9 @@ def calculate_particle_labels(data, return_intermediates=False,
     ----------
     return_intermediates : bool
         Return intermediate images as a dict (default False)
-    min_distance : int
-        How far away in pixels particle centers need to be in
-        order to register as different particles (default 25)
+    min_distance : float
+        How far away (as a portion of image size) particle centers need to be in
+        order to register as different particles (default 0.2)
 
     """
     cmap = 'plasma'
@@ -340,12 +340,12 @@ def calculate_particle_labels(data, return_intermediates=False,
     in_range = (distances.min(), distances.max())
     distances = rescale_intensity(distances, in_range=in_range, out_range=(0, 1))
     # Blur the distances to help avoid split particles
-    mean_distances = rank.mean(distances, disk(10))
+    mean_distances = rank.mean(distances, disk(8))
     # Use the local distance maxima as peak centers and compute labels
     local_maxima = peak_local_max(
         mean_distances,
         indices=False,
-        min_distance=min_distance,
+        min_distance=min_distance * average_shape,
         # footprint=np.ones((64, 64)),
         labels=dilated
     )
