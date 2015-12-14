@@ -37,6 +37,7 @@ class XanesFrameset():
     active_particle_idx = HDFAttribute('active_particle_idx', default=None,
                                        group_func='active_group')
     latest_labels = HDFAttribute('latest_labels', default='particle_labels')
+    map_name = HDFAttribute('map_name')
     cmap = 'plasma'
     def __init__(self, filename, groupname, edge=None):
         self.hdf_filename = filename
@@ -92,6 +93,11 @@ class XanesFrameset():
         return fs
 
     def switch_group(self, name):
+        if not name in self.hdf_group().keys():
+            msg = "{name} is not a valid group. Choices are {choices}."
+            raise exceptions.GroupKeyError(
+                msg.format(name=name, choices=list(self.hdf_group().keys()))
+            )
         self.active_groupname = name
 
     def fork_group(self, name):
@@ -104,7 +110,10 @@ class XanesFrameset():
         except KeyError:
             pass
         # Copy the old data
-        self.hdf_group().copy(self.active_groupname, name)
+        # dest = self.hdf_group().create_group(name)
+        # print(self.active_groupname, dest)
+        self.hdf_group().copy(source=self.active_groupname, dest=name)
+        # self.hdf_group().copy(source=self.active_groupname, dest=name)
         # Update the group name
         self.latest_groupname = name
         self.switch_group(name)
@@ -184,17 +193,22 @@ class XanesFrameset():
             queue.put((key, energy, data))
         queue.join()
 
-    def align_frames(self, particle_idx=None, reference_frame=0):
+    def align_frames(self, particle_idx=None, particle_loc=None,
+                     reference_frame=0):
         """Use phase correlation algorithm to line up the frames."""
         # Create new data groups to hold shifted image data
-        self.fork_group('aligned_particle_{}'.format(particle_idx))
-        self.fork_labels('aligned_labels_{}'.format(particle_idx))
+        self.fork_group('aligned_particle')
+        self.fork_labels('aligned_labels')
         reference_image = self[reference_frame].image_data.value
+        # Determine which particle to use
         if particle_idx is not None:
             # Apply a mask if a particle is specified
             self.active_particle_idx = 2
             reference_mask = self[reference_frame].particles()[particle_idx].full_mask()
             reference_image = np.ma.array(reference_image, mask=reference_mask)
+        elif particle_loc is not None:
+            particle = self[reference_frame].activate_closest_particle(loc=particle_loc)
+            reference_mask = particle.full_mask()
         # Multiprocessing setup
         def worker(payload):
             key, data, labels, mask = payload
@@ -216,6 +230,7 @@ class XanesFrameset():
             frame = self[key]
             frame.image_data.write_direct(data)
             frame.particle_labels().write_direct(labels)
+            frame.activate_closest_particle(loc=particle_loc)
         queue = smp.Queue(worker=worker, result_callback=process_result,
                           totalsize=len(self), description="Aligning frames")
         for frame in self:
@@ -233,48 +248,14 @@ class XanesFrameset():
             queue.put((key, data, labels, mask))
         queue.join()
 
-    def align_to_particle_centroid(self, particle_idx=0):
-        """Use the centroid position of given particle to align all the
-        frames."""
-        self.fork_group('aligned_particle_{}'.format(particle_idx))
-        self.fork_labels('aligned_labels_{}'.format(particle_idx))
-        self.active_particle_idx = particle_idx
-        # Determine average positions
-        total_x = 0; total_y = 0; n=0
-        for frame in display_progress(self, 'Computing true center'):
-            particle = frame.particles()[particle_idx]
-            n+=1
-            total_x += particle.centroid().x
-            total_y += particle.centroid().y
-        global_center = xycoord(x=total_x/n, y=total_y/n)
-        # Align all frames to average position
-        for frame in display_progress(self, 'Aligning frames'):
-            particle = frame.particles()[particle_idx]
-            offset_x = int(round(global_center.x - particle.centroid().x))
-            offset_y = int(round(global_center.y - particle.centroid().y))
-            # Shift image data and particle labels
-            frame.shift_data(x_offset=offset_x,
-                             y_offset=offset_y)
-            frame.shift_data(x_offset=offset_x,
-                             y_offset=offset_y,
-                             dataset=frame.particle_labels())
-
-    def crop_to_particle(self, particle_idx):
+    def crop_to_particle(self):
         """Reduce the image size to just show the particle in question."""
-        # Verify that frameset has been aligned to a particle
-        # if self.active_particle_idx is None:
-        #     msg =  "Frameset has not been associated with a particle."
-        #     msg += "Please run `align_to_particle` first."
-        #     raise exceptions.NoParticleError(msg)
-        # else:
-        #     particle_idx = self.active_particle_idx
-        self.active_particle_idx = particle_idx
         # Create new HDF5 groups
-        self.fork_group('cropped_particle_{}'.format(particle_idx))
-        self.fork_labels('cropped_labels_{}'.format(particle_idx))
+        self.fork_group('cropped_particle')
+        self.fork_labels('cropped_labels')
         # Determine largest bounding box based on all energies
-        boxes = [frame.particles()[particle_idx].bbox()
-                  for frame in self]
+        boxes = [frame.particles()[frame.active_particle_idx].bbox()
+                 for frame in self]
         left = min([box.left for box in boxes])
         top = min([box.top for box in boxes])
         bottom = max([box.bottom for box in boxes])
@@ -417,11 +398,31 @@ class XanesFrameset():
         # Apply normalizer? (maybe later)
         return filtered_img
 
+    def calculate_map(self):
+        """Generate a map based on pixel-wise Xanes spectra. Default is to
+        compute X-ray whiteline position."""
+        # Get map data
+        map_data = self.whiteline_map()
+        # Create dataset
+        name = self.hdf_group().name + "_map"
+        try:
+            del self.hdf_file()[name]
+        except KeyError:
+            pass
+        self.hdf_file().create_dataset(name, data=map_data)
+        self.map_name = name
+        return self.hdf_file()[name]
+
     def masked_map(self):
         """Generate a map based on pixel-wise Xanes spectra and apply an
-        edge-jump filter mask."""
-        # Calculate the whiteline position for each pixel
-        map_data = self.whiteline_map()
+        edge-jump filter mask. Default is to compute X-ray whiteline
+        position.
+        """
+        # Check for cached map of the whiteline position for each pixel
+        if not self.map_name:
+            map_data = self.calculate_map()
+        else:
+            map_data = self.hdf_file()[self.map_name]
         # Apply edge jump mask
         edge_jump = self.edge_jump_filter()
         threshold = filters.threshold_otsu(edge_jump)
@@ -445,13 +446,19 @@ class XanesFrameset():
             ax = new_axes()
         # Set normalizer
         norm = Normalize(norm_range[0], norm_range[1])
-        n, bins, patches = ax.hist(self.masked_map().flat, bins=self.edge.energies())
+        masked_map = self.masked_map()
+        n, bins, patches = ax.hist(masked_map[~masked_map.mask],
+                                   bins=self.edge.energies())
         # Set colors on histogram
         for patch in patches:
             x_position = patch.get_x()
             cmap = cmaps[self.cmap]
             color = cmap(norm(x_position))
             patch.set_color(color)
+        # Set axes decorations
+        ax.set_xlabel("Whiteline position /eV")
+        ax.set_ylabel("Pixels")
+        ax.set_xlim(norm_range[0], norm_range[1])
         return ax
 
     def whiteline_map(self):

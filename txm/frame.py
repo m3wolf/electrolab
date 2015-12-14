@@ -132,10 +132,12 @@ class TXMFrame():
             opacity = 0.3
         if self.particle_labels_path:
             data = self.particle_labels()
-            x = [particle.sample_position().x for particle in self.particles()]
-            y = [particle.sample_position().y for particle in self.particles()]
+            xs = [particle.sample_position().x for particle in self.particles()]
+            ys = [particle.sample_position().y for particle in self.particles()]
             im_ax = ax.imshow(data, *args, alpha=opacity, **kwargs)
-            ax.plot(x, y, linestyle="None", marker='o')
+            for idx, x in enumerate(xs):
+                y = ys[idx]
+                ax.text(x, y, idx)
             ret = im_ax
         else:
             ret = None
@@ -257,6 +259,21 @@ class TXMFrame():
         else:
             res = self.image_data.file[self.particle_labels_path]
         return res
+
+    def activate_closest_particle(self, loc):
+        """Get a particle that's closest to location."""
+        particles = self.particles()
+        current_min = 999999
+        current_idx = None
+        for idx, particle in enumerate(particles):
+            center = particle.sample_position()
+            distance = math.sqrt((loc[0]-center[0])**2 + (loc[1]-center[1])**2)
+            if distance < current_min:
+                # New closest match
+                current_min = distance
+                current_idx = idx
+        self.active_particle_idx = current_idx
+        return particles[current_idx]
 
     def particles(self):
         labels = self.particle_labels()

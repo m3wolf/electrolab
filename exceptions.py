@@ -43,6 +43,9 @@ class FileFormatError(ValueError):
 class FrameFileNotFound(IOError):
     pass
 
+class GroupKeyError(KeyError):
+    pass
+
 class FileExistsError(IOError):
     pass
 
