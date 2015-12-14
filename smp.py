@@ -1,0 +1,78 @@
+from queue import Empty
+import multiprocessing as mp
+
+class Consumer(mp.Process):
+    def __init__(self, target, task_queue, result_queue, **kwargs):
+        ret = super().__init__(target=target, **kwargs)
+        self.task_queue = task_queue
+        self.result_queue = result_queue
+        self.target = target
+        return ret
+
+    def run(self):
+        """Retrieve and process a frame from the queue or exit if poison pill
+        None is passed."""
+        while True:
+            payload = self.task_queue.get()
+            if payload is None:
+                # Poison pill, so exit
+                self.task_queue.task_done()
+                break
+            result = self.target(payload)
+            self.result_queue.put(result)
+            self.task_queue.task_done()
+
+
+class Queue():
+    def __init__(self, worker, totalsize, result_callback=None, description="Processing data"):
+        self.num_consumers = mp.cpu_count() * 2
+        self.result_queue = mp.Queue(maxsize=totalsize)
+        self.result_callback = result_callback
+        self.totalsize = totalsize
+        self.results_left = totalsize
+        self.description = description
+        self.task_queue = mp.JoinableQueue(maxsize=totalsize)
+        # Create all the worker processes
+        self.consumers = [Consumer(target=worker,
+                                   task_queue=self.task_queue,
+                                   result_queue=self.result_queue)
+                          for i in range(self.num_consumers)]
+        for consumer in self.consumers:
+            consumer.start()
+
+    def put(self, obj, *args, **kwargs):
+        # Check for results to take out of the queue
+        try:
+            result = self.result_queue.get(block=False)
+        except Empty:
+            pass
+        else:
+            self.process_result(result)
+        return self.task_queue.put(obj, *args, **kwargs)
+
+    def process_result(self, result):
+        ret = self.result_callback(result)
+        self.results_left -= 1
+        status = '{description}: {curr}/{total} ({percent:.0f}%)'.format(
+            description=self.description,
+            curr=self.totalsize - self.results_left,
+            total=self.totalsize,
+            percent=(1 - (self.results_left/self.totalsize)) * 100
+        )
+        print(status, end='\r')
+        return ret
+
+    def join(self):
+        # Send poison pill to all consumers
+        for i in range(self.num_consumers):
+            self.task_queue.put(None)
+        ret = self.task_queue.join()
+        # Finish emptying the results queue
+        while self.results_left > 0:
+            result = self.result_queue.get()
+            self.process_result(result)
+        # Display "finished" message
+        print('{description}: {total}/{total} [done]'.format(
+            description=self.description,
+            total=self.totalsize))
+        return ret

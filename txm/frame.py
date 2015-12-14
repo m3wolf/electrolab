@@ -11,6 +11,7 @@ from skimage.morphology import (closing, remove_small_objects, square, disk, sta
                                 watershed, dilation)
 from skimage.exposure import rescale_intensity
 from skimage.measure import regionprops, label
+from skimage import filters
 from skimage.filters import threshold_otsu, threshold_adaptive, rank, threshold_li
 from skimage.feature import peak_local_max
 from skimage.segmentation import clear_border
@@ -88,8 +89,10 @@ class TXMFrame():
         return bg_data/np.exp(self.image_data)
 
     def background_dataset(self, group):
-        key = self.image_data.name.split('/')[-1]
-        return group[key]
+        return group[self.key()]
+
+    def key(self):
+        return self.image_data.name.split('/')[-1]
 
     def hdf_node(self):
         return self.image_data
@@ -282,6 +285,7 @@ def calculate_particle_labels(data, return_intermediates=False,
         order to register as different particles (default 25)
 
     """
+    cmap = 'plasma'
     # Shift image into range -1 to 1
     # normalizer = Normalize(vmin=self.image_data.value.min(),
     #                        vmax=self.image_data.value.max())
@@ -298,13 +302,13 @@ def calculate_particle_labels(data, return_intermediates=False,
     #     equalized = skimage.exposure.equalize_adapthist(rescaled, clip_limit=0.05)
     # Identify foreground vs background with Otsu filter
     # threshold = threshold_otsu(equalized)
-    threshold = threshold_li(equalized)
+    threshold = filters.threshold_otsu(equalized)
     mask = equalized > threshold
     # Fill in the shapes a little
     # closed = dilation(mask, square(3))
-    closed = mask
     # Remove features at the edge of the frame since they can be incomplete
-    border_cleared = clear_border(closed)
+    # border_cleared = clear_border(np.copy(closed))
+    border_cleared = np.copy(mask)
     # Discard small particles
     # Determine minimum size for discarding objects
     average_shape = sum(border_cleared.shape)/len(border_cleared.shape)
@@ -319,7 +323,7 @@ def calculate_particle_labels(data, return_intermediates=False,
     in_range = (distances.min(), distances.max())
     distances = rescale_intensity(distances, in_range=in_range, out_range=(0, 1))
     # Blur the distances to help avoid split particles
-    mean_distances = rank.mean(distances, disk(5))
+    mean_distances = rank.mean(distances, disk(10))
     # Use the local distance maxima as peak centers and compute labels
     local_maxima = peak_local_max(
         mean_distances,
@@ -335,7 +339,6 @@ def calculate_particle_labels(data, return_intermediates=False,
         result['original'] = original
         result['equalized'] = equalized
         result['mask'] = mask
-        result['closed'] = closed
         result['border_cleared'] = border_cleared
         result['large_only'] = large_only
         result['reclosed'] = reclosed

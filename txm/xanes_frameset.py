@@ -4,6 +4,7 @@ import re
 import math
 import multiprocessing
 import queue
+import warnings
 
 import pandas as pd
 from matplotlib import pyplot
@@ -19,6 +20,7 @@ from .gtk_viewer import GtkTxmViewer
 from plots import new_axes
 import exceptions
 from hdf import HDFAttribute
+import smp
 
 
 def build_dataframe(frames):
@@ -59,8 +61,13 @@ class XanesFrameset():
 
     def __getitem__(self, index):
         hdf_file = self.hdf_file()
-        dataset_name = list(self.active_group().keys())[index]
-        return TXMFrame.load_from_dataset(self.active_group()[dataset_name])
+        # First just use the index directly
+        try:
+            frame = TXMFrame.load_from_dataset(self.active_group()[index])
+        except AttributeError:
+            name = list(self.active_group().keys())[index]
+            frame = TXMFrame.load_from_dataset(self.active_group()[name])
+        return frame
 
     @property
     def active_labels_groupname(self):
@@ -73,6 +80,11 @@ class XanesFrameset():
     def active_labels_groupname(self, value):
         group = self.active_group()
         group.attrs['active_labels'] = value
+
+    @active_labels_groupname.deleter
+    def active_labels_groupname(self):
+        group = self.active_group()
+        del group.attrs['active_labels']
 
     def particle(self, particle_idx=0):
         """Prepare a particle frameset for the given particle index."""
@@ -132,13 +144,14 @@ class XanesFrameset():
         make the magnification similar to that of the first frame.
         """
         # Fork groups
-        self.fork_group('aligned_frames')
+        self.fork_group('magnified_frames')
         # Regression parameters
         slope=-0.00010558834052580277; intercept=1.871559636328671
-        for frame in display_progress(self, 'Correcting magnification'):
-            data = frame.image_data
+        # Prepare multiprocessing objects
+        def worker(payload):
+            key, energy, data = payload
             # Determine degree of magnification required
-            magnification = frame.energy * slope + intercept
+            magnification = energy * slope + intercept
             original_shape = xycoord(x=data.shape[1], y=data.shape[0])
             # Expand the image by magnification degree and re-center
             translation = xycoord(
@@ -150,29 +163,75 @@ class XanesFrameset():
                 translation=translation
             )
             # Apply the transformation
-            frame.image_data.write_direct(transform.warp(data, transformation, order=3))
+            result = transform.warp(data, transformation, order=3)
+            return (key, energy, result)
 
-    def align_frames(self, particle_idx=0, reference_frame=0):
+        def process_result(payload):
+            # Write the computed result back to disk
+            key, energy, data = payload
+            frame = self[key]
+            frame.image_data.write_direct(data)
 
+        queue = smp.Queue(worker=worker,
+                          totalsize=len(self),
+                          result_callback=process_result,
+                          description="Correcting magnification")
+        for frame in self:
+            data = frame.image_data.value
+            key = frame.image_data.name.split('/')[-1]
+            energy = frame.energy
+            # Add this frame to the queue for processing
+            queue.put((key, energy, data))
+        queue.join()
+
+    def align_frames(self, particle_idx=None, reference_frame=0):
         """Use phase correlation algorithm to line up the frames."""
         # Create new data groups to hold shifted image data
         self.fork_group('aligned_particle_{}'.format(particle_idx))
         self.fork_labels('aligned_labels_{}'.format(particle_idx))
         reference_image = self[reference_frame].image_data.value
-        # Regression parameters for magnification correction
-        slope=-0.00010558834052580277; intercept=1.871559636328671
-        for frame in display_progress(self, 'Aligning frames'):
-            # Calculate translation
-            results = feature.register_translation(reference_image,
-                                                   frame.image_data.value)
+        if particle_idx is not None:
+            # Apply a mask if a particle is specified
+            self.active_particle_idx = 2
+            reference_mask = self[reference_frame].particles()[particle_idx].full_mask()
+            reference_image = np.ma.array(reference_image, mask=reference_mask)
+        # Multiprocessing setup
+        def worker(payload):
+            key, data, labels, mask = payload
+            masked_data = np.ma.array(data, mask=mask)
+            results = feature.register_translation(reference_image, masked_data)
             shift, error, diffphase = results
             shift = xycoord(-shift[1], -shift[0])
             # Apply net transformation
             transformation = transform.SimilarityTransform(translation=shift)
-            frame.image_data.write_direct(transform.warp(frame.image_data,
-                                                         transformation,
-                                                         order=3,
-                                                         mode="wrap"))
+            new_data = transform.warp(data, transformation, order=3, mode="wrap")
+            # Transform labels
+            original_dtype = labels.dtype
+            labels = labels.astype(np.float64)
+            new_labels = transform.warp(labels, transformation, order=0, mode="wrap")
+            new_labels = new_labels.astype(original_dtype)
+            return (key, new_data, new_labels)
+        def process_result(payload):
+            key, data, labels = payload
+            frame = self[key]
+            frame.image_data.write_direct(data)
+            frame.particle_labels().write_direct(labels)
+        queue = smp.Queue(worker=worker, result_callback=process_result,
+                          totalsize=len(self), description="Aligning frames")
+        for frame in self:
+            key = frame.key()
+            # Prepare data arrays
+            data = frame.image_data.value
+            labels = frame.particle_labels().value
+            if particle_idx is not None:
+                # Apply a mask if particle is specified
+                particle = frame.particles()[particle_idx]
+                mask = particle.full_mask()
+            else:
+                mask = np.zeros_like(data)
+            # Launch transformation for this frame
+            queue.put((key, data, labels, mask))
+        queue.join()
 
     def align_to_particle_centroid(self, particle_idx=0):
         """Use the centroid position of given particle to align all the
@@ -263,62 +322,29 @@ class XanesFrameset():
         # Callables for determining particle labels
         def worker(payload):
             key, data = payload
-            new_data = calculate_particle_labels(data)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                new_data = calculate_particle_labels(data)
             return (key, new_data)
-
         def process_result(payload):
             # Save the calculated data
             key, data = payload
             labels = self.hdf_group()[labels_groupname]
             dataset = labels.create_dataset(key, data=data, compression='gzip')
-            status = 'Identifying particles {curr}/{total} ({percent:.0f}%)'.format(
-                curr=total_results - results_left, total=total_results,
-                percent=(1-results_left/total_results)*100
-            )
-            print(status, end='\r')
         # Prepare multirprocessing objects
-        num_consumers = multiprocessing.cpu_count() * 2
-        frame_queue = multiprocessing.JoinableQueue(maxsize=num_consumers* 2)
-        result_queue = multiprocessing.Queue()
-        consumers = [FrameConsumer(target=worker, task_queue=frame_queue, result_queue=result_queue)
-                     for i in range(num_consumers)]
-        for consumer in consumers:
-            consumer.start()
-        # Load frames into the queue to be processed
-        total_results = len(self)
-        results_left = len(self) # Counter for ending routine
+        frame_queue = smp.Queue(worker=worker,
+                                totalsize=len(self),
+                                result_callback=process_result,
+                                description="Detecting particles")
         for frame in self:
             data = frame.image_data.value
             key = frame.image_data.name.split('/')[-1]
+            # process_result(worker((key, data)))
             frame_queue.put((key, data))
             # Write path to saved particle labels
             frame.particle_labels_path = labels_group.name + "/" + key
-            # Check for a saved result
-            try:
-                result = result_queue.get(block=False)
-            except queue.Empty:
-                pass
-            else:
-                process_result(result)
-                results_left -= 1
-        # Send poison pill to stop workers
-        for i in range(num_consumers):
-            frame_queue.put(None)
         # Wait for all processing to finish
         frame_queue.join()
-        # Finish processing results
-        while results_left > 0:
-            result = result_queue.get()
-            process_result(result)
-            results_left -= 1
-        print('Identifying particles: {total}/{total} [done]'.format(
-            total=total_results))
-        # Detect particles and update links in frame datasets
-        # for frame in display_progress(self, 'Identifying particles'):
-        #     key = frame.image_data.name.split('/')[-1]
-        #     data = frame.calculate_particle_labels()
-        #     dataset = labels_group.create_dataset(name=key, data=data)
-        #     frame.particle_labels_path = dataset.name
 
     def rebin(self, shape=None, factor=None):
         """Resample all images into new shape. Arguments `shape` and `factor`
@@ -419,7 +445,7 @@ class XanesFrameset():
             ax = new_axes()
         # Set normalizer
         norm = Normalize(norm_range[0], norm_range[1])
-        n, bins, patches = ax.hist(mapped_image.flat(), bins=self.edge.energies())
+        n, bins, patches = ax.hist(self.masked_map().flat, bins=self.edge.energies())
         # Set colors on histogram
         for patch in patches:
             x_position = patch.get_x()
@@ -429,11 +455,12 @@ class XanesFrameset():
         return ax
 
     def whiteline_map(self):
+        """Calculate a map where each pixel is the energy of the whiteline."""
+        print('Calculating whiteline map...', end='')
         # Determine indices of max frame per pixel
         imagestack = np.array([frame.image_data for frame in self])
         indices = np.argmax(imagestack, axis=0)
         # Map indices to energies
-        print('Calculating whiteline map...', end='')
         map_energy = np.vectorize(lambda idx: self[idx].energy,
                                   otypes=[np.float])
         energies = map_energy(indices)
@@ -511,23 +538,3 @@ class XanesFrameset():
 
 
 ## Multiprocessing modules
-class FrameConsumer(multiprocessing.Process):
-    def __init__(self, target, task_queue, result_queue, **kwargs):
-        ret = super().__init__(target=target, **kwargs)
-        self.task_queue = task_queue
-        self.result_queue = result_queue
-        self.target = target
-        return ret
-
-    def run(self):
-        """Retrieve and process a frame from the queue or exit if poison pill
-        None is passed."""
-        while True:
-            payload = self.task_queue.get()
-            if payload is None:
-                # Poison pill, so exit
-                self.task_queue.task_done()
-                break
-            result = self.target(payload)
-            self.result_queue.put(result)
-            self.task_queue.task_done()

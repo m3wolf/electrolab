@@ -69,6 +69,7 @@ class GtkTxmViewer():
             self.frameset.switch_group(new_group)
         # Save new xanes spectrum
         self.xanes_spectrum = self.frameset.xanes_spectrum()
+        self.draw_xanes_spectrum()
         # Re-normalize for new frameset and display new set to user
         self.normalizer = self.frameset.normalizer()
         self.update_window()
@@ -134,6 +135,7 @@ class GtkTxmViewer():
         self.draw_xanes_spectrum()
 
     def draw_xanes_spectrum(self):
+        self.xanes_ax.clear()
         self.frameset.plot_xanes_spectrum(ax=self.xanes_ax)
 
     def update_window(self, widget=None):
@@ -165,7 +167,10 @@ class GtkTxmViewer():
         # Remove old highlighted point from Xanes spectrum
         previous_highlight = getattr(self, 'xanes_highlight', None)
         if previous_highlight:
-            previous_highlight[0].remove()
+            try:
+                previous_highlight[0].remove()
+            except ValueError:
+                pass
         # Update the highlighted point on the Xanes spectrum plot
         energy = current_frame.energy
         intensity = self.xanes_spectrum[energy]

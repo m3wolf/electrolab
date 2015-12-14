@@ -1,5 +1,7 @@
 from collections import namedtuple
 
+import numpy as np
+
 from utilities import xycoord
 
 """
@@ -45,6 +47,22 @@ class Particle():
 
     def convex_area(self):
         return self.regionprops.convex_area
+
+    def full_mask(self):
+        """Return a mask the same size as frame data with only this particle
+        exposed."""
+        data = self.frame.image_data
+        mask = np.zeros_like(data)
+        bbox = self.bbox()
+        mask[bbox.top:bbox.bottom, bbox.left:bbox.right] = self.mask()
+        return np.logical_not(mask)
+
+    def masked_frame_image(self):
+        """Return a masked array for the whole frame with only this particle
+        only marked as valid."""
+        data = self.frame.image_data
+        mask = self.full_mask()
+        return np.ma.array(data, mask=mask)
 
     def mask(self):
         return self.regionprops.image
