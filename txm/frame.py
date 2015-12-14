@@ -7,10 +7,11 @@ import numpy as np
 from matplotlib import pyplot
 from scipy import ndimage
 from skimage import img_as_float
-from skimage.morphology import (closing, remove_small_objects, square, disk,
+from skimage.morphology import (closing, remove_small_objects, square, disk, star,
                                 watershed, dilation)
 from skimage.exposure import rescale_intensity
 from skimage.measure import regionprops, label
+from skimage import filters
 from skimage.filters import threshold_otsu, threshold_adaptive, rank, threshold_li
 from skimage.feature import peak_local_max
 from skimage.segmentation import clear_border
@@ -88,8 +89,10 @@ class TXMFrame():
         return bg_data/np.exp(self.image_data)
 
     def background_dataset(self, group):
-        key = self.image_data.name.split('/')[-1]
-        return group[key]
+        return group[self.key()]
+
+    def key(self):
+        return self.image_data.name.split('/')[-1]
 
     def hdf_node(self):
         return self.image_data
@@ -129,10 +132,12 @@ class TXMFrame():
             opacity = 0.3
         if self.particle_labels_path:
             data = self.particle_labels()
-            x = [particle.sample_position().x for particle in self.particles()]
-            y = [particle.sample_position().y for particle in self.particles()]
+            xs = [particle.sample_position().x for particle in self.particles()]
+            ys = [particle.sample_position().y for particle in self.particles()]
             im_ax = ax.imshow(data, *args, alpha=opacity, **kwargs)
-            ax.plot(x, y, linestyle="None", marker='o')
+            for idx, x in enumerate(xs):
+                y = ys[idx]
+                ax.text(x, y, idx)
             ret = im_ax
         else:
             ret = None
@@ -171,9 +176,9 @@ class TXMFrame():
         if dataset is None:
             dataset = self.image_data
         # Roll along x axis
-        new_data = np.roll(dataset, x_offset, axis=1)
+        new_data = np.roll(dataset, int(x_offset), axis=1)
         # Roll along y axis
-        new_data = np.roll(new_data, y_offset, axis=0)
+        new_data = np.roll(new_data, int(y_offset), axis=0)
         # Commit shift image
         dataset.write_direct(new_data)
         # Update stored position information
@@ -259,6 +264,21 @@ class TXMFrame():
             res = self.image_data.file[self.particle_labels_path]
         return res
 
+    def activate_closest_particle(self, loc):
+        """Get a particle that's closest to location."""
+        particles = self.particles()
+        current_min = 999999
+        current_idx = None
+        for idx, particle in enumerate(particles):
+            center = particle.sample_position()
+            distance = math.sqrt((loc[0]-center[0])**2 + (loc[1]-center[1])**2)
+            if distance < current_min:
+                # New closest match
+                current_min = distance
+                current_idx = idx
+        self.active_particle_idx = current_idx
+        return particles[current_idx]
+
     def particles(self):
         labels = self.particle_labels()
         props = regionprops(labels, intensity_image=self.image_data)
@@ -268,7 +288,7 @@ class TXMFrame():
         return particles
 
 def calculate_particle_labels(data, return_intermediates=False,
-                              min_distance=20):
+                              min_distance=0.016):
     """Identify and label material particles in the image data.
 
     Generate and save a scikit-image style labels frame
@@ -281,11 +301,12 @@ def calculate_particle_labels(data, return_intermediates=False,
     ----------
     return_intermediates : bool
         Return intermediate images as a dict (default False)
-    min_distance : int
-        How far away in pixels particle centers need to be in
-        order to register as different particles (default 25)
+    min_distance : float
+        How far away (as a portion of image size) particle centers need to be in
+        order to register as different particles (default 0.2)
 
     """
+    cmap = 'plasma'
     # Shift image into range -1 to 1
     # normalizer = Normalize(vmin=self.image_data.value.min(),
     #                        vmax=self.image_data.value.max())
@@ -302,12 +323,13 @@ def calculate_particle_labels(data, return_intermediates=False,
     #     equalized = skimage.exposure.equalize_adapthist(rescaled, clip_limit=0.05)
     # Identify foreground vs background with Otsu filter
     # threshold = threshold_otsu(equalized)
-    threshold = threshold_li(equalized)
+    threshold = filters.threshold_otsu(equalized)
     mask = equalized > threshold
     # Fill in the shapes a little
-    closed = closing(mask, square(3))
+    # closed = dilation(mask, square(3))
     # Remove features at the edge of the frame since they can be incomplete
-    border_cleared = clear_border(closed)
+    # border_cleared = clear_border(np.copy(closed))
+    border_cleared = np.copy(mask)
     # Discard small particles
     # Determine minimum size for discarding objects
     average_shape = sum(border_cleared.shape)/len(border_cleared.shape)
@@ -322,12 +344,12 @@ def calculate_particle_labels(data, return_intermediates=False,
     in_range = (distances.min(), distances.max())
     distances = rescale_intensity(distances, in_range=in_range, out_range=(0, 1))
     # Blur the distances to help avoid split particles
-    mean_distances = rank.mean(distances, disk(5))
+    mean_distances = rank.mean(distances, disk(8))
     # Use the local distance maxima as peak centers and compute labels
     local_maxima = peak_local_max(
         mean_distances,
         indices=False,
-        min_distance=min_distance,
+        min_distance=min_distance * average_shape,
         # footprint=np.ones((64, 64)),
         labels=dilated
     )
@@ -338,7 +360,6 @@ def calculate_particle_labels(data, return_intermediates=False,
         result['original'] = original
         result['equalized'] = equalized
         result['mask'] = mask
-        result['closed'] = closed
         result['border_cleared'] = border_cleared
         result['large_only'] = large_only
         result['reclosed'] = reclosed

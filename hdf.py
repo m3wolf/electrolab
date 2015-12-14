@@ -42,3 +42,7 @@ class HDFAttribute():
     def __set__(self, obj, value):
         attrs = self._attrs(obj)
         attrs[self.attribute_name] = value
+
+    def __delete__(self, obj):
+        attrs = self._attrs(obj)
+        del attrs[self.attribute_name]

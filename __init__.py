@@ -16,6 +16,8 @@ from plots import (new_axes, big_axes, dual_axes, plot_scans, xrd_axes,
 
 import filters
 
+from utilities import xycoord
+
 from refinement import fullprof
 
 from xrd.unitcell import CubicUnitCell, HexagonalUnitCell, TetragonalUnitCell
@@ -40,3 +42,4 @@ from txm.xradia import XRMFile
 from txm.importers import import_txm_framesets
 from txm.xanes_frameset import XanesFrameset
 from txm.frame import TXMFrame, calculate_particle_labels
+from txm.edges import k_edges
