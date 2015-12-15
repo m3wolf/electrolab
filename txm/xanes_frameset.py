@@ -203,7 +203,7 @@ class XanesFrameset():
         # Determine which particle to use
         if particle_idx is not None:
             # Apply a mask if a particle is specified
-            self.active_particle_idx = 2
+            self.active_particle_idx = particle_idx
             reference_mask = self[reference_frame].particles()[particle_idx].full_mask()
             reference_image = np.ma.array(reference_image, mask=reference_mask)
         elif particle_loc is not None:
@@ -242,11 +242,49 @@ class XanesFrameset():
                 # Apply a mask if particle is specified
                 particle = frame.particles()[particle_idx]
                 mask = particle.full_mask()
+            elif particle_loc is not None:
+                particle = frame.activate_closest_particle(loc=particle_loc)
+                mask = particle.full_mask()
             else:
                 mask = np.zeros_like(data)
             # Launch transformation for this frame
             queue.put((key, data, labels, mask))
         queue.join()
+
+    def align_to_particle(self, particle_loc=0):
+        """Use the centroid position of given particle to align all the
+        frames."""
+        self.fork_group('aligned_frames')
+        self.fork_labels('aligned_labels')
+        # Determine average positions
+        total_x = 0; total_y = 0; n=0
+        for frame in display_progress(self, 'Computing true center'):
+            particle = frame.activate_closest_particle(particle_loc)
+            n+=1
+            total_x += particle.centroid().x
+            total_y += particle.centroid().y
+        global_center = xycoord(x=total_x/n, y=total_y/n)
+        # Align all frames to average position
+        for frame in display_progress(self, 'Aligning frames'):
+            particle = frame.particles()[frame.active_particle_idx]
+            offset_x = int(round(global_center.x - particle.centroid().x))
+            offset_y = int(round(global_center.y - particle.centroid().y))
+            # Apply net transformation
+            transformation = transform.SimilarityTransform(
+                translation=(-offset_x, -offset_y))
+            new_data = transform.warp(frame.image_data, transformation,
+                                      order=3, mode="wrap")
+            frame.image_data.write_direct(new_data)
+            # Apply translation to particle labels
+            labels = frame.particle_labels()
+            new_labels = transform.warp(labels.value.astype(np.float64),
+                                        transformation, order=3, mode="wrap")
+            labels.write_direct(new_labels)
+            # frame.shift_data(x_offset=offset_x,
+            #                  y_offset=offset_y)
+            # frame.shift_data(x_offset=offset_x,
+            #                  y_offset=offset_y,
+            #                  dataset=frame.particle_labels())
 
     def crop_to_particle(self):
         """Reduce the image size to just show the particle in question."""

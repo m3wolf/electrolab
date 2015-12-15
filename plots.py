@@ -81,7 +81,7 @@ def plot_scans(scan_list, step_size=0, ax=None):
 
 def plot_txm_intermediates(images):
     for key in images.keys():
-        fig = pyplot.figure()
-        ax = fig.gca()
-        ax.imshow(images[key], cmap='gray')
-        ax.set_title(key)
+        ax1, ax2 = dual_axes()
+        ax1.imshow(images[key], cmap='gray')
+        ax1.set_title(key)
+        ax2.hist(images[key].flat, bins=100)

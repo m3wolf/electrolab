@@ -266,18 +266,19 @@ class TXMFrame():
 
     def activate_closest_particle(self, loc):
         """Get a particle that's closest to location."""
-        particles = self.particles()
-        current_min = 999999
-        current_idx = None
-        for idx, particle in enumerate(particles):
-            center = particle.sample_position()
-            distance = math.sqrt((loc[0]-center[0])**2 + (loc[1]-center[1])**2)
-            if distance < current_min:
-                # New closest match
-                current_min = distance
-                current_idx = idx
-        self.active_particle_idx = current_idx
-        return particles[current_idx]
+        if loc:
+            particles = self.particles()
+            current_min = 999999
+            current_idx = None
+            for idx, particle in enumerate(particles):
+                center = particle.sample_position()
+                distance = math.sqrt((loc[0]-center[0])**2 + (loc[1]-center[1])**2)
+                if distance < current_min:
+                    # New closest match
+                    current_min = distance
+                    current_idx = idx
+            self.active_particle_idx = current_idx
+            return particles[current_idx]
 
     def particles(self):
         labels = self.particle_labels()
@@ -322,9 +323,12 @@ def calculate_particle_labels(data, return_intermediates=False,
     #     warnings.simplefilter("ignore")
     #     equalized = skimage.exposure.equalize_adapthist(rescaled, clip_limit=0.05)
     # Identify foreground vs background with Otsu filter
+    average_shape = sum(equalized.shape)/len(equalized.shape)
     # threshold = threshold_otsu(equalized)
     threshold = filters.threshold_otsu(equalized)
-    mask = equalized > threshold
+    mask = equalized > 1 * threshold
+    block_size = average_shape / 2.72 # Determine imperically
+    mask = threshold_adaptive(equalized, block_size=block_size, offset=0)
     # Fill in the shapes a little
     # closed = dilation(mask, square(3))
     # Remove features at the edge of the frame since they can be incomplete
@@ -332,8 +336,7 @@ def calculate_particle_labels(data, return_intermediates=False,
     border_cleared = np.copy(mask)
     # Discard small particles
     # Determine minimum size for discarding objects
-    average_shape = sum(border_cleared.shape)/len(border_cleared.shape)
-    min_size = 8. * average_shape
+    min_size = 4. * average_shape
     large_only = remove_small_objects(border_cleared, min_size=min_size)
     # Fill in the shapes a lot to round them out
     reclosed = closing(large_only, disk(20))
@@ -344,7 +347,7 @@ def calculate_particle_labels(data, return_intermediates=False,
     in_range = (distances.min(), distances.max())
     distances = rescale_intensity(distances, in_range=in_range, out_range=(0, 1))
     # Blur the distances to help avoid split particles
-    mean_distances = rank.mean(distances, disk(8))
+    mean_distances = rank.mean(distances, disk(average_shape/32))
     # Use the local distance maxima as peak centers and compute labels
     local_maxima = peak_local_max(
         mean_distances,

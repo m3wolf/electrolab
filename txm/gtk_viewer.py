@@ -149,6 +149,8 @@ class GtkTxmViewer():
         y_label.set_text(str(current_frame.sample_position.y))
         z_label = self.builder.get_object('ZPosLabel')
         z_label.set_text(str(current_frame.sample_position.z))
+        particle_label = self.builder.get_object('ActiveParticleLabel')
+        particle_label.set_text(str(current_frame.active_particle_idx))
         # Re-draw each frame
         self.image_ax.clear()
         self.image_ax.set_aspect(1)
