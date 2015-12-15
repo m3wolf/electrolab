@@ -374,7 +374,7 @@ class XanesFrameset():
         spectrum = self.xanes_spectrum()
         if ax is None:
             ax = new_axes()
-        ax.plot(spectrum, marker='o', linestyle="None")
+        ax.plot(spectrum, marker='o', linestyle=":")
         ax.set_xlabel('Energy /eV')
         ax.set_ylabel('Overall absorbance')
         return ax
