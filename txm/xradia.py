@@ -61,7 +61,7 @@ class XRMFile():
             if bg_result:
                 params = {
                     'date_string': '',
-                    'sample_name': bg_result.group(3),
+                    'sample_name': bg_result.group(3).strip("_"),
                     'position_name': '',
                     'is_background': True,
                     'energy': float(bg_result.group(4)),
@@ -70,7 +70,7 @@ class XRMFile():
                 sample_result = self.ssrl_regex_sample.search(self.filename)
                 params = {
                     'date_string': '',
-                    'sample_name': sample_result.group(2),
+                    'sample_name': sample_result.group(2).strip("_"),
                     'position_name': '',
                     'is_background': False,
                     'energy': float(sample_result.group(3)),

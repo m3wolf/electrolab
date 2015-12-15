@@ -7,7 +7,7 @@ import queue
 import warnings
 
 import pandas as pd
-from matplotlib import pyplot
+from matplotlib import pyplot, cm
 from matplotlib.colors import Normalize
 from mapping.colormaps import cmaps
 import h5py
@@ -264,27 +264,47 @@ class XanesFrameset():
             total_x += particle.centroid().x
             total_y += particle.centroid().y
         global_center = xycoord(x=total_x/n, y=total_y/n)
+        # Prepare multiprocessing objects
+        def worker(payload):
+            key, data, labels, offset = payload
+            # Apply net transformation
+            transformation = transform.SimilarityTransform(
+                translation=(-offset.x, -offset.y))
+            new_data = transform.warp(data, transformation,
+                                      order=3, mode="wrap")
+            original_dtype = labels.dtype
+            labels = labels.astype(np.float64)
+            new_labels = transform.warp(labels.astype(np.float64),
+                                        transformation, order=0, mode="wrap")
+            new_labels = new_labels.astype(original_dtype)
+            return (key, new_data, new_labels)
+        def process_result(payload):
+            key, data, labels = payload
+            frame = self[key]
+            frame.image_data.write_direct(data)
+            frame.particle_labels().write_direct(labels)
+            frame.activate_closest_particle(loc=particle_loc)
+        queue = smp.Queue(worker=worker, result_callback=process_result,
+                          totalsize=len(self), description="Aligning frames")
         # Align all frames to average position
-        for frame in display_progress(self, 'Aligning frames'):
+        for frame in self:
+            # Determine new position
             particle = frame.particles()[frame.active_particle_idx]
             offset_x = int(round(global_center.x - particle.centroid().x))
             offset_y = int(round(global_center.y - particle.centroid().y))
-            # Apply net transformation
-            transformation = transform.SimilarityTransform(
-                translation=(-offset_x, -offset_y))
-            new_data = transform.warp(frame.image_data, transformation,
-                                      order=3, mode="wrap")
-            frame.image_data.write_direct(new_data)
+            offset = xycoord(offset_x, offset_y)
+            # frame.image_data.write_direct(new_data)
             # Apply translation to particle labels
             labels = frame.particle_labels()
-            new_labels = transform.warp(labels.value.astype(np.float64),
-                                        transformation, order=3, mode="wrap")
-            labels.write_direct(new_labels)
+            key = frame.key()
+            queue.put((key, frame.image_data.value, labels.value, offset))
+            # labels.write_direct(new_labels)
             # frame.shift_data(x_offset=offset_x,
             #                  y_offset=offset_y)
             # frame.shift_data(x_offset=offset_x,
             #                  y_offset=offset_y,
             #                  dataset=frame.particle_labels())
+        queue.join()
 
     def crop_to_particle(self):
         """Reduce the image size to just show the particle in question."""
@@ -298,6 +318,18 @@ class XanesFrameset():
         top = min([box.top for box in boxes])
         bottom = max([box.bottom for box in boxes])
         right = max([box.right for box in boxes])
+        # Make sure the expanded box is square
+        print('Horizontal:', right-left, 'Vertical:', bottom-top)
+        def expand_dims(lower, upper, target):
+            center = (lower+upper)/2
+            new_lower = center - target/2
+            new_upper = center + target/2
+            return (new_lower, new_upper)
+        if right-left > bottom-top:
+            top, bottom = expand_dims(top, bottom, target=right-left)
+        elif  bottom-top > right-left:
+            left, right = expand_dims(left, right, target=bottom-top)
+        assert abs(left-right) == abs(bottom-top)
         # Roll each image to have the particle top left
         for frame in display_progress(self, 'Cropping frames'):
             frame.crop(top=top, left=left, bottom=bottom, right=right)
@@ -482,6 +514,10 @@ class XanesFrameset():
         # Plot average absorbance
         # self[-1].plot_image(ax=ax)
         ax.imshow(self.masked_map(), cmap=self.cmap, norm=norm)
+        # Add colormap to the side of the axes
+        mappable = cm.ScalarMappable(norm=norm, cmap=self.cmap)
+        mappable.set_array(np.arange(0, 2))
+        pyplot.colorbar(mappable, ax=ax)
         return ax
 
     def plot_histogram(self, ax=None, norm_range=(None, None)):
