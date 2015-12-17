@@ -49,5 +49,8 @@ class GroupKeyError(KeyError):
 class FileExistsError(IOError):
     pass
 
+class DatasetExistsError(RuntimeError):
+    pass
+
 class NoParticleError(Exception):
     pass

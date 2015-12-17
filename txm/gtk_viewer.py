@@ -4,13 +4,17 @@ import gi
 gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk, Gdk, GObject
 from matplotlib.backends.backend_gtk3agg import FigureCanvasGTK3Agg as FigureCanvas
-from matplotlib import figure
+from matplotlib import figure, pyplot
 import numpy as np
+
+from utilities import xycoord
 
 class GtkTxmViewer():
     play_mode = False
     show_particles = False
     display_type = 'corrected'
+    active_pixel = None
+    map_crosshairs = None
     """View a XANES frameset using a Gtk GUI."""
     def __init__(self, frameset):
         self.frameset = frameset
@@ -21,12 +25,13 @@ class GtkTxmViewer():
         self.builder.add_from_file(gladefile)
         self.window = self.builder.get_object('XanesViewerWindow')
         self.window.set_default_size(1000, 1000)
+        self.map_window = self.builder.get_object('MapViewerWindow')
         # Put the non-glade things in the window
         self.create_axes()
         # Set some initial values
         slider = self.builder.get_object('FrameSlider')
         self.current_adj = self.builder.get_object('CurrentFrame')
-        self.current_adj.set_property('upper', len(self.frameset))
+        self.current_adj.set_property('upper', len(self.frameset)-1)
         self.xanes_spectrum = frameset.xanes_spectrum()
         # Populate the combobox with list of available HDF groups
         self.group_combo = self.builder.get_object('ActiveGroupCombo')
@@ -40,6 +45,10 @@ class GtkTxmViewer():
         # Add background frames as an option
         self.group_list.append(['Background Frames', 'background_frames'])
         self.group_combo.set_model(self.group_list)
+        # Disable the "show map" button if map is not calculated
+        if not self.frameset.map_name:
+            btn = self.builder.get_object("ShowMapButton")
+            btn.set_sensitive(False)
         # Set initial active group name
         self.group_combo.set_active_iter(self.active_group)
         self.active_groupname = self.frameset.active_groupname
@@ -51,15 +60,99 @@ class GtkTxmViewer():
             'play-frames': self.play_frames,
             'last-frame': self.last_frame,
             'first-frame': self.first_frame,
-            'key-release': self.key_pressed,
+            'key-release-main': self.key_pressed_main,
+            'key-release-map': self.navigate_map,
             'toggle-particles': self.toggle_particles,
             'update-window': self.update_window,
             'change-active-group': self.change_active_group,
+            'launch-map-window': self.launch_map_window,
         }
         self.builder.connect_signals(handlers)
         # self.image = self.current_frame().plot_image(ax=self.image_ax,  animated=True)
         self.update_window()
-        self.window.connect('delete-event', Gtk.main_quit)
+        self.window.connect('delete-event', self.quit)
+
+    def quit(self, widget, object=None):
+        self.map_window.destroy()
+        Gtk.main_quit()
+
+    def launch_map_window(self, widget):
+        # Create map axes objects
+        map_fig = figure.Figure(figsize=(13.8, 10))
+        canvas = FigureCanvas(map_fig)
+        canvas.set_size_request(400, 400)
+        map_sw = self.builder.get_object("MapWindow")
+        map_sw.add(canvas)
+        self.map_ax = map_fig.gca()
+        # Plot the overall map
+        self.frameset.plot_map(ax=self.map_ax)
+        # Connect handlers for clicking on a pixel
+        map_fig.canvas.mpl_connect('button_press_event', self.click_map_pixel)
+        # Create Xanes axes object
+        fig = figure.Figure(figsize=(13.8, 10))
+        canvas = FigureCanvas(fig)
+        canvas.set_size_request(400, 400)
+        xanes_sw = self.builder.get_object("XanesMapWindow")
+        xanes_sw.add(canvas)
+        self.map_detail_ax = fig.gca()
+        self.plot_map_xanes()
+        # Launch the window
+        self.map_window.show_all()
+
+    def click_map_pixel(self, event):
+        if event.inaxes == self.map_ax:
+            x = int(round(event.xdata))
+            y = int(round(event.ydata))
+            self.active_pixel = xycoord(x, y)
+        else:
+            self.active_pixel = None
+        self.update_map_window()
+
+    def update_map_window(self):
+        self.plot_map_xanes()
+        # Show position of active pixel
+        if self.active_pixel is None:
+            s = "None"
+        else:
+            s = "({x}, {y})".format(x=self.active_pixel.x,
+                                    y=self.active_pixel.y)
+        label = self.builder.get_object("ActivePixelLabel")
+        label.set_text(s)
+        # Remove old cross-hairs
+        if self.map_crosshairs:
+            for line in self.map_crosshairs:
+                line.remove()
+        # Draw cross-hairs on the map if there's an active pixel
+        if self.active_pixel:
+            xline = self.map_ax.axvline(x=self.active_pixel.x,
+                                        color="black", linestyle="--")
+            yline = self.map_ax.axhline(y=self.active_pixel.y,
+                                        color="black", linestyle="--")
+            self.map_crosshairs = (xline, yline)
+        # Force redraw in case GTK doesn't have to update
+        self.map_ax.figure.canvas.draw()
+        self.map_detail_ax.figure.canvas.draw()
+
+    def plot_map_xanes(self):
+        self.map_detail_ax.clear()
+        self.frameset.plot_xanes_spectrum(ax=self.map_detail_ax,
+                                          pixel=self.active_pixel)
+
+    def navigate_map(self, widget, event):
+        """Navigate around the map using keyboard."""
+        if self.active_pixel is not None:
+            x = self.active_pixel.x
+            y = self.active_pixel.y
+            if event.keyval == Gdk.KEY_Left:
+                x = x-1
+            elif event.keyval == Gdk.KEY_Right:
+                x = x+1
+            elif event.keyval == Gdk.KEY_Up:
+                y = y-1
+            elif event.keyval == Gdk.KEY_Down:
+                y = y+1
+            self.active_pixel = xycoord(x=x, y=y)
+        self.update_map_window()
 
     def change_active_group(self, widget, object=None):
         """Update to a new frameset HDF group after user has changed combobox."""
@@ -83,7 +176,7 @@ class GtkTxmViewer():
     def current_idx(self, value):
         self.current_adj.set_property('value', value)
 
-    def key_pressed(self, widget, event):
+    def key_pressed_main(self, widget, event):
         if event.keyval == Gdk.KEY_Left:
             self.previous_frame()
         elif event.keyval == Gdk.KEY_Right:

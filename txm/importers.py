@@ -5,6 +5,7 @@ import re
 from .xradia import XRMFile
 from .xanes_frameset import XanesFrameset
 from .frame import TXMFrame, average_frames
+import exceptions
 
 def import_txm_framesets(directory, hdf_filename=None, flavor='ssrl'):
     """Import all files in the given directory and process into framesets."""
@@ -39,6 +40,7 @@ def import_txm_framesets(directory, hdf_filename=None, flavor='ssrl'):
         counter += 1
         bg_groupname = formatter.format(ctr=counter)
     hdf_file.create_group(bg_groupname)
+    print('Created background group {}'.format(bg_groupname))
     bg_frameset = XanesFrameset(filename=hdf_filename, groupname=bg_groupname)
     sample_framesets = {}
     # Now do the importing

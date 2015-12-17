@@ -17,6 +17,7 @@ from skimage.feature import peak_local_max
 from skimage.segmentation import clear_border
 from matplotlib.colors import Normalize
 
+import exceptions
 import plots
 from hdf import HDFAttribute
 from utilities import xycoord
@@ -97,6 +98,20 @@ class TXMFrame():
     def hdf_node(self):
         return self.image_data
 
+    def extent(self, shape=None):
+        """Determine physical dimensions for axes values."""
+        if shape is None:
+            shape = self.image_data.shape
+        y_pixels, x_pixels = shape
+        um_per_pixel = self.um_per_pixel()
+        center = self.sample_position
+        left = center.x - x_pixels * um_per_pixel.x / 2
+        right = center.x + x_pixels * um_per_pixel.x / 2
+        bottom = center.y - y_pixels * um_per_pixel.y / 2
+        top = center.y + y_pixels * um_per_pixel.y / 2
+        extent = namedtuple('extent', ('left', 'right', 'bottom', 'top'))
+        return extent(left=left, right=right, bottom=bottom, top=top)
+
     def plot_image(self, data=None, ax=None, show_particles=True, *args, **kwargs):
         """Plot a frame's data image. Use frame.image_data if no data are
         given."""
@@ -104,15 +119,7 @@ class TXMFrame():
             ax=plots.new_axes()
         if data is None:
             data = self.image_data
-        # Determine physical dimensions for axes values
-        y_pixels, x_pixels = data.shape
-        um_per_pixel = self.um_per_pixel()
-        center = self.sample_position
-        left = center.x - x_pixels * um_per_pixel.x / 2
-        right = center.x + x_pixels * um_per_pixel.x / 2
-        bottom = center.y - y_pixels * um_per_pixel.y / 2
-        top = center.y + y_pixels * um_per_pixel.y / 2
-        extent = [left, right, bottom, top]
+        extent = self.extent(shape=data.shape)
         im_ax = ax.imshow(data, *args, cmap='gray', extent=extent, **kwargs)
         # Plot particles
         if show_particles:
@@ -241,14 +248,19 @@ class TXMFrame():
 
     def create_dataset(self, setname, hdf_group):
         """Save data and metadata to an HDF dataset."""
-        attrs = getattr(self.image_data, 'attrs', self._attrs)
-        self.image_data = hdf_group.create_dataset(name=setname,
-                                                   data=self.image_data,
-                                                   maxshape=self.image_data.shape,
-                                                   compression="gzip")
-        # Set metadata attributes
-        for attr_name in attrs.keys():
-            self.image_data.attrs[attr_name] = attrs[attr_name]
+        if setname in hdf_group.keys():
+            msg = "{name} already exists in group {group}"
+            msg = msg.format(name=setname, group=hdf_group.name)
+            raise exceptions.DatasetExistsError(msg)
+        else:
+            attrs = getattr(self.image_data, 'attrs', self._attrs)
+            self.image_data = hdf_group.create_dataset(name=setname,
+                                                       data=self.image_data,
+                                                       maxshape=self.image_data.shape,
+                                                       compression="gzip")
+            # Set metadata attributes
+            for attr_name in attrs.keys():
+                self.image_data.attrs[attr_name] = attrs[attr_name]
 
     @classmethod
     def load_from_dataset(Cls, dataset):
