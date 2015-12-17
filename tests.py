@@ -15,6 +15,7 @@ import h5py
 
 import exceptions
 import scimap
+from utilities import xycoord
 from xrd.standards import Corundum, Aluminum
 from xrd.lmo import CubicLMO
 from xrd.unitcell import UnitCell, CubicUnitCell, HexagonalUnitCell
@@ -33,7 +34,7 @@ from adapters.bruker_raw_file import BrukerRawFile
 from adapters.bruker_brml_file import BrukerBrmlFile
 from refinement import fullprof, native
 from txm.edges import Edge
-from txm.frame import average_frames, TXMFrame
+from txm.frame import average_frames, TXMFrame, xy_to_pixel, pixel_to_xy, Extent, Pixel
 from txm.xanes_frameset import XanesFrameset
 from txm.importers import import_txm_framesets
 from txm import xanes_frameset
@@ -150,6 +151,30 @@ class TXMFrameTest(HDFTestCase):
         )
         # Check that the averaging is correct
         self.assertTrue(np.array_equal(avg_frame.image_data, expected_array))
+
+    def test_xy_to_pixel(self):
+        extent = Extent(
+            left=-1000, right=-900,
+            top=300, bottom=250
+        )
+        result = xy_to_pixel(
+            xy=xycoord(x=-950, y=250),
+            extent=extent,
+            shape=(10, 10)
+        )
+        self.assertEqual(result, Pixel(vertical=10, horizontal=5))
+
+    def test_pixel_to_xy(self):
+        extent = Extent(
+            left=-1000, right=-900,
+            top=300, bottom=250
+        )
+        result = pixel_to_xy(
+            pixel=Pixel(vertical=10, horizontal=5),
+            extent=extent,
+            shape=(10, 10)
+        )
+        self.assertEqual(result, xycoord(x=-950, y=250))
 
     def test_shift_data(self):
         frame = TXMFrame()

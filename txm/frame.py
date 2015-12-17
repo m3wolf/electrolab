@@ -24,6 +24,32 @@ from utilities import xycoord
 from .particle import Particle
 
 position = namedtuple('position', ('x', 'y', 'z'))
+Extent = namedtuple('extent', ('left', 'right', 'bottom', 'top'))
+Pixel = namedtuple('pixel', ('vertical', 'horizontal'))
+
+def xy_to_pixel(xy, extent, shape):
+    """Take an xy location on an image and convert it to a pixel location
+    suitable for numpy indexing."""
+    ratio_x = (xy.x-extent.left)/(extent.right-extent.left)
+    pixel_h = int(round(ratio_x * shape[1]))
+    ratio_y = (xy.y-extent.bottom)/(extent.top-extent.bottom)
+    # (1 - ratio) for y because images are top indexed
+    pixel_v = int(round((1 - ratio_y) * shape[0]))
+    return Pixel(vertical=pixel_v, horizontal=pixel_h)
+
+def pixel_to_xy(pixel, extent, shape):
+    """Take an xy location on an image and convert it to a pixel location
+    suitable for numpy indexing."""
+    # ratio_x = (xy.x-extent.left)/(extent.right-extent.left)
+    # pixel_h = int(round(ratio_x * shape[1]))
+    # ratio_y = (xy.y-extent.bottom)/(extent.top-extent.bottom)
+    # # (1 - ratio) for y because images are top indexed
+    # pixel_v = int(round((1 - ratio_y) * shape[0]))
+    ratio_h = (pixel.horizontal/shape[1])
+    x = extent.left + ratio_h * (extent.right-extent.left)
+    ratio_v = (pixel.vertical/shape[0])
+    y = extent.top - ratio_v * (extent.top - extent.bottom)
+    return xycoord(x=x, y=y)
 
 def average_frames(*frames):
     """Accept several frames and return the first frame with new image
@@ -109,8 +135,7 @@ class TXMFrame():
         right = center.x + x_pixels * um_per_pixel.x / 2
         bottom = center.y - y_pixels * um_per_pixel.y / 2
         top = center.y + y_pixels * um_per_pixel.y / 2
-        extent = namedtuple('extent', ('left', 'right', 'bottom', 'top'))
-        return extent(left=left, right=right, bottom=bottom, top=top)
+        return Extent(left=left, right=right, bottom=bottom, top=top)
 
     def plot_image(self, data=None, ax=None, show_particles=True, *args, **kwargs):
         """Plot a frame's data image. Use frame.image_data if no data are

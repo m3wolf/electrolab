@@ -8,13 +8,16 @@ from matplotlib import figure, pyplot
 import numpy as np
 
 from utilities import xycoord
+from txm.frame import Pixel, xy_to_pixel, pixel_to_xy
 
 class GtkTxmViewer():
     play_mode = False
     show_particles = False
     display_type = 'corrected'
     active_pixel = None
+    active_xy = None
     map_crosshairs = None
+    show_map_background = True
     """View a XANES frameset using a Gtk GUI."""
     def __init__(self, frameset):
         self.frameset = frameset
@@ -66,15 +69,44 @@ class GtkTxmViewer():
             'update-window': self.update_window,
             'change-active-group': self.change_active_group,
             'launch-map-window': self.launch_map_window,
+            'toggle-map-background': self.toggle_map_background,
         }
         self.builder.connect_signals(handlers)
         # self.image = self.current_frame().plot_image(ax=self.image_ax,  animated=True)
         self.update_window()
         self.window.connect('delete-event', self.quit)
 
+    def toggle_map_background(self, widget, object=None):
+        # print(widget.get_active())
+        # print(dir(widget))
+        self.show_map_background = widget.get_active()
+        self.draw_map()
+        self.update_map_window()
+
     def quit(self, widget, object=None):
         self.map_window.destroy()
         Gtk.main_quit()
+
+    def draw_map(self):
+        # print(self.map_ax.figure.axes)
+        # self.map_ax.clear()
+        figure = self.map_ax.figure
+        figure.clear()
+        self.map_ax = figure.gca()
+        self.map_crosshairs = None
+        # # Remove colorbar
+        # figure = self.map_ax.figure
+        # figure.delaxes(figure.axes[1])
+        # figure.subplots_adjust(right=0.9)
+        if self.show_map_background:
+            # Plot the absorbance background image
+            self.frameset.plot_mean_image(ax=self.map_ax)
+            alpha = 0.5
+        else:
+            alpha = 1
+        # Plot the overall map
+        self.frameset.plot_map(ax=self.map_ax, alpha=alpha)
+        self.map_ax.figure.canvas.draw()
 
     def launch_map_window(self, widget):
         # Create map axes objects
@@ -85,7 +117,7 @@ class GtkTxmViewer():
         map_sw.add(canvas)
         self.map_ax = map_fig.gca()
         # Plot the overall map
-        self.frameset.plot_map(ax=self.map_ax)
+        self.draw_map()
         # Connect handlers for clicking on a pixel
         map_fig.canvas.mpl_connect('button_press_event', self.click_map_pixel)
         # Create Xanes axes object
@@ -96,16 +128,23 @@ class GtkTxmViewer():
         xanes_sw.add(canvas)
         self.map_detail_ax = fig.gca()
         self.plot_map_xanes()
+        # Set initial state for background switch
+        switch = self.builder.get_object('BackgroundSwitch')
+        switch.set_active(self.show_map_background)
         # Launch the window
         self.map_window.show_all()
 
     def click_map_pixel(self, event):
         if event.inaxes == self.map_ax:
-            x = int(round(event.xdata))
-            y = int(round(event.ydata))
-            self.active_pixel = xycoord(x, y)
+            # Convert xy position to pixel values
+            xy = xycoord(x=event.xdata, y=event.ydata)
+            pixel = xy_to_pixel(xy, extent=self.frameset.extent(),
+                                shape=self.frameset.map_shape())
+            self.active_pixel = pixel
+            self.active_xy = xy
         else:
             self.active_pixel = None
+            self.active_xy = None
         self.update_map_window()
 
     def update_map_window(self):
@@ -114,20 +153,25 @@ class GtkTxmViewer():
         if self.active_pixel is None:
             s = "None"
         else:
-            s = "({x}, {y})".format(x=self.active_pixel.x,
-                                    y=self.active_pixel.y)
+            s = "({x}, {y})".format(x=self.active_xy.x,
+                                    y=self.active_xy.y)
         label = self.builder.get_object("ActivePixelLabel")
         label.set_text(s)
         # Remove old cross-hairs
         if self.map_crosshairs:
             for line in self.map_crosshairs:
                 line.remove()
+            self.map_crosshairs = None
         # Draw cross-hairs on the map if there's an active pixel
         if self.active_pixel:
-            xline = self.map_ax.axvline(x=self.active_pixel.x,
-                                        color="black", linestyle="--")
-            yline = self.map_ax.axhline(y=self.active_pixel.y,
-                                        color="black", linestyle="--")
+            if self.show_map_background:
+                color = "white"
+            else:
+                color = "black"
+            xline = self.map_ax.axvline(x=self.active_xy.x,
+                                        color=color, linestyle="--")
+            yline = self.map_ax.axhline(y=self.active_xy.y,
+                                        color=color, linestyle="--")
             self.map_crosshairs = (xline, yline)
         # Force redraw in case GTK doesn't have to update
         self.map_ax.figure.canvas.draw()
@@ -141,17 +185,20 @@ class GtkTxmViewer():
     def navigate_map(self, widget, event):
         """Navigate around the map using keyboard."""
         if self.active_pixel is not None:
-            x = self.active_pixel.x
-            y = self.active_pixel.y
+            horizontal = self.active_pixel.horizontal
+            vertical = self.active_pixel.vertical
             if event.keyval == Gdk.KEY_Left:
-                x = x-1
+                horizontal = horizontal - 1
             elif event.keyval == Gdk.KEY_Right:
-                x = x+1
+                horizontal = horizontal + 1
             elif event.keyval == Gdk.KEY_Up:
-                y = y-1
+                vertical = vertical - 1
             elif event.keyval == Gdk.KEY_Down:
-                y = y+1
-            self.active_pixel = xycoord(x=x, y=y)
+                vertical = vertical + 1
+            self.active_pixel = Pixel(horizontal=horizontal, vertical=vertical)
+            self.active_xy = pixel_to_xy(self.active_pixel,
+                                         extent=self.frameset.extent(),
+                                         shape=self.frameset.map_shape())
         self.update_map_window()
 
     def change_active_group(self, widget, object=None):
@@ -275,6 +322,7 @@ class GtkTxmViewer():
     def show(self):
         self.window.show_all()
         Gtk.main()
+        Gtk.main_quit()
 
     def current_image(self):
         return self.images[self.current_idx]

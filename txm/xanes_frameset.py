@@ -404,6 +404,12 @@ class XanesFrameset():
         for frame in display_progress(self, "Rebinning"):
             frame.rebin(shape=shape, factor=factor)
 
+    def plot_mean_image(self, ax=None):
+        if ax is None:
+            ax = new_axes()
+        data = self.mean_image()
+        ax.imshow(data, extent=self.extent(), cmap='gray')
+
     def mean_image(self):
         """Determine an overall image by taken the mean intensity of each
         pixel across all frames."""
@@ -442,7 +448,7 @@ class XanesFrameset():
                 intensity = np.sum(masked_data)/np.prod(masked_data.shape)
             else:
                 # Calculate intensity just for one (masked) pixel
-                intensity = data[pixel.y][pixel.x]
+                intensity = data[pixel.vertical][pixel.horizontal]
             # Add to cumulative arrays
             intensities.append(intensity)
             energies.append(frame.energy)
@@ -458,7 +464,8 @@ class XanesFrameset():
         ax.set_xlabel('Energy /eV')
         ax.set_ylabel('Absorbance')
         if pixel is not None:
-            ax.set_title('XANES Spectrum at ({x}, {y})'.format(x=pixel.x, y=pixel.y))
+            title = 'XANES Spectrum at ({x}, {y})'
+            ax.set_title(title.format(x=pixel.horizontal, y=pixel.vertical))
         return ax
 
     def edge_jump_filter(self):
@@ -519,17 +526,22 @@ class XanesFrameset():
         masked_map = np.ma.array(map_data, mask=mask)
         return masked_map
 
-    def plot_map(self, ax=None, norm_range=(None, None), show_frames=False):
+    def map_shape(self):
+        return self[0].image_data.shape
+
+    def extent(self):
+        """Determine physical dimensions for axes values."""
+        return self[0].extent()
+
+    def plot_map(self, ax=None, norm_range=None, alpha=1):
         if ax is None:
             ax = new_axes()
-        norm = Normalize(vmin=norm_range[0], vmax=norm_range[1])
-        extent = self[0].extent()
-        if show_frames:
-            # Plot average absorbance
-            ax.imshow(self.mean_image(), extent=extent, cmap='gray')
-            alpha = 0.5
+        if norm_range is None:
+            norm = Normalize(vmin=self.edge.map_range[0],
+                             vmax=self.edge.map_range[1])
         else:
-            alpha = 1
+            norm = Normalize(vmin=norm_range[0], vmax=norm_range[1])
+        extent = self.extent()
         # Plot chemical map (on top of absorbance image, if present)
         ax.imshow(self.masked_map(), extent=extent,
                   cmap=self.cmap, norm=norm, alpha=alpha)
@@ -538,13 +550,19 @@ class XanesFrameset():
         mappable.set_array(np.arange(0, 2))
         cbar = pyplot.colorbar(mappable, ax=ax)
         cbar.ax.xaxis.get_major_formatter().set_useOffset(False)
+        # Decorate axes labels, etc
+        ax.set_xlabel("TODO: Adjust extent when zooming and cropping! (µm)")
+        ax.set_ylabel("µm")
         return ax
 
-    def plot_histogram(self, ax=None, norm_range=(None, None)):
+    def plot_histogram(self, ax=None, norm_range=None):
         if ax is None:
             ax = new_axes()
         # Set normalizer
-        norm = Normalize(norm_range[0], norm_range[1])
+        if norm_range is None:
+            norm = Normalize(self.edge.map_range[0], self.edge.map_range[1])
+        else:
+            norm = Normalize(norm_range[0], norm_range[1])
         masked_map = self.masked_map()
         n, bins, patches = ax.hist(masked_map[~masked_map.mask],
                                    bins=self.edge.energies())
@@ -557,7 +575,7 @@ class XanesFrameset():
         # Set axes decorations
         ax.set_xlabel("Whiteline position /eV")
         ax.set_ylabel("Pixels")
-        ax.set_xlim(norm_range[0], norm_range[1])
+        ax.set_xlim(norm.vmin, norm.vmax)
         ax.xaxis.get_major_formatter().set_useOffset(False)
         return ax
 
@@ -643,6 +661,3 @@ class XanesFrameset():
     def gtk_viewer(self):
         viewer = GtkTxmViewer(frameset=self)
         viewer.show()
-
-
-## Multiprocessing modules
