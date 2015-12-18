@@ -8,7 +8,7 @@ import warnings
 
 import pandas as pd
 from matplotlib import pyplot, cm
-from matplotlib.colors import Normalize
+from matplotlib.colors import Normalize, BoundaryNorm
 from mapping.colormaps import cmaps
 import h5py
 import numpy as np
@@ -17,7 +17,7 @@ from skimage import morphology, filters, feature, transform
 from utilities import display_progress, xycoord
 from .frame import TXMFrame, average_frames, calculate_particle_labels
 from .gtk_viewer import GtkTxmViewer
-from plots import new_axes, DegreeFormatter
+from plots import new_axes, DegreeFormatter, ElectronVoltFormatter
 import exceptions
 from hdf import HDFAttribute
 import smp
@@ -537,18 +537,23 @@ class XanesFrameset():
         if ax is None:
             ax = new_axes()
         if norm_range is None:
-            norm = Normalize(vmin=self.edge.map_range[0],
-                             vmax=self.edge.map_range[1])
-        else:
-            norm = Normalize(vmin=norm_range[0], vmax=norm_range[1])
-        extent = self.extent()
+            norm_range = (self.edge.map_range[0], self.edge.map_range[1])
+        # Construct a discrete normalizer so the colorbar is also discrete
+        norm = Normalize(norm_range[0], norm_range[1])
+        cmap = cm.get_cmap(self.cmap)
+        energies = np.array(self.edge.energies())
+        energies = energies[(norm_range[0] <= energies) & (energies <= norm_range[1])]
+        norm = BoundaryNorm(energies, cmap.N)
         # Plot chemical map (on top of absorbance image, if present)
+        extent = self.extent()
         ax.imshow(self.masked_map(), extent=extent,
                   cmap=self.cmap, norm=norm, alpha=alpha)
         # Add colormap to the side of the axes
         mappable = cm.ScalarMappable(norm=norm, cmap=self.cmap)
-        mappable.set_array(np.arange(0, 2))
-        cbar = pyplot.colorbar(mappable, ax=ax)
+        mappable.set_array(np.arange(0, 3))
+        cbar = pyplot.colorbar(mappable, ax=ax,
+                               ticks=energies[0:-1],
+                               spacing="proportional")
         cbar.ax.xaxis.get_major_formatter().set_useOffset(False)
         # Decorate axes labels, etc
         ax.set_xlabel("TODO: Adjust extent when zooming and cropping! (µm)")

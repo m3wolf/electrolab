@@ -3,12 +3,21 @@
 from matplotlib import pyplot
 from matplotlib.ticker import ScalarFormatter
 
+class ElectronVoltFormatter(ScalarFormatter):
+    """Matplotlib formatter for showing energies as electon-volts."""
+    def __call__(self, *args, **kwargs):
+        formatted_value = super().__call__(*args, **kwargs)
+        formatted_value = "{value} eV".format(value=formatted_value)
+        return formatted_value
+
+
 class DegreeFormatter(ScalarFormatter):
     """Matplotlib formatter for showing angles with the degree symbol."""
     def __call__(self, *args, **kwargs):
         formatted_value = super().__call__(*args, **kwargs)
         formatted_value = "{value}°".format(value=formatted_value)
         return formatted_value
+
 
 def remove_extra_spines(ax):
     """Removes the right and top borders from the axes."""
