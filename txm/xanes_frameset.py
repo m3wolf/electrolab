@@ -420,8 +420,8 @@ class XanesFrameset():
         if ax is None:
             ax = new_axes()
         data = self.mean_image()
-        ax.imshow(data, extent=self.extent(), cmap='gray')
-        return ax
+        artist = ax.imshow(data, extent=self.extent(), cmap='gray')
+        return artist
 
     def mean_image(self):
         """Determine an overall image by taken the mean intensity of each
@@ -573,7 +573,8 @@ class XanesFrameset():
         """Determine physical dimensions for axes values."""
         return self[0].extent()
 
-    def plot_map(self, ax=None, norm_range=None, alpha=1, edge_jump_filter=False):
+    def plot_map(self, ax=None, norm_range=None, alpha=1,
+                 edge_jump_filter=False, return_type="axes"):
         if ax is None:
             ax = new_axes()
         if norm_range is None:
@@ -586,8 +587,8 @@ class XanesFrameset():
         norm = BoundaryNorm(energies, cmap.N)
         # Plot chemical map (on top of absorbance image, if present)
         extent = self.extent()
-        ax.imshow(self.masked_map(edge_jump_filter=edge_jump_filter),
-                  extent=extent, cmap=self.cmap, norm=norm, alpha=alpha)
+        artist = ax.imshow(self.masked_map(edge_jump_filter=edge_jump_filter),
+                           extent=extent, cmap=self.cmap, norm=norm, alpha=alpha)
         # Add colormap to the side of the axes
         mappable = cm.ScalarMappable(norm=norm, cmap=self.cmap)
         mappable.set_array(np.arange(0, 3))
@@ -598,7 +599,11 @@ class XanesFrameset():
         # Decorate axes labels, etc
         ax.set_xlabel("TODO: Adjust extent when zooming and cropping! (µm)")
         ax.set_ylabel("µm")
-        return ax
+        if return_type == "artist":
+            ret = artist
+        else:
+            ret = axes
+        return ret
 
     def plot_histogram(self, ax=None, norm_range=None):
         if ax is None:
@@ -689,6 +694,21 @@ class XanesFrameset():
         new_dataset = frame.create_dataset(setname=setname,
                                            hdf_group=frames_group)
         return setname
+
+    def background_normalizer(self):
+        # Find global limits
+        global_min = 0
+        global_max = 99999999999
+        bg_group = self.background_group()
+        for key in bg_group.keys():
+            data = bg_group[key].value
+            local_min = np.min(data)
+            if local_min < global_min:
+                global_min = local_min
+            local_max = np.max(data)
+            if local_max < global_max:
+                global_max = local_max
+        return Normalize(global_min, global_max)
 
     def normalizer(self):
         # Find global limits
