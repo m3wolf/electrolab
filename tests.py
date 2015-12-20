@@ -34,7 +34,9 @@ from adapters.bruker_raw_file import BrukerRawFile
 from adapters.bruker_brml_file import BrukerBrmlFile
 from refinement import fullprof, native
 from txm.edges import Edge
-from txm.frame import average_frames, TXMFrame, xy_to_pixel, pixel_to_xy, Extent, Pixel
+from txm.frame import (
+    average_frames, TXMFrame, xy_to_pixel, pixel_to_xy, Extent, Pixel,
+    rebin_image, apply_reference)
 from txm.xanes_frameset import XanesFrameset
 from txm.importers import import_txm_framesets
 from txm import xanes_frameset
@@ -202,24 +204,24 @@ class TXMFrameTest(HDFTestCase):
 
     def test_rebinning(self):
         frame = TXMFrame()
-        # Check for rebinning by shape
-        original_data = [
+        original_data = np.array([
             [1., 1., 3., 3.],
             [2, 2, 5, 5],
             [5, 6, 7, 9],
             [8, 12, 11, 10],
-        ]
-        frame.image_data = self.hdf_file.create_dataset(
-            name = 'rebinning_data',
-            chunks = True,
-            data = original_data
+        ])
+        # Check that binning to same shape return original array
+        result_data = rebin_image(original_data, shape=(4, 4))
+        self.assertTrue(
+            result_data is original_data
         )
-        frame.rebin(shape=(2, 2))
-        expected_data = [
-            [6/4, 16/4],
-            [31/4, 37/4]
-        ]
-        self.assertTrue(np.array_equal(frame.image_data, expected_data))
+        # Check for rebinning by shape
+        result_data = rebin_image(original_data, shape=(2, 2))
+        expected_data = np.array([
+            [6, 16],
+            [31, 37]
+        ])
+        self.assertTrue(np.array_equal(result_data, expected_data))
         # Check for rebinning by factor
         frame.image_data = self.hdf_file.create_dataset(
             name = 'rebinning_data_factor',
@@ -236,6 +238,36 @@ class TXMFrameTest(HDFTestCase):
             frame.rebin(factor=0.5)
         with self.assertRaisesRegex(ValueError, 'larger than original shape'):
             frame.rebin(shape=(6, 6))
+
+    def test_subtract_background(self):
+        data = np.array([
+            [10, 1],
+            [0.1, 50]
+        ])
+        background = np.array([
+            [100, 100],
+            [100, 100]
+        ])
+        expected = np.array([
+            [1, 2],
+            [3, math.log10(2)]
+        ])
+        result = apply_reference(data, background)
+        self.assertTrue(
+            np.array_equal(result, expected)
+        )
+        # Check that uneven samples are rebinned
+        data = np.array([
+            [12, 8, 2.4, 0],
+            [9, 11, 0, 1.6],
+            [0.12, 0.08, 48, 50],
+            [0.09, 0.11, 52, 50],
+        ])
+        result = apply_reference(data, background)
+        # print(result)
+        self.assertTrue(
+            np.array_equal(result, expected)
+        )
 
 
 class ElectrolabTestCase(unittest.TestCase):

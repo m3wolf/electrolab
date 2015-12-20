@@ -30,6 +30,11 @@ def import_txm_framesets(directory, hdf_filename=None, flavor='ssrl'):
             directory,
             "{basename}.hdf".format(basename=new_filename)
         )
+    if os.path.exists(hdf_filename):
+        msg = "File {} already exists. Try using the `hdf_filename` argument"
+        raise exceptions.FileExistsError(
+            msg.format(os.path.basename(hdf_filename))
+        )
     print('Saving to HDF5 file: {}'.format(hdf_filename))
     hdf_file = h5py.File(hdf_filename)
     # Find a unique name for the background frames
@@ -90,7 +95,7 @@ def import_txm_framesets(directory, hdf_filename=None, flavor='ssrl'):
     # Apply reference collection and convert to absorbance frames
     print('Imported samples', [fs.hdf_group().name for fs in frameset_list])
     for frameset in frameset_list:
-        frameset.subtract_background(bg_groupname)
+        frameset.apply_references(bg_groupname=bg_groupname)
     return frameset_list
 
 

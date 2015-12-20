@@ -602,13 +602,37 @@
               <object class="GtkSwitch" id="BackgroundSwitch">
                 <property name="visible">True</property>
                 <property name="can_focus">True</property>
-                <signal name="activate" handler="toggle-map-background" swapped="no"/>
                 <signal name="state-set" handler="toggle-map-background" swapped="no"/>
               </object>
               <packing>
                 <property name="expand">False</property>
                 <property name="fill">True</property>
                 <property name="position">5</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkLabel" id="EdgeJumpLabel">
+                <property name="visible">True</property>
+                <property name="can_focus">False</property>
+                <property name="margin_left">15</property>
+                <property name="label" translatable="yes">Edge Jump:</property>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">6</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkSwitch" id="EdgeJumpSwitch">
+                <property name="visible">True</property>
+                <property name="can_focus">True</property>
+                <signal name="state-set" handler="toggle-edge-jump" swapped="no"/>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">7</property>
               </packing>
             </child>
             <child>
@@ -621,7 +645,7 @@
               <packing>
                 <property name="expand">False</property>
                 <property name="fill">True</property>
-                <property name="position">6</property>
+                <property name="position">8</property>
               </packing>
             </child>
             <child>
@@ -633,7 +657,7 @@
               <packing>
                 <property name="expand">False</property>
                 <property name="fill">True</property>
-                <property name="position">7</property>
+                <property name="position">9</property>
               </packing>
             </child>
           </object>

@@ -27,6 +27,58 @@ position = namedtuple('position', ('x', 'y', 'z'))
 Extent = namedtuple('extent', ('left', 'right', 'bottom', 'top'))
 Pixel = namedtuple('pixel', ('vertical', 'horizontal'))
 
+def rebin_image(data, shape):
+    """Resample image into new shape, but only if the new dimensions are
+    smaller than the old. This is not meant to apply zoom corrections,
+    only correct sizes in powers of two. Eg, a 2048x2048 images can be
+    down-sampled to 1024x1024.
+
+    Kwargs:
+    -------
+    shape (tuple): The target shape for the new array.
+
+    """
+    # Return original data is shapes are the same
+    if data.shape == shape:
+        return data
+    # Check that the new shape is not larger than the old shape
+    for idx, dim in enumerate(shape):
+        if dim > data.shape[idx]:
+            msg = 'New shape {new} is larger than original shape {original}.'
+            msg = msg.format(new=shape, original=data.shape)
+            raise ValueError(msg)
+    # Determine new dimensions
+    sh = (shape[0],
+          data.shape[0]//shape[0],
+          shape[1],
+          data.shape[1]//shape[1])
+    # new_data = data.reshape(sh).mean(-1).mean(1)
+    new_data = data.reshape(sh).sum(-1).sum(1)
+    return new_data
+
+def apply_reference(data, reference_data):
+    """Apply a reference correction to a raw image. This turns intensity
+    data into absorbance data. If data and reference data have
+    different shapes, they will be down-samples to the lower of the
+    two.
+
+    Arguments:
+    ----------
+    data (numpy array): The sample image to be corrected.
+
+    reference_data (numpy array): The reference data that will be corrected against.
+
+    """
+    # Rebin datasets in case they don't match
+    min_shape = [
+        min([ds.shape[0] for ds in [data, reference_data]]),
+        min([ds.shape[1] for ds in [data, reference_data]]),
+    ]
+    reference_data = rebin_image(reference_data, shape=min_shape)
+    data = rebin_image(data, shape=min_shape)
+    new_data = np.log10(reference_data/data)
+    return new_data
+
 def xy_to_pixel(xy, extent, shape):
     """Take an xy location on an image and convert it to a pixel location
     suitable for numpy indexing."""
@@ -226,7 +278,8 @@ class TXMFrame():
     def rebin(self, shape=None, factor=None):
         """Resample image into new shape. One of the kwargs `shape` or
         `factor` is required. Process is most effective when factors
-        are powers of 2 (2, 4, 8, 16, etc).
+        are powers of 2 (2, 4, 8, 16, etc). New shape is calculated
+        and passed to the rebin_image() function.
 
         Kwargs:
         -------
@@ -245,19 +298,8 @@ class TXMFrame():
             new_shape = tuple(int(dim/factor) for dim in original_shape)
         else:
             new_shape = shape
-        # Check that the new shape is not larger than the old shape
-        for idx, dim in enumerate(new_shape):
-            if dim > original_shape[idx]:
-                msg = 'New shape {new} is larger than original shape {original}.'
-                msg = msg.format(new=new_shape, original=original_shape)
-                raise ValueError(msg)
-        data = self.image_data.value
-        # Determine new dimensions
-        sh = (new_shape[0],
-              data.shape[0]//new_shape[0],
-              new_shape[1],
-              data.shape[1]//new_shape[1])
-        new_data = data.reshape(sh).mean(-1).mean(1)
+        # Calculate new, rebinned image data
+        new_data = rebin_image(self.image_data.value, shape=new_shape)
         # Resize existing dataset
         self.image_data.resize(new_shape)
         self.image_data.write_direct(new_data)

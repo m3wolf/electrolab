@@ -15,7 +15,9 @@ import numpy as np
 from skimage import morphology, filters, feature, transform
 
 from utilities import display_progress, xycoord
-from .frame import TXMFrame, average_frames, calculate_particle_labels
+from .frame import (
+    TXMFrame, average_frames, calculate_particle_labels, pixel_to_xy,
+    apply_reference)
 from .gtk_viewer import GtkTxmViewer
 from plots import new_axes, DegreeFormatter, ElectronVoltFormatter
 import exceptions
@@ -31,13 +33,13 @@ def build_dataframe(frames):
 
 class XanesFrameset():
     _attrs = {}
-    active_groupname = None # HDFAttribute('active_groupname')
+    active_groupname = None
     latest_groupname = HDFAttribute('latest_groupname')
     background_groupname = HDFAttribute('background_groupname')
     active_particle_idx = HDFAttribute('active_particle_idx', default=None,
                                        group_func='active_group')
     latest_labels = HDFAttribute('latest_labels', default='particle_labels')
-    map_name = HDFAttribute('map_name')
+    map_name = HDFAttribute('map_name', group_func='active_group')
     cmap = 'plasma'
     def __init__(self, filename, groupname, edge=None):
         self.hdf_filename = filename
@@ -110,13 +112,15 @@ class XanesFrameset():
         except KeyError:
             pass
         # Copy the old data
-        # dest = self.hdf_group().create_group(name)
-        # print(self.active_groupname, dest)
         self.hdf_group().copy(source=self.active_groupname, dest=name)
-        # self.hdf_group().copy(source=self.active_groupname, dest=name)
         # Update the group name
         self.latest_groupname = name
         self.switch_group(name)
+        # Delete reference to the old map (rather recalculate than risk a stale map)
+        try:
+            del self.map_name
+        except KeyError:
+            pass
 
     def fork_labels(self, name):
         # Create a new group
@@ -133,16 +137,24 @@ class XanesFrameset():
         self.active_labels_groupname = name
         return labels_group
 
-    def subtract_background(self, bg_groupname):
+    def apply_references(self, bg_groupname):
+        """Apply reference corrections for this frameset. Converts raw
+        intensity frames to absorbance frames."""
         self.background_groupname = bg_groupname
         self.fork_group('absorbance_frames')
         bg_group = self.hdf_file()[bg_groupname]
-        for energy in display_progress(self.active_group().keys(),
-                                       "Applying reference corrections"):
-            sample_dataset = self.active_group()[energy]
-            bg_dataset = bg_group[energy]
-            new_data = np.log10(bg_dataset.value/sample_dataset.value)
-            sample_dataset.write_direct(new_data)
+        # for energy in display_progress(self.active_group().keys(),
+        #                                "Applying reference corrections"):
+        for frame in self:
+            key = frame.image_data.name.split('/')[-1]
+            bg_dataset = bg_group[key]
+            new_data = apply_reference(frame.image_data.value,
+                                       reference_data=bg_dataset.value)
+            # Resize the dataset if necessary
+            if new_data.shape != frame.image_data.shape:
+                frame.image_data.resize(new_data.shape)
+            frame.image_data.write_direct(new_data)
+        # self.hdf_file().close()
 
     def correct_magnification(self):
         """Correct for changes in magnification at different energies.
@@ -194,11 +206,11 @@ class XanesFrameset():
         queue.join()
 
     def align_frames(self, particle_idx=None, particle_loc=None,
-                     reference_frame=0):
+                     new_name="aligned_frames", reference_frame=0):
         """Use phase correlation algorithm to line up the frames."""
         # Create new data groups to hold shifted image data
-        self.fork_group('aligned_particle')
-        self.fork_labels('aligned_labels')
+        self.fork_group(new_name)
+        self.fork_labels(new_name + "_labels")
         reference_image = self[reference_frame].image_data.value
         # Determine which particle to use
         if particle_idx is not None:
@@ -306,10 +318,10 @@ class XanesFrameset():
             #                  dataset=frame.particle_labels())
         queue.join()
 
-    def crop_to_particle(self):
+    def crop_to_particle(self, new_name='cropped_particle'):
         """Reduce the image size to just show the particle in question."""
         # Create new HDF5 groups
-        self.fork_group('cropped_particle')
+        self.fork_group(new_name)
         self.fork_labels('cropped_labels')
         # Determine largest bounding box based on all energies
         boxes = [frame.particles()[frame.active_particle_idx].bbox()
@@ -409,6 +421,7 @@ class XanesFrameset():
             ax = new_axes()
         data = self.mean_image()
         ax.imshow(data, extent=self.extent(), cmap='gray')
+        return ax
 
     def mean_image(self):
         """Determine an overall image by taken the mean intensity of each
@@ -447,8 +460,9 @@ class XanesFrameset():
                 # Sum absorbances for datasets
                 intensity = np.sum(masked_data)/np.prod(masked_data.shape)
             else:
-                # Calculate intensity just for one (masked) pixel
+                # Calculate intensity just for one (unmasked) pixel
                 intensity = data[pixel.vertical][pixel.horizontal]
+                # intensity = data[pixel.vertical][pixel.horizontal]
             # Add to cumulative arrays
             intensities.append(intensity)
             energies.append(frame.energy)
@@ -456,7 +470,9 @@ class XanesFrameset():
         series = pd.Series(intensities, index=energies)
         return series
 
-    def plot_xanes_spectrum(self, ax=None, pixel=None):
+    def plot_xanes_spectrum(self, ax=None, pixel=None, norm_range=None):
+        if norm_range is None:
+            norm_range = (self.edge.map_range[0], self.edge.map_range[1])
         spectrum = self.xanes_spectrum(pixel=pixel)
         if ax is None:
             ax = new_axes()
@@ -464,8 +480,25 @@ class XanesFrameset():
         ax.set_xlabel('Energy /eV')
         ax.set_ylabel('Absorbance')
         if pixel is not None:
-            title = 'XANES Spectrum at ({x}, {y})'
-            ax.set_title(title.format(x=pixel.horizontal, y=pixel.vertical))
+            xy = pixel_to_xy(pixel, extent=self.extent(), shape=self.map_shape())
+            title = 'XANES Spectrum at ({x}, {y}) - {val}'
+            title = title.format(x=round(xy.x, 2),
+                                 y=round(xy.y, 2),
+                                 val=self.masked_map()[pixel.vertical][pixel.horizontal])
+            ax.set_title(title)
+        # Plot lines at edge of normalization range
+        ax.axvline(x=norm_range[0], linestyle='-', color="0.55", alpha=0.4)
+        ax.axvline(x=norm_range[1], linestyle='-', color="0.55", alpha=0.4)
+        return ax
+
+    def plot_edge_jump(self, ax=None, alpha=1):
+        """Plot the results of the edge jump filter."""
+        if ax is None:
+            ax = new_axes()
+        ej = self.edge_jump_filter()
+        ax.imshow(ej, extent=self.extent(), cmap=self.cmap, alpha=alpha)
+        ax.set_xlabel('µm')
+        ax.set_ylabel('µm')
         return ax
 
     def edge_jump_filter(self):
@@ -492,22 +525,25 @@ class XanesFrameset():
         # Apply normalizer? (maybe later)
         return filtered_img
 
-    def calculate_map(self):
+    def calculate_map(self, new_name=None):
         """Generate a map based on pixel-wise Xanes spectra. Default is to
         compute X-ray whiteline position."""
+        # Get default hdf group name
+        if new_name is None:
+            new_name = "{parent}/{group}_map".format(parent=self.parent_groupname,
+                                                     group=self.active_groupname)
         # Get map data
         map_data = self.whiteline_map()
         # Create dataset
-        name = self.hdf_group().name + "_map"
         try:
-            del self.hdf_file()[name]
+            del self.hdf_file()[new_name]
         except KeyError:
             pass
-        self.hdf_file().create_dataset(name, data=map_data)
-        self.map_name = name
-        return self.hdf_file()[name]
+        self.hdf_file().create_dataset(new_name, data=map_data)
+        self.map_name = new_name
+        return self.hdf_file()[new_name]
 
-    def masked_map(self):
+    def masked_map(self, edge_jump_filter=True):
         """Generate a map based on pixel-wise Xanes spectra and apply an
         edge-jump filter mask. Default is to compute X-ray whiteline
         position.
@@ -517,12 +553,16 @@ class XanesFrameset():
             map_data = self.calculate_map()
         else:
             map_data = self.hdf_file()[self.map_name]
-        # Apply edge jump mask
-        edge_jump = self.edge_jump_filter()
-        threshold = filters.threshold_otsu(edge_jump)
-        mask = edge_jump > threshold
-        mask = morphology.dilation(mask)
-        mask = np.logical_not(mask)
+        if edge_jump_filter:
+            # Apply edge jump mask
+            edge_jump = self.edge_jump_filter()
+            threshold = filters.threshold_otsu(edge_jump)
+            mask = edge_jump > threshold
+            mask = morphology.dilation(mask)
+            mask = np.logical_not(mask)
+        else:
+            # No-op filter
+            mask = np.zeros_like(map_data)
         masked_map = np.ma.array(map_data, mask=mask)
         return masked_map
 
@@ -533,7 +573,7 @@ class XanesFrameset():
         """Determine physical dimensions for axes values."""
         return self[0].extent()
 
-    def plot_map(self, ax=None, norm_range=None, alpha=1):
+    def plot_map(self, ax=None, norm_range=None, alpha=1, edge_jump_filter=False):
         if ax is None:
             ax = new_axes()
         if norm_range is None:
@@ -546,8 +586,8 @@ class XanesFrameset():
         norm = BoundaryNorm(energies, cmap.N)
         # Plot chemical map (on top of absorbance image, if present)
         extent = self.extent()
-        ax.imshow(self.masked_map(), extent=extent,
-                  cmap=self.cmap, norm=norm, alpha=alpha)
+        ax.imshow(self.masked_map(edge_jump_filter=edge_jump_filter),
+                  extent=extent, cmap=self.cmap, norm=norm, alpha=alpha)
         # Add colormap to the side of the axes
         mappable = cm.ScalarMappable(norm=norm, cmap=self.cmap)
         mappable.set_array(np.arange(0, 3))
@@ -602,6 +642,7 @@ class XanesFrameset():
         try:
             file = h5py.File(self.hdf_filename, 'r+')
         except OSError as e:
+            print(e)
             # HDF File does not exist, make a new one
             print('Creating new HDF5 file: {}'.format(self.hdf_filename))
             file = h5py.File(self.hdf_filename, 'w-')

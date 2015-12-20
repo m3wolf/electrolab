@@ -18,6 +18,7 @@ class GtkTxmViewer():
     active_xy = None
     map_crosshairs = None
     show_map_background = True
+    apply_edge_jump = False
     """View a XANES frameset using a Gtk GUI."""
     def __init__(self, frameset):
         self.frameset = frameset
@@ -70,15 +71,19 @@ class GtkTxmViewer():
             'change-active-group': self.change_active_group,
             'launch-map-window': self.launch_map_window,
             'toggle-map-background': self.toggle_map_background,
+            'toggle-edge-jump': self.toggle_edge_jump,
         }
         self.builder.connect_signals(handlers)
         # self.image = self.current_frame().plot_image(ax=self.image_ax,  animated=True)
         self.update_window()
         self.window.connect('delete-event', self.quit)
 
+    def toggle_edge_jump(self, widget, object=None):
+        self.apply_edge_jump = widget.get_active()
+        self.draw_map()
+        self.update_map_window()
+
     def toggle_map_background(self, widget, object=None):
-        # print(widget.get_active())
-        # print(dir(widget))
         self.show_map_background = widget.get_active()
         self.draw_map()
         self.update_map_window()
@@ -88,24 +93,22 @@ class GtkTxmViewer():
         Gtk.main_quit()
 
     def draw_map(self):
-        # print(self.map_ax.figure.axes)
-        # self.map_ax.clear()
         figure = self.map_ax.figure
         figure.clear()
         self.map_ax = figure.gca()
         self.map_crosshairs = None
-        # # Remove colorbar
-        # figure = self.map_ax.figure
-        # figure.delaxes(figure.axes[1])
-        # figure.subplots_adjust(right=0.9)
         if self.show_map_background:
             # Plot the absorbance background image
             self.frameset.plot_mean_image(ax=self.map_ax)
-            alpha = 0.5
+            alpha = 0.4
         else:
             alpha = 1
-        # Plot the overall map
-        self.frameset.plot_map(ax=self.map_ax, alpha=alpha)
+        # if self.apply_edge_jump:
+        # else:
+        #     # Plot the overall map
+        self.frameset.plot_map(ax=self.map_ax,
+                               alpha=alpha,
+                               edge_jump_filter=self.apply_edge_jump)
         self.map_ax.figure.canvas.draw()
 
     def launch_map_window(self, widget):
@@ -153,8 +156,8 @@ class GtkTxmViewer():
         if self.active_pixel is None:
             s = "None"
         else:
-            s = "({x}, {y})".format(x=self.active_xy.x,
-                                    y=self.active_xy.y)
+            s = "(H:{h}, V:{v})".format(h=self.active_pixel.horizontal,
+                                        v=self.active_pixel.vertical)
         label = self.builder.get_object("ActivePixelLabel")
         label.set_text(s)
         # Remove old cross-hairs
