@@ -206,7 +206,7 @@ class XanesFrameset():
         queue.join()
 
     def align_frames(self, particle_idx=None, particle_loc=None,
-                     new_name="aligned_frames", reference_frame=0):
+                     new_name="aligned_frames", reference_frame=-1):
         """Use phase correlation algorithm to line up the frames."""
         # Create new data groups to hold shifted image data
         self.fork_group(new_name)
@@ -511,10 +511,10 @@ class XanesFrameset():
         if ax is None:
             ax = new_axes()
         ej = self.edge_jump_filter()
-        ax.imshow(ej, extent=self.extent(), cmap=self.cmap, alpha=alpha)
+        artist = ax.imshow(ej, extent=self.extent(), cmap=self.cmap, alpha=alpha)
         ax.set_xlabel('µm')
         ax.set_ylabel('µm')
-        return ax
+        return artist
 
     def edge_jump_filter(self):
         """Calculate an image mask filter that represents the difference in
@@ -572,7 +572,7 @@ class XanesFrameset():
             # Apply edge jump mask
             edge_jump = self.edge_jump_filter()
             threshold = filters.threshold_otsu(edge_jump)
-            mask = edge_jump > threshold
+            mask = edge_jump > 0.5 * threshold
             mask = morphology.dilation(mask)
             mask = np.logical_not(mask)
         else:

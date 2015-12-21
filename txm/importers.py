@@ -99,6 +99,9 @@ def import_txm_framesets(directory, hdf_filename=None, flavor='ssrl'):
     # Apply magnification (zoom) correction
     for frameset in frameset_list:
         frameset.correct_magnification()
+    # Identify particles
+    for frameset in frameset_list:
+        frameset.label_particles()
     return frameset_list
 
 
