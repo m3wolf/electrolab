@@ -2,10 +2,11 @@ from collections import namedtuple
 
 xycoord = namedtuple('xycoord', ('x', 'y'))
 
-def display_progress(objs, operation='Status'):
+def display_progress(objs, operation='Working'):
     """
     Display the progress of the current operation via print statements.
     """
+    print("{operation}...".format(operation=operation), end='\r')
     ctr = 1
     total = len(objs)
     for obj in objs:

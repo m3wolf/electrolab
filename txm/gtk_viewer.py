@@ -4,7 +4,7 @@ import gi
 gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk, Gdk, GObject
 from matplotlib.backends.backend_gtk3agg import FigureCanvasGTK3Agg as FigureCanvas
-from matplotlib import figure, pyplot
+from matplotlib import figure, pyplot, animation
 import numpy as np
 
 from utilities import xycoord
@@ -20,6 +20,8 @@ class GtkTxmViewer():
     show_map = True
     show_map_background = True
     apply_edge_jump = False
+    _current_idx = 0
+    animation_delay = 1000/60
     """View a XANES frameset using a Gtk GUI."""
     def __init__(self, frameset):
         self.frameset = frameset
@@ -30,14 +32,24 @@ class GtkTxmViewer():
         self.builder.add_from_file(gladefile)
         self.window = self.builder.get_object('XanesViewerWindow')
         self.window.set_default_size(1000, 1000)
+        # self.window.maximize()
         self.map_window = self.builder.get_object('MapViewerWindow')
-        # Put the non-glade things in the window
-        self.create_axes()
         # Set some initial values
         slider = self.builder.get_object('FrameSlider')
         self.current_adj = self.builder.get_object('CurrentFrame')
         self.current_adj.set_property('upper', len(self.frameset)-1)
         self.xanes_spectrum = frameset.xanes_spectrum()
+        # Put the non-glade things in the window
+        self.create_axes()
+        # Prepare animation
+        self.event_source = ChangeFrameSource(viewer=self)
+        self.frame_animation = FrameAnimation(fig=self.image_ax.figure,
+                                              artists=[],
+                                              viewer=self,
+                                              event_source=self.event_source,
+                                              blit=True)
+        # Draw artists for images
+        self.create_artists()
         # Populate the combobox with list of available HDF groups
         self.group_combo = self.builder.get_object('ActiveGroupCombo')
         self.group_list = Gtk.ListStore(str, str)
@@ -61,6 +73,7 @@ class GtkTxmViewer():
         handlers = {
             'gtk-quit': Gtk.main_quit,
             'previous-frame': self.previous_frame,
+            'create-artists': self.create_artists,
             'next-frame': self.next_frame,
             'play-frames': self.play_frames,
             'last-frame': self.last_frame,
@@ -118,7 +131,6 @@ class GtkTxmViewer():
         self.map_ax.figure.canvas.draw()
 
     def hide_map_window(self, widget, object=None):
-        print(widget)
         self.map_window.hide()
         return True
 
@@ -247,6 +259,7 @@ class GtkTxmViewer():
             self.normalizer = self.frameset.background_normalizer()
         else:
             self.normalizer = self.frameset.normalizer()
+        self.create_artists()
         self.update_window()
 
     @property
@@ -266,11 +279,19 @@ class GtkTxmViewer():
 
     def toggle_particles(self, widget):
         self.show_particles = not self.show_particles
+        self.create_artists()
         self.update_window()
 
     def play_frames(self, widget):
         self.play_mode = widget.get_property('active')
-        GObject.timeout_add(0, self.next_frame, None)
+        if self.play_mode:
+            GObject.timeout_add(self.animation_delay, self.next_frame, None)
+        # self.image_artists = []
+        # im_ani = FrameAnimation(self.image_ax.figure, self.frame_artists,
+        #                         viewer=self, interval=50, blit=False,
+        #                         repeat=False)
+        # self.image_ax.figure.canvas.draw()
+        # widget.set_active(False)
 
     def first_frame(self, widget):
         self.current_idx = 0
@@ -306,8 +327,45 @@ class GtkTxmViewer():
         canvas.set_size_request(300, 300)
         xanes_window = self.builder.get_object("XanesWindow")
         xanes_window.add(canvas)
+        # self.frame_artist = frame.plot_image(ax=self.image_ax,
+        #                                      show_particles=False,
+        #                                      norm=self.normalizer)
+        # self.particles_artist = frame.plot_particle_labels(ax=self.image_ax,
+        #                                                    extent=frame.extent())
         self.xanes_ax = fig.gca()
         self.draw_xanes_spectrum()
+
+    def create_artists(self, *args, **kwargs):
+        """Prepare artist objects and animate them for easy transitioning."""
+        frame_artists = []
+        # Get image artits
+        for frame in self.progress_modal(self.frameset, 'Preparing images'):
+            new_artist = frame.plot_image(ax=self.image_ax,
+                                         show_particles=False,
+                                          norm=self.normalizer,
+                                          animated=True)
+            new_artist.set_visible(False)
+            frame_artists.append(new_artist)
+        if self.show_particles:
+            # Get particle labels artists
+            particles_artists = []
+            for frame in self.progress_modal(self.frameset, 'Preparing images'):
+                new_artist = frame.plot_particle_labels(ax=self.image_ax,
+                                                        norm=self.normalizer,
+                                                        extent=frame.extent(),
+                                                        animated=True)
+                new_artist.set_visible(False)
+                particles_artists.append(new_artist)
+            artists = list(zip(frame_artists, particles_artists))
+        else:
+            artists = list(zip(frame_artists))
+        # Destroy old animation
+        # if hasattr(self, 'frame_animation'):
+        #     del self.frame_animation
+        self.frame_animation.artists = artists
+        self.current_idx = self.current_idx
+        # Trigger a reset
+        self.event_source.update()
 
     def draw_xanes_spectrum(self):
         self.xanes_ax.clear()
@@ -333,8 +391,8 @@ class GtkTxmViewer():
                                       round(self.normalizer.vmax, 2))
         norm_label.set_text(norm_text)
         # Re-draw each frame
-        self.image_ax.clear()
-        self.image_ax.set_aspect(1)
+        # self.image_ax.clear()
+        # self.image_ax.set_aspect(1)
         # Determine what type of data to present
         key = self.current_frame().image_data.name.split('/')[-1]
         norm = self.normalizer
@@ -342,11 +400,24 @@ class GtkTxmViewer():
             data = self.frameset.hdf_file()[self.frameset.background_groupname][key]
         else:
             data = None
-        img_ax = self.current_frame().plot_image(data = data,
-                                                 ax=self.image_ax,
-                                                 norm=norm,
-                                                 show_particles=self.show_particles)
-        self.image_ax.figure.canvas.draw()
+        # self.frame_artist.set_data(current_frame.image_data)
+        # Clear stale artists from the plot
+        # for artist in self.visible_artists:
+        #     artist.set_visible(False)
+        # Show the new artists
+        # frame_artist, = self.frame_artists[self.current_idx]
+        # frame_artist.set_visible(True)
+        # frame.visible_artists = [frame_artist]
+        # Show labels
+        # if self.show_particles and self.particles_artists:
+        #     self.particles_artist.set_alpha(0.3)
+        # elif self.particles_artists:
+        #     self.particles_artist.set_alpha(0)
+        # img_ax = self.current_frame().plot_image(data = data,
+        #                                          ax=self.image_ax,
+        #                                          norm=norm,
+        #                                          show_particles=self.show_particles)
+        # self.image_ax.figure.canvas.draw()
         # Remove old highlighted point from Xanes spectrum
         previous_highlight = getattr(self, 'xanes_highlight', None)
         if previous_highlight:
@@ -355,10 +426,23 @@ class GtkTxmViewer():
             except ValueError:
                 pass
         # Update the highlighted point on the Xanes spectrum plot
-        energy = current_frame.energy
-        intensity = self.xanes_spectrum[energy]
-        self.xanes_highlight = self.xanes_ax.plot([energy], [intensity], 'ro')
-        self.xanes_ax.figure.canvas.draw()
+        # energy = current_frame.energy
+        # intensity = self.xanes_spectrum[energy]
+        # self.xanes_highlight = self.xanes_ax.plot([energy], [intensity], 'ro')
+        # self.xanes_ax.figure.canvas.draw()
+
+    def progress_modal(self, objs, operation='Working'):
+        """
+        Display the progress of the current operation via print statements.
+        """
+        modal = self.builder.get_object("WaitingWindow")
+        modal.show_all()
+        ctr = 1
+        total = len(objs)
+        for obj in objs:
+            ctr += 1
+            yield obj
+        modal.hide()
 
     def show(self):
         self.window.show_all()
@@ -370,3 +454,92 @@ class GtkTxmViewer():
 
     def current_frame(self):
         return self.frameset[self.current_idx]
+
+class FrameIterator:
+    def __init__(self, objs, viewer):
+        self.objs = objs
+        self.viewer = viewer
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        return (self.objs[self.viewer.current_idx],)
+
+
+class FrameAnimation(animation.ArtistAnimation):
+    def __init__(self, fig, artists, viewer, *args, **kwargs):
+        self.fig = fig
+        self.artists = artists
+        self._framedata = artists
+        self.viewer = viewer
+        ret = super().__init__(*args, fig=fig, artists=artists, **kwargs)
+
+    @property
+    def artists(self):
+        return self._framedata
+
+    @artists.setter
+    def artists(self, value):
+        self._framedata = value
+
+    def __del__(self, *args, **kwargs):
+        self._stop()
+
+    def _step(self, current_idx):
+        artists = self._framedata[current_idx]
+        # if not self.viewer.show_particles:
+        #     artists = artists[0]
+        self._draw_next_frame(artists, self._blit)
+        self.viewer.update_window()
+        return True
+
+    # def _draw_frame(self, artists):
+    #     artists = self.artists[self.viewer.current_idx]
+    #     image_artist = artists[0]
+    #     particles_artist = artists[1]
+    #     image_artist.set_visible(True)
+    #     particles_artist.set_visible(False)
+    #     return True
+
+    # def new_frame_seq(self):
+    #     if self.viewer.show_particles:
+    #         artists = (self.viewer.frame_artists[self.viewer.current_idx],
+    #                    self.viewer.particles_artitst[self.viewer.current_idx])
+    #     else:
+    #         artists = (self.viewer.frame_artists[self.viewer.current_idx],)
+    #     return iter(artists)
+    #     return FrameIterator(self.artists, viewer=self.viewer)
+
+class ChangeFrameSource():
+    callbacks = []
+    def __init__(self, viewer):
+        self.viewer = viewer
+
+    def add_callback(self, func, *args, **kwargs):
+        self.callbacks.append((func, args, kwargs))
+
+    def remove_callback(self, func, *args, **kwargs):
+        if args or kwargs:
+            self.callbacks.remove((func, args, kwargs))
+        else:
+            funcs = [c[0] for c in self.callbacks]
+            if func in funcs:
+                self.callbacks.pop(funcs.index(func))
+
+    def start(self):
+        # Listen to the frame adjustment signals
+        if not hasattr(self, 'handler_id'):
+            self.handler_id = self.viewer.current_adj.connect('value-changed', self._on_change)
+
+    def stop(self):
+        if hasattr(self, 'handler_id'):
+            self.viewer.current_adj.disconnect(self.handler_id)
+            del self.handler_id
+
+    def update(self, widget=None, object=None):
+        return self._on_change(widget, object)
+
+    def _on_change(self, widget=None, object=None):
+        for func, args, kwargs in self.callbacks:
+            func(self.viewer.current_idx, *args, **kwargs)

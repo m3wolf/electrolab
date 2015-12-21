@@ -17,7 +17,7 @@ from skimage import morphology, filters, feature, transform
 from utilities import display_progress, xycoord
 from .frame import (
     TXMFrame, average_frames, calculate_particle_labels, pixel_to_xy,
-    apply_reference)
+    apply_reference, position)
 from .gtk_viewer import GtkTxmViewer
 from plots import new_axes, DegreeFormatter, ElectronVoltFormatter
 import exceptions
@@ -165,7 +165,7 @@ class XanesFrameset():
         make the magnification similar to that of the first frame.
         """
         # Fork groups
-        self.fork_group('magnified_frames')
+        # self.fork_group('magnified_frames')
         # Regression parameters
         slope=-0.00010558834052580277; intercept=1.871559636328671
         # Prepare multiprocessing objects
@@ -212,6 +212,12 @@ class XanesFrameset():
         self.fork_group(new_name)
         self.fork_labels(new_name + "_labels")
         reference_image = self[reference_frame].image_data.value
+        # Determine mean center
+        total_x, total_y, total_z = (0, 0, 0)
+        for frame in self:
+            total_x += frame.sample_position.x
+            total_y += frame.sample_position.y
+        new_position = position(x=total_x/len(self), y=total_y/len(self), z=None)
         # Determine which particle to use
         if particle_idx is not None:
             # Apply a mask if a particle is specified
@@ -236,9 +242,9 @@ class XanesFrameset():
             labels = labels.astype(np.float64)
             new_labels = transform.warp(labels, transformation, order=0, mode="wrap")
             new_labels = new_labels.astype(original_dtype)
-            return (key, new_data, new_labels)
+            return (key, new_data, new_labels, shift)
         def process_result(payload):
-            key, data, labels = payload
+            key, data, labels, shift = payload
             frame = self[key]
             frame.image_data.write_direct(data)
             frame.particle_labels().write_direct(labels)
@@ -262,6 +268,11 @@ class XanesFrameset():
             # Launch transformation for this frame
             queue.put((key, data, labels, mask))
         queue.join()
+        # Update new positions
+        for frame in display_progress(self, 'Updating frame positions'):
+            frame.sample_position = position(
+                x=new_position.x, y=new_position.y, z=frame.sample_position.z
+            )
 
     def align_to_particle(self, particle_loc=0):
         """Use the centroid position of given particle to align all the
@@ -318,11 +329,15 @@ class XanesFrameset():
             #                  dataset=frame.particle_labels())
         queue.join()
 
-    def crop_to_particle(self, new_name='cropped_particle'):
+    def crop_to_particle(self, new_name='cropped_particle', particle_loc=None):
         """Reduce the image size to just show the particle in question."""
         # Create new HDF5 groups
         self.fork_group(new_name)
         self.fork_labels('cropped_labels')
+        # Activate particle if necessary
+        if particle_loc is not None:
+            for frame in display_progress(self, 'Idetifying closest particle'):
+                particle = frame.activate_closest_particle(loc=particle_loc)
         # Determine largest bounding box based on all energies
         boxes = [frame.particles()[frame.active_particle_idx].bbox()
                  for frame in self]
@@ -602,7 +617,7 @@ class XanesFrameset():
         if return_type == "artist":
             ret = artist
         else:
-            ret = axes
+            ret = ax
         return ret
 
     def plot_histogram(self, ax=None, norm_range=None):

@@ -96,6 +96,9 @@ def import_txm_framesets(directory, hdf_filename=None, flavor='ssrl'):
     print('Imported samples', [fs.hdf_group().name for fs in frameset_list])
     for frameset in frameset_list:
         frameset.apply_references(bg_groupname=bg_groupname)
+    # Apply magnification (zoom) correction
+    for frameset in frameset_list:
+        frameset.correct_magnification()
     return frameset_list
 
 

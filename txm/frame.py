@@ -205,7 +205,7 @@ class TXMFrame():
         ax.set_xlabel('µm')
         ax.set_ylabel('µm')
         im_ax.set_extent(extent)
-        return ax
+        return im_ax
 
     def plot_particle_labels(self, ax=None, *args, **kwargs):
         """Plot the identified particles (as an overlay if ax is given)."""
