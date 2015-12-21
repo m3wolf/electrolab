@@ -193,7 +193,7 @@ class TXMFrame():
         """Plot a frame's data image. Use frame.image_data if no data are
         given."""
         if ax is None:
-            ax=plots.new_axes()
+            ax=plots.new_image_axes()
         if data is None:
             data = self.image_data
         extent = self.extent(shape=data.shape)
@@ -211,7 +211,7 @@ class TXMFrame():
         """Plot the identified particles (as an overlay if ax is given)."""
         if ax is None:
             opacity = 1
-            ax = plots.new_axes()
+            ax = plots.new_image_axes()
         else:
             opacity = 0.3
         if self.particle_labels_path:

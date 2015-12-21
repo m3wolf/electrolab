@@ -27,6 +27,11 @@ def remove_extra_spines(ax):
     ax.xaxis.set_ticks_position('bottom')
     return ax
 
+def set_outside_ticks(ax):
+    ax.get_yaxis().set_tick_params(which='both', direction='out')
+    ax.get_xaxis().set_tick_params(which='both', direction='out')
+    return ax
+
 def new_axes(height=5, width=None):
     """Create a new set of matplotlib axes for plotting. Height in inches."""
     # Adjust width to accomodate colorbar
@@ -40,6 +45,11 @@ def new_axes(height=5, width=None):
     # Remove borders
     remove_extra_spines(ax)
     return ax
+
+def new_image_axes(height=5, width=5):
+    """Square axes with ticks on the outside."""
+    ax = new_axes(height, width)
+    return set_outside_ticks(ax)
 
 def big_axes():
     return new_axes(height=9, width=16)

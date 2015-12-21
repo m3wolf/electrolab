@@ -19,7 +19,7 @@ from .frame import (
     TXMFrame, average_frames, calculate_particle_labels, pixel_to_xy,
     apply_reference, position)
 from .gtk_viewer import GtkTxmViewer
-from plots import new_axes, DegreeFormatter, ElectronVoltFormatter
+from plots import new_axes, new_image_axes, DegreeFormatter, ElectronVoltFormatter
 import exceptions
 from hdf import HDFAttribute
 import smp
@@ -433,7 +433,7 @@ class XanesFrameset():
 
     def plot_mean_image(self, ax=None):
         if ax is None:
-            ax = new_axes()
+            ax = new_image_axes()
         data = self.mean_image()
         artist = ax.imshow(data, extent=self.extent(), cmap='gray')
         return artist
@@ -488,15 +488,25 @@ class XanesFrameset():
     def plot_xanes_spectrum(self, ax=None, pixel=None, norm_range=None):
         if norm_range is None:
             norm_range = (self.edge.map_range[0], self.edge.map_range[1])
+            norm = Normalize(*norm_range)
         spectrum = self.xanes_spectrum(pixel=pixel)
         if ax is None:
             ax = new_axes()
-        ax.plot(spectrum, marker='o', linestyle=":")
+        # Color code the markers by energy
+        colors = []
+        for energy in spectrum.index:
+            cmap = cm.get_cmap(self.cmap)
+            colors.append(cmap(norm(energy)))
+        ax.plot(spectrum, linestyle=":")
+        xlim = ax.get_xlim(); ylim = ax.get_ylim()
+        ax.scatter(spectrum.index, spectrum.values, c=colors, s=25)
+        # Restore axes limits, they get messed up by scatter()
+        ax.set_xlim(*xlim); ax.set_ylim(*ylim)
         ax.set_xlabel('Energy /eV')
         ax.set_ylabel('Absorbance')
         if pixel is not None:
             xy = pixel_to_xy(pixel, extent=self.extent(), shape=self.map_shape())
-            title = 'XANES Spectrum at ({x}, {y}) - {val}'
+            title = 'XANES Spectrum at ({x}, {y}) = {val}'
             title = title.format(x=round(xy.x, 2),
                                  y=round(xy.y, 2),
                                  val=self.masked_map()[pixel.vertical][pixel.horizontal])
@@ -509,7 +519,7 @@ class XanesFrameset():
     def plot_edge_jump(self, ax=None, alpha=1):
         """Plot the results of the edge jump filter."""
         if ax is None:
-            ax = new_axes()
+            ax = new_image_axes()
         ej = self.edge_jump_filter()
         artist = ax.imshow(ej, extent=self.extent(), cmap=self.cmap, alpha=alpha)
         ax.set_xlabel('µm')
@@ -591,7 +601,7 @@ class XanesFrameset():
     def plot_map(self, ax=None, norm_range=None, alpha=1,
                  edge_jump_filter=False, return_type="axes"):
         if ax is None:
-            ax = new_axes()
+            ax = new_image_axes()
         if norm_range is None:
             norm_range = (self.edge.map_range[0], self.edge.map_range[1])
         # Construct a discrete normalizer so the colorbar is also discrete

@@ -4,11 +4,12 @@ import gi
 gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk, Gdk, GObject
 from matplotlib.backends.backend_gtk3agg import FigureCanvasGTK3Agg as FigureCanvas
-from matplotlib import figure, pyplot, animation
+from matplotlib import figure, pyplot, animation, gridspec
 import numpy as np
 
 from utilities import xycoord
 from txm.frame import Pixel, xy_to_pixel, pixel_to_xy
+import plots
 
 class GtkTxmViewer():
     play_mode = False
@@ -32,7 +33,7 @@ class GtkTxmViewer():
         self.builder.add_from_file(gladefile)
         self.window = self.builder.get_object('XanesViewerWindow')
         self.window.set_default_size(1000, 1000)
-        # self.window.maximize()
+        self.window.maximize()
         self.map_window = self.builder.get_object('MapViewerWindow')
         # Set some initial values
         slider = self.builder.get_object('FrameSlider')
@@ -116,7 +117,7 @@ class GtkTxmViewer():
     def draw_map(self):
         figure = self.map_ax.figure
         figure.clear()
-        self.map_ax = figure.gca()
+        self.map_ax = figure.gca() # Put new axes in place
         self.map_crosshairs = None
         # Plot the absorbance background image
         # self.bg_artist = self.frameset.plot_mean_image(ax=self.map_ax)
@@ -142,6 +143,7 @@ class GtkTxmViewer():
             map_sw = self.builder.get_object("MapWindow")
             map_sw.add(canvas)
             self.map_ax = map_fig.gca()
+            plots.set_outside_ticks(self.map_ax)
             # Plot the overall map
             self.draw_map()
             # Connect handlers for clicking on a pixel
@@ -309,20 +311,17 @@ class GtkTxmViewer():
         canvas.set_size_request(400,400)
         image_window = self.builder.get_object("ImageWindow")
         image_window.add(canvas)
-        self.image_ax = fig.gca()
-        # For drawing XANES spectra
-        fig = figure.Figure(figsize=(6, 4))
-        canvas = FigureCanvas(fig)
-        canvas.set_size_request(300, 300)
-        xanes_window = self.builder.get_object("XanesWindow")
-        xanes_window.add(canvas)
-        self.xanes_ax = fig.gca()
+        # Create figure grid layout
+        self.image_ax = fig.add_subplot(1, 2, 1)
+        plots.set_outside_ticks(self.image_ax)
+        self.xanes_ax = fig.add_subplot(1, 2, 2)
         self.draw_xanes_spectrum()
 
     def create_artists(self, *args, **kwargs):
         """Prepare artist objects and animate them for easy transitioning."""
         frame_artists = []
-        # Get image artits
+        xanes_artists = []
+        # Get image artists
         for frame in self.progress_modal(self.frameset, 'Preparing images'):
             new_artist = frame.plot_image(ax=self.image_ax,
                                          show_particles=False,
@@ -330,6 +329,12 @@ class GtkTxmViewer():
                                           animated=True)
             new_artist.set_visible(False)
             frame_artists.append(new_artist)
+            # Get Xanes highlight artists
+            energy = frame.energy
+            intensity = self.xanes_spectrum[energy]
+            xanes_artist = self.xanes_ax.plot([energy], [intensity], 'ro',
+                                              animated=True)
+            xanes_artists.append(xanes_artist[0])
         if self.show_particles:
             # Get particle labels artists
             particles_artists = []
@@ -340,9 +345,9 @@ class GtkTxmViewer():
                                                         animated=True)
                 new_artist.set_visible(False)
                 particles_artists.append(new_artist)
-            artists = list(zip(frame_artists, particles_artists))
+            artists = list(zip(frame_artists, xanes_artists, particles_artists))
         else:
-            artists = list(zip(frame_artists))
+            artists = list(zip(frame_artists, xanes_artists))
         self.frame_animation.artists = artists
         self.current_idx = self.current_idx
 
@@ -377,12 +382,12 @@ class GtkTxmViewer():
         else:
             data = None
         # Remove old highlighted point from Xanes spectrum
-        previous_highlight = getattr(self, 'xanes_highlight', None)
-        if previous_highlight:
-            try:
-                previous_highlight[0].remove()
-            except ValueError:
-                pass
+        # previous_highlight = getattr(self, 'xanes_highlight', None)
+        # if previous_highlight:
+        #     try:
+        #         previous_highlight[0].remove()
+        #     except ValueError:
+        #         pass
         # Update the highlighted point on the Xanes spectrum plot
         # energy = current_frame.energy
         # intensity = self.xanes_spectrum[energy]
