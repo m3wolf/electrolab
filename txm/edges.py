@@ -49,6 +49,6 @@ k_edges = {
         name="Ni K-edge",
         pre_edge=(8250, 8325),
         post_edge=(8360, 8640),
-        map_range=(8348, 8358),
+        map_range=(8341, 8358),
     ),
 }

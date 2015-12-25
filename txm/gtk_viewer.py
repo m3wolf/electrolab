@@ -1,4 +1,5 @@
 import os
+import gc
 
 import gi
 gi.require_version('Gtk', '3.0')
@@ -22,7 +23,7 @@ class GtkTxmViewer():
     show_map_background = True
     apply_edge_jump = False
     _current_idx = 0
-    animation_delay = 1000/20
+    animation_delay = 1000/18
     """View a XANES frameset using a Gtk GUI."""
     def __init__(self, frameset):
         self.frameset = frameset
@@ -113,6 +114,13 @@ class GtkTxmViewer():
         self.play_mode = False
         self.window.destroy()
         Gtk.main_quit()
+        # Reclaim memory
+        self.image_ax.figure.clf()
+        pyplot.close(self.image_ax.figure)
+        if hasattr(self, 'map_ax'):
+            self.map_ax.figure.clf()
+            pyplot.close(self.map_ax.figure)
+        gc.collect()
 
     def draw_map(self):
         figure = self.map_ax.figure
@@ -319,36 +327,36 @@ class GtkTxmViewer():
 
     def create_artists(self, *args, **kwargs):
         """Prepare artist objects and animate them for easy transitioning."""
+        all_artists = []
         frame_artists = []
         xanes_artists = []
         # Get image artists
         for frame in self.progress_modal(self.frameset, 'Preparing images'):
-            new_artist = frame.plot_image(ax=self.image_ax,
+            frame_artist = frame.plot_image(ax=self.image_ax,
                                          show_particles=False,
                                           norm=self.normalizer,
                                           animated=True)
-            new_artist.set_visible(False)
-            frame_artists.append(new_artist)
+            frame_artist.set_visible(False)
             # Get Xanes highlight artists
             energy = frame.energy
             intensity = self.xanes_spectrum[energy]
-            xanes_artist = self.xanes_ax.plot([energy], [intensity], 'ro',
-                                              animated=True)
-            xanes_artists.append(xanes_artist[0])
-        if self.show_particles:
+            xanes_artists = self.xanes_ax.plot([energy], [intensity], 'ro',
+                                               animated=True)
+            [a.set_visible(False) for a in xanes_artists]
+            # xanes_artists.append(xanes_artist[0])
+            if self.show_particles:
             # Get particle labels artists
-            particles_artists = []
-            for frame in self.progress_modal(self.frameset, 'Preparing images'):
-                new_artist = frame.plot_particle_labels(ax=self.image_ax,
-                                                        norm=self.normalizer,
-                                                        extent=frame.extent(),
-                                                        animated=True)
-                new_artist.set_visible(False)
-                particles_artists.append(new_artist)
-            artists = list(zip(frame_artists, xanes_artists, particles_artists))
-        else:
-            artists = list(zip(frame_artists, xanes_artists))
-        self.frame_animation.artists = artists
+                particle_artists = frame.plot_particle_labels(
+                    ax=self.image_ax,
+                    norm=self.normalizer,
+                    extent=frame.extent(),
+                    animated=True
+                )
+                [a.set_visible(False) for a in particle_artists]
+            else:
+                particle_artists = []
+            all_artists.append((frame_artist, *xanes_artists, *particle_artists))
+        self.frame_animation.artists = all_artists
         self.current_idx = self.current_idx
 
     def draw_xanes_spectrum(self):

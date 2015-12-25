@@ -12,9 +12,9 @@ from matplotlib.colors import Normalize, BoundaryNorm
 from mapping.colormaps import cmaps
 import h5py
 import numpy as np
-from skimage import morphology, filters, feature, transform
+from skimage import morphology, filters, feature, transform, restoration, exposure
 
-from utilities import display_progress, xycoord
+from utilities import prog, xycoord
 from .frame import (
     TXMFrame, average_frames, calculate_particle_labels, pixel_to_xy,
     apply_reference, position)
@@ -109,8 +109,10 @@ class XanesFrameset():
         # Create an empty group
         try:
             del self.hdf_group()[name]
-        except KeyError:
-            pass
+        except KeyError as e:
+            # Ignore error only if group doesn't exists
+            if not e.args[0] == "Couldn't delete link (Can't delete self)":
+                raise
         # Copy the old data
         self.hdf_group().copy(source=self.active_groupname, dest=name)
         # Update the group name
@@ -143,9 +145,7 @@ class XanesFrameset():
         self.background_groupname = bg_groupname
         self.fork_group('absorbance_frames')
         bg_group = self.hdf_file()[bg_groupname]
-        # for energy in display_progress(self.active_group().keys(),
-        #                                "Applying reference corrections"):
-        for frame in self:
+        for frame in prog(self, "Reference correction"):
             key = frame.image_data.name.split('/')[-1]
             bg_dataset = bg_group[key]
             new_data = apply_reference(frame.image_data.value,
@@ -164,8 +164,6 @@ class XanesFrameset():
         energies. This method applies a correction to each frame to
         make the magnification similar to that of the first frame.
         """
-        # Fork groups
-        # self.fork_group('magnified_frames')
         # Regression parameters
         slope=-0.00010558834052580277; intercept=1.871559636328671
         # Prepare multiprocessing objects
@@ -208,6 +206,10 @@ class XanesFrameset():
     def align_frames(self, particle_idx=None, particle_loc=None,
                      new_name="aligned_frames", reference_frame=-1):
         """Use phase correlation algorithm to line up the frames."""
+        # Autoguess best reference frame
+        if reference_frame is None:
+            spectrum = self.xanes_spectrum()
+            reference_frame = np.argmax(spectrum.values)
         # Create new data groups to hold shifted image data
         self.fork_group(new_name)
         self.fork_labels(new_name + "_labels")
@@ -229,14 +231,17 @@ class XanesFrameset():
             reference_mask = particle.full_mask()
         # Multiprocessing setup
         def worker(payload):
-            key, data, labels, mask = payload
-            masked_data = np.ma.array(data, mask=mask)
-            results = feature.register_translation(reference_image, masked_data)
+            key, original_data, labels, mask = payload
+            # Determine what the new translation should be
+            masked_data = np.ma.array(original_data, mask=mask)
+            results = feature.register_translation(reference_image, masked_data,
+                                                   upsample_factor=20)
             shift, error, diffphase = results
             shift = xycoord(-shift[1], -shift[0])
             # Apply net transformation
             transformation = transform.SimilarityTransform(translation=shift)
-            new_data = transform.warp(data, transformation, order=3, mode="wrap")
+            new_data = transform.warp(original_data, transformation,
+                                      order=3, mode="wrap")
             # Transform labels
             original_dtype = labels.dtype
             labels = labels.astype(np.float64)
@@ -249,8 +254,9 @@ class XanesFrameset():
             frame.image_data.write_direct(data)
             frame.particle_labels().write_direct(labels)
             frame.activate_closest_particle(loc=particle_loc)
+        description = "Aligning to frame [{}]".format(reference_frame)
         queue = smp.Queue(worker=worker, result_callback=process_result,
-                          totalsize=len(self), description="Aligning frames")
+                          totalsize=len(self), description=description)
         for frame in self:
             key = frame.key()
             # Prepare data arrays
@@ -269,10 +275,11 @@ class XanesFrameset():
             queue.put((key, data, labels, mask))
         queue.join()
         # Update new positions
-        for frame in display_progress(self, 'Updating frame positions'):
-            frame.sample_position = position(
-                x=new_position.x, y=new_position.y, z=frame.sample_position.z
-            )
+        for frame in prog(self, desc='Updating frame positions'):
+            frame.sample_position = position(0, 0, frame.sample_position.z)
+            # frame.sample_position = position(
+            #     x=new_position.x, y=new_position.y, z=frame.sample_position.z
+            # )
 
     def align_to_particle(self, particle_loc=0):
         """Use the centroid position of given particle to align all the
@@ -281,7 +288,7 @@ class XanesFrameset():
         self.fork_labels('aligned_labels')
         # Determine average positions
         total_x = 0; total_y = 0; n=0
-        for frame in display_progress(self, 'Computing true center'):
+        for frame in prog(self, desc='Computing true center'):
             particle = frame.activate_closest_particle(particle_loc)
             n+=1
             total_x += particle.centroid().x
@@ -336,7 +343,7 @@ class XanesFrameset():
         self.fork_labels('cropped_labels')
         # Activate particle if necessary
         if particle_loc is not None:
-            for frame in display_progress(self, 'Idetifying closest particle'):
+            for frame in prog(self, 'Idetifying closest particle'):
                 particle = frame.activate_closest_particle(loc=particle_loc)
         # Determine largest bounding box based on all energies
         boxes = [frame.particles()[frame.active_particle_idx].bbox()
@@ -357,7 +364,7 @@ class XanesFrameset():
             left, right = expand_dims(left, right, target=bottom-top)
         assert abs(left-right) == abs(bottom-top)
         # Roll each image to have the particle top left
-        for frame in display_progress(self, 'Cropping frames'):
+        for frame in prog(self, 'Cropping frames'):
             frame.crop(top=top, left=left, bottom=bottom, right=right)
             # Determine new main particle index
             new_idx = np.argmax([p.convex_area() for p in frame.particles()])
@@ -369,13 +376,13 @@ class XanesFrameset():
         self.fork_labels('aligned_labels')
         # Determine average positions
         total_x = 0; total_y = 0; n=0
-        for frame in display_progress(self, 'Computing true center'):
+        for frame in prog(self, 'Computing true center'):
             n+=1
             total_x += frame.sample_position.x
             total_y += frame.sample_position.y
         global_x = total_x / n
         global_y = total_y / n
-        for frame in display_progress(self, 'Aligning frames'):
+        for frame in prog(self, 'Aligning frames'):
             um_per_pixel_x = 40/frame.image_data.shape[1]
             um_per_pixel_y = 40/frame.image_data.shape[0]
             offset_x = int(round((global_x - frame.sample_position.x)/um_per_pixel_x))
@@ -390,7 +397,7 @@ class XanesFrameset():
             frame.sample_position = new_position
 
     def label_particles(self):
-        labels_groupname = 'particle_labels'
+        labels_groupname = self.active_groupname + "_labels"
         if labels_groupname in self.hdf_group().keys():
             del self.hdf_group()[labels_groupname]
         self.active_labels_groupname = labels_groupname
@@ -428,7 +435,8 @@ class XanesFrameset():
         passed to txm.frame.TXMFrame.rebin().
         """
         self.fork_group('rebinned')
-        for frame in display_progress(self, "Rebinning"):
+        self.fork_labels('rebinned_labels')
+        for frame in prog(self, "Rebinning"):
             frame.rebin(shape=shape, factor=factor)
 
     def plot_mean_image(self, ax=None):

@@ -1,6 +1,9 @@
 import os
 import h5py
 import re
+from time import time
+
+from tqdm import format_meter
 
 from .xradia import XRMFile
 from .xanes_frameset import XanesFrameset
@@ -50,6 +53,7 @@ def import_txm_framesets(directory, hdf_filename=None, flavor='ssrl'):
     sample_framesets = {}
     # Now do the importing
     total_files = len(file_list)
+    start_time = time()
     while(len(file_list) > 0):
         current_file = file_list[0]
         name, extension = os.path.splitext(current_file)
@@ -82,15 +86,20 @@ def import_txm_framesets(directory, hdf_filename=None, flavor='ssrl'):
             # Add this frame to the appropriate group
             sample_framesets[identifier].add_frame(averaged_frame)
         # Display current progress
-        template = 'Averaging frames: {curr}/{total} ({percent:.0f}%)'
-        status = template.format(
-            curr=total_files - len(file_list),
-            total=total_files,
-            percent=(1 - (len(file_list)/total_files))*100
-        )
+        # template = 'Averaging frames: {curr}/{total} ({percent:.0f}%)'
+        # status = template.format(
+        #     curr=total_files - len(file_list),
+        #     total=total_files,
+        #     percent=(1 - (len(file_list)/total_files))*100
+        # )
+        status = format_meter(n=total_files - len(file_list),
+                              total=total_files,
+                              elapsed=time()-start_time,
+                              prefix="Importing raw frames: ")
         print(status, end='\r')
-    print('Importing raw frames: {curr}/{total} [done]'.format(curr=total_files,
-                                                           total=total_files))
+    print() # Blank line to avoid over-writing status message
+    # print(' frames: {curr}/{total} [done]'.format(curr=total_files,
+    #                                                        total=total_files))
     frameset_list = list(sample_framesets.values())
     # Apply reference collection and convert to absorbance frames
     print('Imported samples', [fs.hdf_group().name for fs in frameset_list])

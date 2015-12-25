@@ -15,7 +15,7 @@ from mapping.locus import Locus, DummyLocus
 from mapping.gtkmapwindow import GtkMapWindow
 from mapping.colormaps import cmaps
 from plots import new_axes, dual_axes
-from utilities import display_progress
+from utilities import prog as display_progress
 
 class Map():
     """A physical sample that gets mapped by some scientific process,

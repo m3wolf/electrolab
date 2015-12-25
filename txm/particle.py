@@ -46,11 +46,14 @@ class Particle():
     def bbox(self):
         return BoundingBox(*self.regionprops.bbox)
 
-    def area(self):
-        return self.regionprops.area
-
     def convex_area(self):
         return self.regionprops.convex_area
+
+    def image(self):
+        bbox = self.bbox()
+        image = self.frame.image_data.value
+        cropped_image = image[bbox.top:bbox.bottom,bbox.left:bbox.right]
+        return cropped_image
 
     def full_mask(self):
         """Return a mask the same size as frame data with only this particle

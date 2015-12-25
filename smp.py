@@ -1,5 +1,8 @@
 from queue import Empty
 import multiprocessing as mp
+from time import time
+
+from tqdm import format_meter
 
 class Consumer(mp.Process):
     def __init__(self, target, task_queue, result_queue, **kwargs):
@@ -32,6 +35,7 @@ class Queue():
         self.results_left = totalsize
         self.description = description
         self.task_queue = mp.JoinableQueue(maxsize=totalsize)
+        self.start_time = time()
         # Create all the worker processes
         self.consumers = [Consumer(target=worker,
                                    task_queue=self.task_queue,
@@ -53,12 +57,19 @@ class Queue():
     def process_result(self, result):
         ret = self.result_callback(result)
         self.results_left -= 1
-        status = '{description}: {curr}/{total} ({percent:.0f}%)'.format(
-            description=self.description,
-            curr=self.totalsize - self.results_left,
-            total=self.totalsize,
-            percent=(1 - (self.results_left/self.totalsize)) * 100
-        )
+        curr = self.totalsize - self.results_left
+        # Prepare a status bar
+        status = format_meter(n=curr,
+                              total=self.totalsize,
+                              elapsed=time()-self.start_time,
+                              prefix=self.description + ": ")
+        # status = '{description}: {bar} {curr}/{total} ({percent:.0f}%)'.format(
+        #     description=self.description,
+        #     bar=progress_bar(current=curr, total=self.totalsize),
+        #     curr=curr,
+        #     total=self.totalsize,
+        #     percent=(1 - (self.results_left/self.totalsize)) * 100
+        # )
         print(status, end='\r')
         return ret
 
@@ -72,7 +83,9 @@ class Queue():
             result = self.result_queue.get()
             self.process_result(result)
         # Display "finished" message
-        print('{description}: {total}/{total} [done]'.format(
-            description=self.description,
-            total=self.totalsize))
+        # print('{description}: {bar} {total}/{total} [done]'.format(
+        #     description=self.description,
+        #     bar=progress_bar(self.totalsize, self.totalsize),
+        #     total=self.totalsize))
+        print()
         return ret
