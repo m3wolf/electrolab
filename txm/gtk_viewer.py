@@ -263,8 +263,12 @@ class GtkTxmViewer():
             self.normalizer = self.frameset.background_normalizer()
         else:
             self.normalizer = self.frameset.normalizer()
+        # Re-draw the plotting utilities
+        # self.remove_artists()
         self.create_artists()
         self.update_window()
+        self.image_ax.figure.canvas.draw()
+        self.xanes_ax.figure.canvas.draw()
 
     @property
     def current_idx(self):
@@ -325,6 +329,12 @@ class GtkTxmViewer():
         self.xanes_ax = fig.add_subplot(1, 2, 2)
         self.draw_xanes_spectrum()
 
+    def remove_artists(self):
+        """Remove current artists from the plotting axes."""
+        for artist_tuple in self.frame_animation.artists:
+            for artist in artist_tuple:
+                artist.remove()
+
     def create_artists(self, *args, **kwargs):
         """Prepare artist objects and animate them for easy transitioning."""
         all_artists = []
@@ -333,9 +343,9 @@ class GtkTxmViewer():
         # Get image artists
         for frame in self.progress_modal(self.frameset, 'Preparing images'):
             frame_artist = frame.plot_image(ax=self.image_ax,
-                                         show_particles=False,
-                                          norm=self.normalizer,
-                                          animated=True)
+                                            show_particles=False,
+                                            norm=self.normalizer,
+                                            animated=True)
             frame_artist.set_visible(False)
             # Get Xanes highlight artists
             energy = frame.energy
@@ -348,7 +358,7 @@ class GtkTxmViewer():
             # Get particle labels artists
                 particle_artists = frame.plot_particle_labels(
                     ax=self.image_ax,
-                    norm=self.normalizer,
+                    # norm=self.normalizer
                     extent=frame.extent(),
                     animated=True
                 )

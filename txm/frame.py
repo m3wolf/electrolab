@@ -219,7 +219,8 @@ class TXMFrame():
             data = self.particle_labels()
             xs = [particle.sample_position().x for particle in self.particles()]
             ys = [particle.sample_position().y for particle in self.particles()]
-            artists.append(ax.imshow(data, *args, alpha=opacity, cmap="Dark2",**kwargs))
+            artists.append(ax.imshow(data, *args, alpha=opacity, cmap="Dark2",
+                                     extent=self.extent(), **kwargs))
             for idx, x in enumerate(xs):
                 y = ys[idx]
                 artists.append(ax.text(x, y, idx))

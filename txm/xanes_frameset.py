@@ -17,7 +17,7 @@ from skimage import morphology, filters, feature, transform, restoration, exposu
 from utilities import prog, xycoord
 from .frame import (
     TXMFrame, average_frames, calculate_particle_labels, pixel_to_xy,
-    apply_reference, position)
+    apply_reference, position, Pixel)
 from .gtk_viewer import GtkTxmViewer
 from plots import new_axes, new_image_axes, DegreeFormatter, ElectronVoltFormatter
 import exceptions
@@ -203,10 +203,12 @@ class XanesFrameset():
             queue.put((key, energy, data))
         queue.join()
 
-    def align_frames(self, particle_idx=None, particle_loc=None,
-                     new_name="aligned_frames", reference_frame=-1):
-        """Use phase correlation algorithm to line up the frames."""
-        # Autoguess best reference frame
+    def align_frames(self, new_name="aligned_frames", reference_frame=-1):
+        """Use phase correlation algorithm to line up the frames. All frames
+        have their sample position set set to (0, 0) since we don't
+        know which one is the real position.
+        """
+        # Guess best reference frame
         if reference_frame is None:
             spectrum = self.xanes_spectrum()
             reference_frame = np.argmax(spectrum.values)
@@ -214,46 +216,29 @@ class XanesFrameset():
         self.fork_group(new_name)
         self.fork_labels(new_name + "_labels")
         reference_image = self[reference_frame].image_data.value
-        # Determine mean center
-        total_x, total_y, total_z = (0, 0, 0)
-        for frame in self:
-            total_x += frame.sample_position.x
-            total_y += frame.sample_position.y
-        new_position = position(x=total_x/len(self), y=total_y/len(self), z=None)
-        # Determine which particle to use
-        if particle_idx is not None:
-            # Apply a mask if a particle is specified
-            self.active_particle_idx = particle_idx
-            reference_mask = self[reference_frame].particles()[particle_idx].full_mask()
-            reference_image = np.ma.array(reference_image, mask=reference_mask)
-        elif particle_loc is not None:
-            particle = self[reference_frame].activate_closest_particle(loc=particle_loc)
-            reference_mask = particle.full_mask()
         # Multiprocessing setup
         def worker(payload):
-            key, original_data, labels, mask = payload
+            key, data, labels = payload
             # Determine what the new translation should be
-            masked_data = np.ma.array(original_data, mask=mask)
-            results = feature.register_translation(reference_image, masked_data,
+            results = feature.register_translation(reference_image, data,
                                                    upsample_factor=20)
             shift, error, diffphase = results
             shift = xycoord(-shift[1], -shift[0])
-            # Apply net transformation
+            # Apply net transformation with bicubic interpolation
             transformation = transform.SimilarityTransform(translation=shift)
-            new_data = transform.warp(original_data, transformation,
+            new_data = transform.warp(data, transformation,
                                       order=3, mode="wrap")
             # Transform labels
             original_dtype = labels.dtype
             labels = labels.astype(np.float64)
             new_labels = transform.warp(labels, transformation, order=0, mode="wrap")
             new_labels = new_labels.astype(original_dtype)
-            return (key, new_data, new_labels, shift)
+            return (key, new_data, new_labels)
         def process_result(payload):
-            key, data, labels, shift = payload
+            key, data, labels = payload
             frame = self[key]
             frame.image_data.write_direct(data)
             frame.particle_labels().write_direct(labels)
-            frame.activate_closest_particle(loc=particle_loc)
         description = "Aligning to frame [{}]".format(reference_frame)
         queue = smp.Queue(worker=worker, result_callback=process_result,
                           totalsize=len(self), description=description)
@@ -262,50 +247,52 @@ class XanesFrameset():
             # Prepare data arrays
             data = frame.image_data.value
             labels = frame.particle_labels().value
-            if particle_idx is not None:
-                # Apply a mask if particle is specified
-                particle = frame.particles()[particle_idx]
-                mask = particle.full_mask()
-            elif particle_loc is not None:
-                particle = frame.activate_closest_particle(loc=particle_loc)
-                mask = particle.full_mask()
-            else:
-                mask = np.zeros_like(data)
             # Launch transformation for this frame
-            queue.put((key, data, labels, mask))
+            queue.put((key, data, labels))
         queue.join()
         # Update new positions
-        for frame in prog(self, desc='Updating frame positions'):
+        for frame in self:
             frame.sample_position = position(0, 0, frame.sample_position.z)
-            # frame.sample_position = position(
-            #     x=new_position.x, y=new_position.y, z=frame.sample_position.z
-            # )
 
-    def align_to_particle(self, particle_loc=0):
-        """Use the centroid position of given particle to align all the
-        frames."""
-        self.fork_group('aligned_frames')
-        self.fork_labels('aligned_labels')
-        # Determine average positions
-        total_x = 0; total_y = 0; n=0
-        for frame in prog(self, desc='Computing true center'):
-            particle = frame.activate_closest_particle(particle_loc)
-            n+=1
-            total_x += particle.centroid().x
-            total_y += particle.centroid().y
-        global_center = xycoord(x=total_x/n, y=total_y/n)
-        # Prepare multiprocessing objects
+    def align_to_particle(self, loc, new_name, reference_frame=-1):
+        """Use template matching algorithm to line up the frames. Similar to
+        `align_frames` but matches only to the particle closest to the
+        argument `loc`.
+        """
+        # Autoguess best reference frame
+        if reference_frame is None:
+            spectrum = self.xanes_spectrum()
+            reference_frame = np.argmax(spectrum.values)
+        # Create new data groups to hold shifted image data
+        self.fork_group(new_name)
+        self.fork_labels(new_name + "_labels")
+        # Determine which particle to use
+        particle = self[reference_frame].activate_closest_particle(loc=loc)
+        bbox = particle.bbox()
+        # reference_img = particle.masked_frame_image()
+        reference_img = np.ma.array(particle.image(), mask=particle.mask())
+        reference_loc_v = (bbox.bottom-bbox.top)/2+bbox.top
+        reference_loc_h = (bbox.right-bbox.left)/2+bbox.left
+        # Multiprocessing setup
         def worker(payload):
-            key, data, labels, offset = payload
-            # Apply net transformation
-            transformation = transform.SimilarityTransform(
-                translation=(-offset.x, -offset.y))
+            key, data, labels = payload
+            # Determine where the reference particle is in this frame's image
+            match = feature.match_template(data, reference_img, pad_input=True)
+            center = np.unravel_index(match.argmax(), match.shape)
+            center = Pixel(vertical=center[0], horizontal=center[1])
+            # Determine the net translation necessary to align to reference frame
+            shift = [
+                center.horizontal - reference_loc_h,
+                center.vertical - reference_loc_v,
+            ]
+            # Apply the translation with bicubic interpolation
+            transformation = transform.SimilarityTransform(translation=shift)
             new_data = transform.warp(data, transformation,
                                       order=3, mode="wrap")
+            # Transform labels
             original_dtype = labels.dtype
             labels = labels.astype(np.float64)
-            new_labels = transform.warp(labels.astype(np.float64),
-                                        transformation, order=0, mode="wrap")
+            new_labels = transform.warp(labels, transformation, order=0, mode="wrap")
             new_labels = new_labels.astype(original_dtype)
             return (key, new_data, new_labels)
         def process_result(payload):
@@ -313,28 +300,76 @@ class XanesFrameset():
             frame = self[key]
             frame.image_data.write_direct(data)
             frame.particle_labels().write_direct(labels)
-            frame.activate_closest_particle(loc=particle_loc)
+            frame.activate_closest_particle(loc=loc)
+        description = "Aligning to frame [{}]".format(reference_frame)
         queue = smp.Queue(worker=worker, result_callback=process_result,
-                          totalsize=len(self), description="Aligning frames")
-        # Align all frames to average position
+                          totalsize=len(self), description=description)
         for frame in self:
-            # Determine new position
-            particle = frame.particles()[frame.active_particle_idx]
-            offset_x = int(round(global_center.x - particle.centroid().x))
-            offset_y = int(round(global_center.y - particle.centroid().y))
-            offset = xycoord(offset_x, offset_y)
-            # frame.image_data.write_direct(new_data)
-            # Apply translation to particle labels
-            labels = frame.particle_labels()
             key = frame.key()
-            queue.put((key, frame.image_data.value, labels.value, offset))
-            # labels.write_direct(new_labels)
-            # frame.shift_data(x_offset=offset_x,
-            #                  y_offset=offset_y)
-            # frame.shift_data(x_offset=offset_x,
-            #                  y_offset=offset_y,
-            #                  dataset=frame.particle_labels())
+            # Prepare data arrays
+            data = frame.image_data.value
+            labels = frame.particle_labels().value
+            # Launch transformation for this frame
+            queue.put((key, data, labels))
         queue.join()
+        # Update new positions
+        for frame in self:
+            frame.sample_position = position(0, 0, frame.sample_position.z)
+
+    # def align_to_particle(self, particle_loc=0):
+    #     """Use the centroid position of given particle to align all the
+    #     frames."""
+    #     self.fork_group('aligned_frames')
+    #     self.fork_labels('aligned_labels')
+    #     # Determine average positions
+    #     total_x = 0; total_y = 0; n=0
+    #     for frame in prog(self, desc='Computing true center'):
+    #         particle = frame.activate_closest_particle(particle_loc)
+    #         n+=1
+    #         total_x += particle.centroid().x
+    #         total_y += particle.centroid().y
+    #     global_center = xycoord(x=total_x/n, y=total_y/n)
+    #     # Prepare multiprocessing objects
+    #     def worker(payload):
+    #         key, data, labels, offset = payload
+    #         # Apply net transformation
+    #         transformation = transform.SimilarityTransform(
+    #             translation=(-offset.x, -offset.y))
+    #         new_data = transform.warp(data, transformation,
+    #                                   order=3, mode="wrap")
+    #         original_dtype = labels.dtype
+    #         labels = labels.astype(np.float64)
+    #         new_labels = transform.warp(labels.astype(np.float64),
+    #                                     transformation, order=0, mode="wrap")
+    #         new_labels = new_labels.astype(original_dtype)
+    #         return (key, new_data, new_labels)
+    #     def process_result(payload):
+    #         key, data, labels = payload
+    #         frame = self[key]
+    #         frame.image_data.write_direct(data)
+    #         frame.particle_labels().write_direct(labels)
+    #         frame.activate_closest_particle(loc=particle_loc)
+    #     queue = smp.Queue(worker=worker, result_callback=process_result,
+    #                       totalsize=len(self), description="Aligning frames")
+    #     # Align all frames to average position
+    #     for frame in self:
+    #         # Determine new position
+    #         particle = frame.particles()[frame.active_particle_idx]
+    #         offset_x = int(round(global_center.x - particle.centroid().x))
+    #         offset_y = int(round(global_center.y - particle.centroid().y))
+    #         offset = xycoord(offset_x, offset_y)
+    #         # frame.image_data.write_direct(new_data)
+    #         # Apply translation to particle labels
+    #         labels = frame.particle_labels()
+    #         key = frame.key()
+    #         queue.put((key, frame.image_data.value, labels.value, offset))
+    #         # labels.write_direct(new_labels)
+    #         # frame.shift_data(x_offset=offset_x,
+    #         #                  y_offset=offset_y)
+    #         # frame.shift_data(x_offset=offset_x,
+    #         #                  y_offset=offset_y,
+    #         #                  dataset=frame.particle_labels())
+    #     queue.join()
 
     def crop_to_particle(self, new_name='cropped_particle', particle_loc=None):
         """Reduce the image size to just show the particle in question."""
