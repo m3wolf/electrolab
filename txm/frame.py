@@ -127,9 +127,9 @@ class TXMFrame():
     energy = HDFAttribute('energy', default=0.0)
     approximate_energy = HDFAttribute('approximate_energy', default=0.0)
     original_filename = HDFAttribute('original_filename', default=None)
-    sample_position = HDFAttribute('sample_position',
-                                   default=position(0, 0, 0),
-                                   wrapper=lambda coords: position(*coords))
+    _sample_position = HDFAttribute('sample_position',
+                                    default=position(0, 0, 0),
+                                    wrapper=lambda coords: position(*coords))
     approximate_position = HDFAttribute('approximate_position',
                                         default=position(0, 0, 0),
                                         wrapper=lambda coords: position(*coords))
@@ -155,13 +155,22 @@ class TXMFrame():
             self.is_background = file.is_background
 
     def __repr__(self):
-        name = "<TXMFrame: {energy} eV at ({x}, {y}, {z})"
+        name = "<TXMFrame: {energy} eV at ({x}, {y}, {z})>"
         return name.format(
             energy=int(self.energy),
             x=self.approximate_position.x,
             y=self.approximate_position.y,
             z=self.approximate_position.z,
         )
+
+    @property
+    def sample_position(self):
+        actual_position = self._sample_position
+        return position(20, 20, actual_position.z)
+
+    @sample_position.setter
+    def sample_position(self, new_position):
+        self._sample_position = new_position
 
     def transmission_data(self, background_group):
         bg_data = self.background_dataset(group=background_group)
@@ -210,6 +219,8 @@ class TXMFrame():
     def plot_particle_labels(self, ax=None, *args, **kwargs):
         """Plot the identified particles (as an overlay if ax is given)."""
         artists = []
+        # Get axes extent (if passed) or use default
+        extent = kwargs.pop('extent', self.extent())
         if ax is None:
             opacity = 1
             ax = plots.new_image_axes()
@@ -217,10 +228,14 @@ class TXMFrame():
             opacity = 0.3
         if self.particle_labels_path:
             data = self.particle_labels()
+            # Mask out anything not labeled (ie. set to zero)
+            mask = np.logical_not(data.value.astype(np.bool))
+            masked_data = np.ma.array(data, mask=mask)
+            artists.append(ax.imshow(masked_data, *args, alpha=opacity,
+                                     cmap="Dark2", extent=extent, **kwargs))
+            # Plot text for label index
             xs = [particle.sample_position().x for particle in self.particles()]
             ys = [particle.sample_position().y for particle in self.particles()]
-            artists.append(ax.imshow(data, *args, alpha=opacity, cmap="Dark2",
-                                     extent=self.extent(), **kwargs))
             for idx, x in enumerate(xs):
                 y = ys[idx]
                 artists.append(ax.text(x, y, idx))
@@ -348,10 +363,9 @@ class TXMFrame():
     def particle_labels(self):
         if self.particle_labels_path is None:
             raise exceptions.NoParticleError
-            # res = calculate_particle_labels(self.image_data.value)
         else:
-            res = self.image_data.file[self.particle_labels_path]
-        return res
+            labels = self.image_data.file[self.particle_labels_path]
+        return labels
 
     def activate_closest_particle(self, loc):
         """Get a particle that's closest to location."""
@@ -438,7 +452,7 @@ def calculate_particle_labels(data, return_intermediates=False,
         in_range = (distances.min(), distances.max())
         distances = rescale_intensity(distances, in_range=in_range, out_range=(0, 1))
         # Blur the distances to help avoid split particles
-        mean_distances = rank.mean(distances, disk(average_shape/32))
+        mean_distances = rank.mean(distances, disk(average_shape/64))
         # Use the local distance maxima as peak centers and compute labels
         local_maxima = peak_local_max(
             mean_distances,

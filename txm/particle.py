@@ -76,6 +76,6 @@ class Particle():
 
     def plot_image(self, show_particles=False, *args, **kwargs):
         """Calls the regular plotting routine but with cropped data."""
-        return self.frame.plot_image(data=self.crop_image(),
+        return self.frame.plot_image(data=self.image(),
                                      show_particles=show_particles,
                                      *args, **kwargs)

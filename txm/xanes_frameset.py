@@ -1,3 +1,4 @@
+import functools
 import os
 from collections import defaultdict
 import re
@@ -46,12 +47,13 @@ class XanesFrameset():
         self.parent_groupname = groupname
         self.edge = edge
         # Check to make sure a valid group is given
-        with self.hdf_file() as hdf_file:
-            if not groupname in hdf_file.keys():
-                msg = "Created new frameset group: {}"
-                print(msg.format(groupname))
-                hdf_file.create_group(groupname)
-        self.active_groupname = self.latest_groupname
+        if filename:
+            with self.hdf_file() as hdf_file:
+                if not groupname in hdf_file.keys():
+                    msg = "Created new frameset group: {}"
+                    print(msg.format(groupname))
+                    hdf_file.create_group(groupname)
+            self.active_groupname = self.latest_groupname
 
     def __iter__(self):
         """Get each frame from the HDF5 file"""
@@ -68,9 +70,16 @@ class XanesFrameset():
         try:
             frame = TXMFrame.load_from_dataset(self.active_group()[index])
         except AttributeError:
-            name = list(self.active_group().keys())[index]
+            keys = list(self.active_group().keys())
+            name = keys[index]
             frame = TXMFrame.load_from_dataset(self.active_group()[name])
         return frame
+
+    def clear_caches(self):
+        """Clear cached function values so they will be recomputed with fresh
+        data"""
+        self.xanes_spectrum.cache_clear()
+        self.normalizer.cache_clear()
 
     @property
     def active_labels_groupname(self):
@@ -95,12 +104,22 @@ class XanesFrameset():
         return fs
 
     def switch_group(self, name):
-        if not name in self.hdf_group().keys():
+        """Set the frameset to retrieve image data from a different hdf
+        group. Special value 'background_frames' sets to the reference
+        image used during importing.
+        """
+        valid_groups = list(self.hdf_group().keys()) + ['background_frames']
+        if name not in valid_groups:
             msg = "{name} is not a valid group. Choices are {choices}."
             raise exceptions.GroupKeyError(
-                msg.format(name=name, choices=list(self.hdf_group().keys()))
+                msg.format(name=name, choices=valid_groups)
             )
-        self.active_groupname = name
+        if name == 'background_frames':
+            # Clear cached value
+            self.active_groupname = self.background_groupname
+        else:
+            self.active_groupname = name
+        self.clear_caches()
 
     def fork_group(self, name):
         """Create a new, copy of the current active group inside the HDF
@@ -203,7 +222,7 @@ class XanesFrameset():
             queue.put((key, energy, data))
         queue.join()
 
-    def align_frames(self, new_name="aligned_frames", reference_frame=-1):
+    def align_frames(self, new_name="aligned_frames", reference_frame=None):
         """Use phase correlation algorithm to line up the frames. All frames
         have their sample position set set to (0, 0) since we don't
         know which one is the real position.
@@ -231,7 +250,7 @@ class XanesFrameset():
             # Transform labels
             original_dtype = labels.dtype
             labels = labels.astype(np.float64)
-            new_labels = transform.warp(labels, transformation, order=0, mode="wrap")
+            new_labels = transform.warp(labels, transformation, order=0, mode="constant")
             new_labels = new_labels.astype(original_dtype)
             return (key, new_data, new_labels)
         def process_result(payload):
@@ -254,7 +273,7 @@ class XanesFrameset():
         for frame in self:
             frame.sample_position = position(0, 0, frame.sample_position.z)
 
-    def align_to_particle(self, loc, new_name, reference_frame=-1):
+    def align_to_particle(self, loc, new_name, reference_frame=None):
         """Use template matching algorithm to line up the frames. Similar to
         `align_frames` but matches only to the particle closest to the
         argument `loc`.
@@ -270,20 +289,29 @@ class XanesFrameset():
         particle = self[reference_frame].activate_closest_particle(loc=loc)
         bbox = particle.bbox()
         # reference_img = particle.masked_frame_image()
-        reference_img = np.ma.array(particle.image(), mask=particle.mask())
-        reference_loc_v = (bbox.bottom-bbox.top)/2+bbox.top
-        reference_loc_h = (bbox.right-bbox.left)/2+bbox.left
+        # particle_img = np.ma.array(particle.image(), mask=particle.mask())
+        particle_img = np.copy(particle.image())
+        # Set all values outside the particle itself to 0
+        particle_img[np.logical_not(particle.mask())] = 0
+        reference_img = self[reference_frame].image_data.value
+        reference_match = feature.match_template(reference_img, particle_img, pad_input=True)
+        reference_center = np.unravel_index(reference_match.argmax(),
+                                            reference_match.shape)
+        reference_center = Pixel(vertical=reference_center[0],
+                                 horizontal=reference_center[1])
+        # reference_loc_v = (bbox.bottom-bbox.top)/2+bbox.top
+        # reference_loc_h = (bbox.right-bbox.left)/2+bbox.left
         # Multiprocessing setup
         def worker(payload):
             key, data, labels = payload
             # Determine where the reference particle is in this frame's image
-            match = feature.match_template(data, reference_img, pad_input=True)
+            match = feature.match_template(data, particle_img, pad_input=True)
             center = np.unravel_index(match.argmax(), match.shape)
             center = Pixel(vertical=center[0], horizontal=center[1])
             # Determine the net translation necessary to align to reference frame
             shift = [
-                center.horizontal - reference_loc_h,
-                center.vertical - reference_loc_v,
+                center.horizontal - reference_center.vertical,
+                center.vertical - reference_center.horizontal,
             ]
             # Apply the translation with bicubic interpolation
             transformation = transform.SimilarityTransform(translation=shift)
@@ -292,7 +320,7 @@ class XanesFrameset():
             # Transform labels
             original_dtype = labels.dtype
             labels = labels.astype(np.float64)
-            new_labels = transform.warp(labels, transformation, order=0, mode="wrap")
+            new_labels = transform.warp(labels, transformation, order=0, mode="constant")
             new_labels = new_labels.astype(original_dtype)
             return (key, new_data, new_labels)
         def process_result(payload):
@@ -315,61 +343,7 @@ class XanesFrameset():
         # Update new positions
         for frame in self:
             frame.sample_position = position(0, 0, frame.sample_position.z)
-
-    # def align_to_particle(self, particle_loc=0):
-    #     """Use the centroid position of given particle to align all the
-    #     frames."""
-    #     self.fork_group('aligned_frames')
-    #     self.fork_labels('aligned_labels')
-    #     # Determine average positions
-    #     total_x = 0; total_y = 0; n=0
-    #     for frame in prog(self, desc='Computing true center'):
-    #         particle = frame.activate_closest_particle(particle_loc)
-    #         n+=1
-    #         total_x += particle.centroid().x
-    #         total_y += particle.centroid().y
-    #     global_center = xycoord(x=total_x/n, y=total_y/n)
-    #     # Prepare multiprocessing objects
-    #     def worker(payload):
-    #         key, data, labels, offset = payload
-    #         # Apply net transformation
-    #         transformation = transform.SimilarityTransform(
-    #             translation=(-offset.x, -offset.y))
-    #         new_data = transform.warp(data, transformation,
-    #                                   order=3, mode="wrap")
-    #         original_dtype = labels.dtype
-    #         labels = labels.astype(np.float64)
-    #         new_labels = transform.warp(labels.astype(np.float64),
-    #                                     transformation, order=0, mode="wrap")
-    #         new_labels = new_labels.astype(original_dtype)
-    #         return (key, new_data, new_labels)
-    #     def process_result(payload):
-    #         key, data, labels = payload
-    #         frame = self[key]
-    #         frame.image_data.write_direct(data)
-    #         frame.particle_labels().write_direct(labels)
-    #         frame.activate_closest_particle(loc=particle_loc)
-    #     queue = smp.Queue(worker=worker, result_callback=process_result,
-    #                       totalsize=len(self), description="Aligning frames")
-    #     # Align all frames to average position
-    #     for frame in self:
-    #         # Determine new position
-    #         particle = frame.particles()[frame.active_particle_idx]
-    #         offset_x = int(round(global_center.x - particle.centroid().x))
-    #         offset_y = int(round(global_center.y - particle.centroid().y))
-    #         offset = xycoord(offset_x, offset_y)
-    #         # frame.image_data.write_direct(new_data)
-    #         # Apply translation to particle labels
-    #         labels = frame.particle_labels()
-    #         key = frame.key()
-    #         queue.put((key, frame.image_data.value, labels.value, offset))
-    #         # labels.write_direct(new_labels)
-    #         # frame.shift_data(x_offset=offset_x,
-    #         #                  y_offset=offset_y)
-    #         # frame.shift_data(x_offset=offset_x,
-    #         #                  y_offset=offset_y,
-    #         #                  dataset=frame.particle_labels())
-    #     queue.join()
+        return reference_match
 
     def crop_to_particle(self, new_name='cropped_particle', particle_loc=None):
         """Reduce the image size to just show the particle in question."""
@@ -380,6 +354,11 @@ class XanesFrameset():
         if particle_loc is not None:
             for frame in prog(self, 'Idetifying closest particle'):
                 particle = frame.activate_closest_particle(loc=particle_loc)
+        # Make sure an active particle is assigned to all frames
+        for frame in self:
+            if frame.active_particle_idx is None:
+                msg = "Frame {} has no particle assigned".format(frame)
+                raise exceptions.NoParticleError(msg)
         # Determine largest bounding box based on all energies
         boxes = [frame.particles()[frame.active_particle_idx].bbox()
                  for frame in self]
@@ -488,6 +467,7 @@ class XanesFrameset():
         avg_frame = np.mean(frames, axis=0)
         return avg_frame
 
+    @functools.lru_cache()
     def xanes_spectrum(self, pixel=None):
         """Collapse the dataset down to a two-d spectrum."""
         energies = []
@@ -542,7 +522,7 @@ class XanesFrameset():
             colors.append(cmap(norm(energy)))
         ax.plot(spectrum, linestyle=":")
         xlim = ax.get_xlim(); ylim = ax.get_ylim()
-        ax.scatter(spectrum.index, spectrum.values, c=colors, s=25)
+        scatter = ax.scatter(spectrum.index, spectrum.values, c=colors, s=25)
         # Restore axes limits, they get messed up by scatter()
         ax.set_xlim(*xlim); ax.set_ylim(*ylim)
         ax.set_xlabel('Energy /eV')
@@ -557,7 +537,7 @@ class XanesFrameset():
         # Plot lines at edge of normalization range
         ax.axvline(x=norm_range[0], linestyle='-', color="0.55", alpha=0.4)
         ax.axvline(x=norm_range[1], linestyle='-', color="0.55", alpha=0.4)
-        return ax
+        return scatter
 
     def plot_edge_jump(self, ax=None, alpha=1):
         """Plot the results of the edge jump filter."""
@@ -664,6 +644,7 @@ class XanesFrameset():
                                ticks=energies[0:-1],
                                spacing="proportional")
         cbar.ax.xaxis.get_major_formatter().set_useOffset(False)
+        cbar.ax.set_title('eV')
         # Decorate axes labels, etc
         ax.set_xlabel("TODO: Adjust extent when zooming and cropping! (µm)")
         ax.set_ylabel("µm")
@@ -711,15 +692,18 @@ class XanesFrameset():
         return energies
 
     def hdf_file(self):
-        # Determine filename
-        try:
-            file = h5py.File(self.hdf_filename, 'r+')
-        except OSError as e:
-            print(e)
-            # HDF File does not exist, make a new one
-            print('Creating new HDF5 file: {}'.format(self.hdf_filename))
-            file = h5py.File(self.hdf_filename, 'w-')
-            file.create_group(self.parent_groupname)
+        if self.hdf_filename is not None:
+            # Determine filename
+            try:
+                file = h5py.File(self.hdf_filename, 'r+')
+            except OSError as e:
+                print(e)
+                # HDF File does not exist, make a new one
+                print('Creating new HDF5 file: {}'.format(self.hdf_filename))
+                file = h5py.File(self.hdf_filename, 'w-')
+                file.create_group(self.parent_groupname)
+        else:
+            file = None
         return file
 
     def hdf_group(self):
@@ -732,13 +716,19 @@ class XanesFrameset():
         """For use with HDFAttribute descriptor."""
         return self.hdf_group()
 
+    def is_background(self):
+        return self.active_groupname == self.background_groupname
+
     def active_group(self):
         parent_group = self.hdf_group()
         if self.active_groupname is None:
             group = parent_group
+        elif self.is_background():
+            # Background frames are relative to file root
+            group = self.hdf_file()[self.active_groupname]
         else:
-            if not self.active_groupname in parent_group.keys():
-                # Create group if necessary
+            # Create group if necessary
+            if self.active_groupname not in parent_group.keys():
                 parent_group.create_group(self.active_groupname)
             group = parent_group[self.active_groupname]
         return group
@@ -778,17 +768,18 @@ class XanesFrameset():
                 global_max = local_max
         return Normalize(global_min, global_max)
 
+    @functools.lru_cache()
     def normalizer(self):
         # Find global limits
-        global_min = 0
-        global_max = 99999999999
+        global_min = 99999999999
+        global_max = 0
         for frame in self:
             data = frame.image_data.value
             local_min = np.min(data)
             if local_min < global_min:
                 global_min = local_min
             local_max = np.max(data)
-            if local_max < global_max:
+            if local_max > global_max:
                 global_max = local_max
         return Normalize(global_min, global_max)
 

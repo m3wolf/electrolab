@@ -34,7 +34,7 @@ class Queue():
         self.totalsize = totalsize
         self.results_left = totalsize
         self.description = description
-        self.task_queue = mp.JoinableQueue(maxsize=totalsize)
+        self.task_queue = mp.JoinableQueue(maxsize=self.num_consumers)
         self.start_time = time()
         # Create all the worker processes
         self.consumers = [Consumer(target=worker,
