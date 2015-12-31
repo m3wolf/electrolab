@@ -31,11 +31,20 @@ class Edge():
         else:
             self.map_range = map_range
 
-    def energies(self):
+    def all_energies(self):
         energies = []
         for region in self.regions:
             energies += range(region[0], region[1]+region[2], region[2])
         return sorted(list(set(energies)))
+
+    def energies_in_range(self, norm_range=None):
+        if norm_range is None:
+            norm_range = (self.map_range[0],
+                          self.map_range[1])
+        energies = [e for e in self.all_energies()
+                    if norm_range[0] <= e <= norm_range[1]]
+        return energies
+
 
 k_edges = {
     'Ni': Edge(

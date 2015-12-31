@@ -17,12 +17,11 @@ class GtkTxmViewer():
     display_type = 'corrected'
     active_pixel = None
     active_xy = None
-    map_crosshairs = None
+    _current_idx = 0
+    animation_delay = 1000/18
     show_map = True
     show_map_background = True
     apply_edge_jump = False
-    _current_idx = 0
-    animation_delay = 1000/18
     """View a XANES frameset using a Gtk GUI."""
     def __init__(self, frameset, plotter=None):
         if plotter is None:
@@ -30,27 +29,27 @@ class GtkTxmViewer():
         self.plotter = plotter
         self.plotter.create_axes()
         self.frameset = frameset
-        # self.normalizer = frameset.normalizer()
         self.builder = Gtk.Builder()
         # Load the GUI from a glade file
         gladefile = os.path.join(os.path.dirname(__file__), "xanes_viewer.glade")
         self.builder.add_from_file(gladefile)
         self.window = self.builder.get_object('XanesViewerWindow')
-        self.image_window = self.builder.get_object('ImageWindow')
-        self.image_window.add(self.plotter.figure.canvas)
+        self.image_sw = self.builder.get_object('ImageWindow')
+        self.image_sw.add(self.plotter.frame_canvas)
         # Prepare the map window for later
+        self.map_sw = self.builder.get_object("MapWindow")
+        self.map_sw.add(self.plotter.map_canvas)
         self.map_window = self.builder.get_object('MapViewerWindow')
         self.map_window.maximize()
+        # Set initial state for background switch
+        switch = self.builder.get_object('BackgroundSwitch')
+        switch.set_active(self.show_map_background)
         # Set some initial values
         slider = self.builder.get_object('FrameSlider')
         self.current_adj = self.builder.get_object('CurrentFrame')
         self.current_adj.set_property('upper', len(self.frameset)-1)
-        self.xanes_spectrum = frameset.xanes_spectrum()
         # Put the non-glade things in the window
         self.plotter.plot_xanes_spectrum()
-        # Prepare animation
-        self.event_source = FrameChangeSource(viewer=self)
-        self.plotter.connect_animation(event_source=self.event_source)
         # Populate the combobox with list of available HDF groups
         self.group_combo = self.builder.get_object('ActiveGroupCombo')
         self.group_list = Gtk.ListStore(str, str)
@@ -93,21 +92,29 @@ class GtkTxmViewer():
             'toggle-edge-jump': self.toggle_edge_jump,
         }
         self.builder.connect_signals(handlers)
+        self.window.connect('delete-event', self.quit)
+        # Connect handlers for clicking on a pixel
+        self.plotter.map_figure.canvas.mpl_connect('button_press_event',
+                                                   self.click_map_pixel)
+        # Prepare animation
+        self.event_source = FrameChangeSource(viewer=self)
+        # Make everything visible
         self.update_window()
         self.plotter.draw()
-        self.window.connect('delete-event', self.quit)
 
     def toggle_map_visible(self, widget, object=None):
         self.show_map = widget.get_active()
+        self.draw_map_plots()
         self.update_map_window()
 
     def toggle_edge_jump(self, widget, object=None):
         self.apply_edge_jump = widget.get_active()
-        self.draw_map()
+        self.draw_map_plots()
         self.update_map_window()
 
     def toggle_map_background(self, widget, object=None):
         self.show_map_background = widget.get_active()
+        self.draw_map_plots()
         self.update_map_window()
 
     def quit(self, widget, object=None):
@@ -118,56 +125,16 @@ class GtkTxmViewer():
         self.plotter.destroy()
         Gtk.main_quit()
 
-    def draw_map(self):
-        figure = self.map_ax.figure
-        figure.clear()
-        self.map_ax = figure.gca() # Put new axes in place
-        self.map_crosshairs = None
-        # Plot the absorbance background image
-        # self.bg_artist = self.frameset.plot_mean_image(ax=self.map_ax)
-        self.bg_artist = self.frameset.plot_edge_jump(ax=self.map_ax)
-        self.bg_artist.set_cmap('gray')
-        # Plot the overall map
-        self.map_artist = self.frameset.plot_map(
-            ax=self.map_ax,
-            edge_jump_filter=self.apply_edge_jump,
-            return_type="artist")
-        self.map_ax.figure.canvas.draw()
-
     def hide_map_window(self, widget, object=None):
         self.map_window.hide()
         return True
 
     def launch_map_window(self, widget):
-        if not hasattr(self, 'map_ax'):
-            # Create map axes objects
-            map_fig = figure.Figure(figsize=(13.8, 10))
-            canvas = FigureCanvas(map_fig)
-            canvas.set_size_request(400, 400)
-            map_sw = self.builder.get_object("MapWindow")
-            map_sw.add(canvas)
-            self.map_ax = map_fig.gca()
-            plots.set_outside_ticks(self.map_ax)
-            # Plot the overall map
-            self.draw_map()
-            # Connect handlers for clicking on a pixel
-            map_fig.canvas.mpl_connect('button_press_event', self.click_map_pixel)
-            # Create Xanes axes object
-            fig = figure.Figure(figsize=(13.8, 10))
-            canvas = FigureCanvas(fig)
-            canvas.set_size_request(400, 400)
-            xanes_sw = self.builder.get_object("XanesMapWindow")
-            xanes_sw.add(canvas)
-            self.map_detail_ax = fig.gca()
-            self.plot_map_xanes()
-            # Set initial state for background switch
-            switch = self.builder.get_object('BackgroundSwitch')
-            switch.set_active(self.show_map_background)
-        # Launch the window
+        self.draw_map_plots()
         self.map_window.show_all()
 
     def click_map_pixel(self, event):
-        if event.inaxes == self.map_ax:
+        if event.inaxes == self.plotter.map_ax:
             # Convert xy position to pixel values
             xy = xycoord(x=event.xdata, y=event.ydata)
             pixel = xy_to_pixel(xy, extent=self.frameset.extent(),
@@ -177,10 +144,22 @@ class GtkTxmViewer():
         else:
             self.active_pixel = None
             self.active_xy = None
+        self.draw_map_plots()
         self.update_map_window()
 
+    def draw_map_plots(self):
+        self.plotter.draw_map(show_map=self.show_map,
+                              edge_jump_filter=self.apply_edge_jump,
+                              show_background=self.show_map_background)
+        # Show crosshairs to indicate active pixel
+        if self.show_map_background:
+            color = 'white'
+        else:
+            color = 'black'
+        self.plotter.draw_crosshairs(active_xy=self.active_xy, color=color)
+        self.plotter.draw_map_xanes(active_pixel=self.active_pixel)
+
     def update_map_window(self):
-        self.plot_map_xanes()
         # Show position of active pixel
         if self.active_pixel is None:
             s = "None"
@@ -189,42 +168,6 @@ class GtkTxmViewer():
                                         v=self.active_pixel.vertical)
         label = self.builder.get_object("ActivePixelLabel")
         label.set_text(s)
-        # Remove old cross-hairs
-        if self.map_crosshairs:
-            for line in self.map_crosshairs:
-                line.remove()
-            self.map_crosshairs = None
-        # Draw cross-hairs on the map if there's an active pixel
-        if self.active_pixel:
-            if self.show_map_background:
-                color = "white"
-            else:
-                color = "black"
-            xline = self.map_ax.axvline(x=self.active_xy.x,
-                                        color=color, linestyle="--")
-            yline = self.map_ax.axhline(y=self.active_xy.y,
-                                        color=color, linestyle="--")
-            self.map_crosshairs = (xline, yline)
-        # Show or hide maps as dictated by GUI toggle buttons
-        if self.show_map_background:
-            self.bg_artist.set_alpha(1)
-            # self.map_ax.add_image(self.bg_artist)
-            map_alpha = 0.4
-        else:
-            self.bg_artist.set_alpha(0)
-            map_alpha = 1
-        if self.show_map:
-            self.map_artist.set_alpha(map_alpha)
-        else:
-            self.map_artist.set_alpha(0)
-        # Force redraw in case GTK doesn't have to update
-        self.map_ax.figure.canvas.draw()
-        self.map_detail_ax.figure.canvas.draw()
-
-    def plot_map_xanes(self):
-        self.map_detail_ax.clear()
-        self.frameset.plot_xanes_spectrum(ax=self.map_detail_ax,
-                                          pixel=self.active_pixel)
 
     def navigate_map(self, widget, event):
         """Navigate around the map using keyboard."""
@@ -243,6 +186,7 @@ class GtkTxmViewer():
             self.active_xy = pixel_to_xy(self.active_pixel,
                                          extent=self.frameset.extent(),
                                          shape=self.frameset.map_shape())
+        self.draw_map_plots()
         self.update_map_window()
 
     def change_active_group(self, widget, object=None):
@@ -250,13 +194,8 @@ class GtkTxmViewer():
         new_group = self.group_list[widget.get_active_iter()][1]
         self.active_groupname = new_group
         self.frameset.switch_group(new_group)
-        # Save new xanes spectrum
-        # Re-normalize for new frameset and display new set to user
-        # if new_group == 'background_frames':
-        #     self.normalizer = self.frameset.background_normalizer()
-        # else:
-        # self.normalizer = self.frameset.normalizer()
         self.plotter.draw()
+        self.plotter.connect_animation(event_source=self.event_source)
         self.update_window()
         self.refresh_artists()
 
@@ -313,8 +252,8 @@ class GtkTxmViewer():
                 artist.remove()
 
     def refresh_artists(self, *args, **kwargs):
-        self.plotter.refresh_artists(*args, **kwargs)
-        # self.frame_animation.artists = self.plotter.new_artists()
+        self.plotter.connect_animation(self.event_source)
+        # self.plotter.refresh_artists(*args, **kwargs)
 
     def update_window(self, widget=None):
         current_frame = self.current_frame()
@@ -332,28 +271,11 @@ class GtkTxmViewer():
         shape_label = self.builder.get_object('ShapeLabel')
         shape_label.set_text(str(current_frame.image_data.shape))
         norm_label = self.builder.get_object('NormLabel')
-        norm_text = '[{}, {}]'.format(round(self.frameset.normalizer().vmin, 2),
-                                      round(self.frameset.normalizer().vmax, 2))
+        norm_text = '[{}, {}]'.format(
+            round(self.frameset.image_normalizer().vmin, 2),
+            round(self.frameset.image_normalizer().vmax, 2)
+        )
         norm_label.set_text(norm_text)
-        # Determine what type of data to present
-        # key = self.current_frame().image_data.name.split('/')[-1]
-        # norm = self.normalizer
-        # if self.active_groupname == 'background_frames':
-        #     data = self.frameset.hdf_file()[self.frameset.background_groupname][key]
-        # else:
-        #     data = None
-        # Remove old highlighted point from Xanes spectrum
-        # previous_highlight = getattr(self, 'xanes_highlight', None)
-        # if previous_highlight:
-        #     try:
-        #         previous_highlight[0].remove()
-        #     except ValueError:
-        #         pass
-        # Update the highlighted point on the Xanes spectrum plot
-        # energy = current_frame.energy
-        # intensity = self.xanes_spectrum[energy]
-        # self.xanes_highlight = self.xanes_ax.plot([energy], [intensity], 'ro')
-        # self.xanes_ax.figure.canvas.draw()
 
     def progress_modal(self, objs, operation='Working'):
         """
@@ -370,6 +292,7 @@ class GtkTxmViewer():
 
     def show(self):
         self.window.show_all()
+        self.plotter.connect_animation(event_source=self.event_source)
         Gtk.main()
         Gtk.main_quit()
 

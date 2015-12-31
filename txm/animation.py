@@ -16,10 +16,10 @@ class FrameAnimation(animation.ArtistAnimation):
     def artists(self, value):
         self._framedata = value
 
-    def __del__(self, *args, **kwargs):
-        self._stop()
-
     def _step(self, current_idx):
         artists = self._framedata[current_idx]
         self._draw_next_frame(artists, self._blit)
         return True
+
+    def stop(self):
+        return self._stop()

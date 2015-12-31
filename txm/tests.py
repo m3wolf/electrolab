@@ -18,15 +18,18 @@ from txm.edges import Edge, k_edges
 from txm.importers import import_txm_framesets
 from txm import gtk_viewer
 from txm import xanes_frameset
+from txm import plotter
 
 
 class HDFTestCase(unittest.TestCase):
     """A test case that sets up and tears down an HDF file."""
     def setUp(self):
-        self.hdf_filename = 'test_data/txm-frame-test.hdf'
+        curdir = os.path.dirname(os.path.realpath(__file__))
+        print(curdir)
+        self.hdf_filename = os.path.join(curdir, 'test_data', 'txm-frame-test.hdf')
         if os.path.exists(self.hdf_filename):
             os.remove(self.hdf_filename)
-        self.hdf_file = h5py.File(self.hdf_filename)
+        self.hdf_file = h5py.File(self.hdf_filename, 'w-')
 
     def tearDown(self):
         self.hdf_file.close()
@@ -35,16 +38,25 @@ class HDFTestCase(unittest.TestCase):
 
 
 class XrayEdgeTest(unittest.TestCase):
-    def test_energies(self):
-        edge = Edge(
+    def setUp(self):
+        self.edge = Edge(
             (8250, 8290, 20),
             (8290, 8295, 1),
-            pre_edge=None, post_edge=None,
+            pre_edge=(8250, 8290),
+            post_edge=(8290, 8295),
+            map_range=(8291, 8293),
             name="Test edge",
         )
+    def test_energies(self):
         self.assertEqual(
-            edge.energies(),
+            self.edge.all_energies(),
             [8250, 8270, 8290, 8291, 8292, 8293, 8294, 8295]
+        )
+
+    def test_norm_energies(self):
+        self.assertEqual(
+            self.edge.energies_in_range(),
+            [8291, 8292, 8293]
         )
 
 
@@ -276,7 +288,8 @@ class MockFrameset(XanesFrameset):
 class TXMGtkViewerTest(unittest.TestCase):
     def test_background_frame(self):
         fs = MockFrameset()
-        viewer = gtk_viewer.GtkTxmViewer(frameset=fs)
+        viewer = gtk_viewer.GtkTxmViewer(frameset=fs,
+                                         plotter=plotter.DummyGtkPlotter(frameset=fs))
         print(viewer)
 
 

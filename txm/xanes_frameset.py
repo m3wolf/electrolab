@@ -20,6 +20,7 @@ from .frame import (
     TXMFrame, average_frames, calculate_particle_labels, pixel_to_xy,
     apply_reference, position, Pixel)
 from .gtk_viewer import GtkTxmViewer
+from .plotter import FramesetPlotter
 from plots import new_axes, new_image_axes, DegreeFormatter, ElectronVoltFormatter
 import exceptions
 from hdf import HDFAttribute
@@ -79,7 +80,8 @@ class XanesFrameset():
         """Clear cached function values so they will be recomputed with fresh
         data"""
         self.xanes_spectrum.cache_clear()
-        self.normalizer.cache_clear()
+        self.image_normalizer.cache_clear()
+        self.edge_jump_filter.cache_clear()
 
     @property
     def active_labels_groupname(self):
@@ -293,14 +295,13 @@ class XanesFrameset():
         particle_img = np.copy(particle.image())
         # Set all values outside the particle itself to 0
         particle_img[np.logical_not(particle.mask())] = 0
+        reference_key = self[reference_frame].key()
         reference_img = self[reference_frame].image_data.value
         reference_match = feature.match_template(reference_img, particle_img, pad_input=True)
         reference_center = np.unravel_index(reference_match.argmax(),
                                             reference_match.shape)
         reference_center = Pixel(vertical=reference_center[0],
                                  horizontal=reference_center[1])
-        # reference_loc_v = (bbox.bottom-bbox.top)/2+bbox.top
-        # reference_loc_h = (bbox.right-bbox.left)/2+bbox.left
         # Multiprocessing setup
         def worker(payload):
             key, data, labels = payload
@@ -310,19 +311,25 @@ class XanesFrameset():
             center = Pixel(vertical=center[0], horizontal=center[1])
             # Determine the net translation necessary to align to reference frame
             shift = [
-                center.horizontal - reference_center.vertical,
-                center.vertical - reference_center.horizontal,
+                center.horizontal - reference_center.horizontal,
+                center.vertical - reference_center.vertical,
             ]
-            # Apply the translation with bicubic interpolation
-            transformation = transform.SimilarityTransform(translation=shift)
-            new_data = transform.warp(data, transformation,
-                                      order=3, mode="wrap")
-            # Transform labels
-            original_dtype = labels.dtype
-            labels = labels.astype(np.float64)
-            new_labels = transform.warp(labels, transformation, order=0, mode="constant")
-            new_labels = new_labels.astype(original_dtype)
-            return (key, new_data, new_labels)
+            if key == reference_key:
+                # Sanity check to ensure that reference frame does not shift
+                assert shift == [0, 0], "Reference frame is shifted by " + shift
+                ret = (key, data, labels)
+            else:
+                # Apply the translation with bicubic interpolation
+                transformation = transform.SimilarityTransform(translation=shift)
+                new_data = transform.warp(data, transformation,
+                                          order=3, mode="wrap")
+                # Transform labels
+                original_dtype = labels.dtype
+                labels = labels.astype(np.float64)
+                new_labels = transform.warp(labels, transformation, order=0, mode="constant")
+                new_labels = new_labels.astype(original_dtype)
+                ret = (key, new_data, new_labels)
+            return ret
         def process_result(payload):
             key, data, labels = payload
             frame = self[key]
@@ -345,15 +352,15 @@ class XanesFrameset():
             frame.sample_position = position(0, 0, frame.sample_position.z)
         return reference_match
 
-    def crop_to_particle(self, new_name='cropped_particle', particle_loc=None):
+    def crop_to_particle(self, new_name='cropped_particle', loc=None):
         """Reduce the image size to just show the particle in question."""
         # Create new HDF5 groups
         self.fork_group(new_name)
         self.fork_labels('cropped_labels')
         # Activate particle if necessary
-        if particle_loc is not None:
+        if loc is not None:
             for frame in prog(self, 'Idetifying closest particle'):
-                particle = frame.activate_closest_particle(loc=particle_loc)
+                particle = frame.activate_closest_particle(loc=loc)
         # Make sure an active particle is assigned to all frames
         for frame in self:
             if frame.active_particle_idx is None:
@@ -549,6 +556,7 @@ class XanesFrameset():
         ax.set_ylabel('µm')
         return artist
 
+    @functools.lru_cache()
     def edge_jump_filter(self):
         """Calculate an image mask filter that represents the difference in
         signal across the X-ray edge."""
@@ -621,38 +629,14 @@ class XanesFrameset():
         """Determine physical dimensions for axes values."""
         return self[0].extent()
 
-    def plot_map(self, ax=None, norm_range=None, alpha=1,
+    def plot_map(self, plotter=None, ax=None, norm_range=None, alpha=1,
                  edge_jump_filter=False, return_type="axes"):
-        if ax is None:
-            ax = new_image_axes()
-        if norm_range is None:
-            norm_range = (self.edge.map_range[0], self.edge.map_range[1])
-        # Construct a discrete normalizer so the colorbar is also discrete
-        norm = Normalize(norm_range[0], norm_range[1])
-        cmap = cm.get_cmap(self.cmap)
-        energies = np.array(self.edge.energies())
-        energies = energies[(norm_range[0] <= energies) & (energies <= norm_range[1])]
-        norm = BoundaryNorm(energies, cmap.N)
-        # Plot chemical map (on top of absorbance image, if present)
-        extent = self.extent()
-        artist = ax.imshow(self.masked_map(edge_jump_filter=edge_jump_filter),
-                           extent=extent, cmap=self.cmap, norm=norm, alpha=alpha)
-        # Add colormap to the side of the axes
-        mappable = cm.ScalarMappable(norm=norm, cmap=self.cmap)
-        mappable.set_array(np.arange(0, 3))
-        cbar = pyplot.colorbar(mappable, ax=ax,
-                               ticks=energies[0:-1],
-                               spacing="proportional")
-        cbar.ax.xaxis.get_major_formatter().set_useOffset(False)
-        cbar.ax.set_title('eV')
-        # Decorate axes labels, etc
-        ax.set_xlabel("TODO: Adjust extent when zooming and cropping! (µm)")
-        ax.set_ylabel("µm")
-        if return_type == "artist":
-            ret = artist
-        else:
-            ret = ax
-        return ret
+        """Use a default frameset plotter to draw a map of the chemical data."""
+        if plotter is None:
+            plotter = FramesetPlotter(frameset=self, map_ax=ax)
+        plotter.draw_map(norm_range=norm_range, alpha=alpha,
+                         edge_jump_filter=edge_jump_filter)
+        return plotter
 
     def plot_histogram(self, ax=None, norm_range=None):
         if ax is None:
@@ -769,7 +753,7 @@ class XanesFrameset():
         return Normalize(global_min, global_max)
 
     @functools.lru_cache()
-    def normalizer(self):
+    def image_normalizer(self):
         # Find global limits
         global_min = 99999999999
         global_max = 0
