@@ -1,8 +1,10 @@
 import gc
 
-from matplotlib import figure, pyplot, cm
-from matplotlib.backends.backend_gtk3agg import FigureCanvasGTK3Agg
+from matplotlib import figure, pyplot, cm, animation
 from matplotlib.colors import Normalize, BoundaryNorm
+from matplotlib.backends.backend_agg import FigureCanvasAgg
+from matplotlib.backends.backend_gtk3agg import FigureCanvasGTK3Agg
+# from matplotlib.backends.backend_gtk import FigureCanvasGTK
 import numpy as np
 
 import plots
@@ -59,6 +61,9 @@ class FramesetPlotter():
         self.map_ax.set_ylabel("µm")
         return artist
 
+    def plot_xanes_spectrum(self):
+        self.xanes_scatter = self.frameset.plot_xanes_spectrum(ax=self.xanes_ax)
+
     def set_title(self, title):
         self.map_ax.set_title(title)
 
@@ -76,6 +81,71 @@ class FramesetPlotter():
                                         color=color, linestyle="--")
             self.map_crosshairs = (xline, yline)
         self.map_ax.figure.canvas.draw()
+
+class FramesetMoviePlotter(FramesetPlotter):
+    show_particles = False
+    def create_axes(self):
+        # self.figure = pyplot.figure(figsize=(13.8, 6))
+        self.figure = figure.Figure(figsize=(13.8, 6))
+        self.canvas = FigureCanvasGTK3Agg(figure=self.figure)
+        # self.canvas = FigureCanvasGTK3Agg(figure=self.figure)
+        # Create figure grid layout
+        self.image_ax = self.figure.add_subplot(1, 2, 1)
+        plots.set_outside_ticks(self.image_ax)
+        self.xanes_ax = self.figure.add_subplot(1, 2, 2)
+        return (self.image_ax, self.xanes_ax)
+
+    def connect_animation(self):
+        # Draw the non-animated parts of the graphs
+        self.plot_xanes_spectrum()
+        # Create artists
+        all_artists = []
+        for frame in self.frameset:
+            frame_artist = frame.plot_image(ax=self.image_ax,
+                                            show_particles=False,
+                                            norm=self.frameset.image_normalizer(),
+                                            animated=True)
+            # Get Xanes highlight artists
+            energy = frame.energy
+            intensity = self.frameset.xanes_spectrum()[energy]
+            xanes_artists = self.xanes_ax.plot([energy], [intensity], 'ro',
+                                               animated=True)
+            # xanes_artists.append(xanes_artist[0])
+            if self.show_particles:
+                # Get particle labels artists
+                particle_artists = frame.plot_particle_labels(
+                    ax=self.image_ax,
+                    extent=frame.extent(),
+                    animated=True
+                )
+            else:
+                particle_artists = []
+            all_artists.append((frame_artist, *xanes_artists, *particle_artists))
+            # all_artists.append((frame_artist,))
+        # Prepare animation
+        self.frame_animation = animation.ArtistAnimation(fig=self.figure,
+                                                         artists=all_artists,
+                                                         interval=50,
+                                                         repeat_delay=3000,
+                                                         blit=True)
+
+    def show(self):
+        self.figure.canvas.show()
+
+    def save_movie(self, *args, **kwargs):
+        # Set default values
+        kwargs['codec'] = kwargs.get('codec', 'h264')
+        kwargs['bitrate'] = kwargs.get('bitrate', -1)
+        kwargs['writer'] = 'ffmpeg'
+        # codec = kwargs.get('codec', 'h264')
+        # bitrate = kwargs.pop('bitrate', -1)
+        # Generate a writer object
+        # if 'writer' not in kwargs.keys():
+        #     writer = animation.FFMpegFileWriter(bitrate=bitrate, codec=codec)
+        # else:
+        #     writer = kwargs['writer']
+        self.figure.canvas.draw()
+        return self.frame_animation.save(*args, **kwargs)
 
 class GtkFramesetPlotter(FramesetPlotter):
     """Variation of the frameset plotter that uses canvases made for GTK."""
@@ -123,6 +193,11 @@ class GtkFramesetPlotter(FramesetPlotter):
                                           pixel=active_pixel)
         self.map_canvas.draw()
 
+    def plot_xanes_spectrum(self):
+        self.xanes_ax.clear()
+        super().plot_xanes_spectrum()
+        self.xanes_ax.figure.canvas.draw()
+
     def create_axes(self):
         # Create figure grid layout
         self.image_ax = self.frame_figure.add_subplot(1, 2, 1)
@@ -146,11 +221,6 @@ class GtkFramesetPlotter(FramesetPlotter):
     @property
     def map_figure(self):
         return self._map_fig
-
-    def plot_xanes_spectrum(self):
-        self.xanes_ax.clear()
-        self.xanes_scatter = self.frameset.plot_xanes_spectrum(ax=self.xanes_ax)
-        self.xanes_ax.figure.canvas.draw()
 
     def refresh_artists(self):
         """Prepare artist objects for each frame and animate them for easy

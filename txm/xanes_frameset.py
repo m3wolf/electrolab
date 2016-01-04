@@ -20,7 +20,7 @@ from .frame import (
     TXMFrame, average_frames, calculate_particle_labels, pixel_to_xy,
     apply_reference, position, Pixel)
 from .gtk_viewer import GtkTxmViewer
-from .plotter import FramesetPlotter
+from .plotter import FramesetPlotter, FramesetMoviePlotter
 from plots import new_axes, new_image_axes, DegreeFormatter, ElectronVoltFormatter
 import exceptions
 from hdf import HDFAttribute
@@ -661,6 +661,14 @@ class XanesFrameset():
         ax.set_xlim(norm.vmin, norm.vmax)
         ax.xaxis.get_major_formatter().set_useOffset(False)
         return ax
+
+    def save_movie(self, filename, *args, **kwargs):
+        """Save an animation of all the frames and XANES to the specified
+        filename."""
+        pl = FramesetMoviePlotter(frameset=self)
+        pl.create_axes()
+        pl.connect_animation()
+        pl.save_movie(filename=filename, *args, **kwargs)
 
     def whiteline_map(self):
         """Calculate a map where each pixel is the energy of the whiteline."""

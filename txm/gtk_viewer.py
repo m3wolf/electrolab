@@ -76,6 +76,7 @@ class GtkTxmViewer():
             'gtk-quit': Gtk.main_quit,
             'previous-frame': self.previous_frame,
             'create-artists': self.refresh_artists,
+            'max-frame': self.max_frame,
             'next-frame': self.next_frame,
             'play-frames': self.play_frames,
             'last-frame': self.last_frame,
@@ -96,6 +97,9 @@ class GtkTxmViewer():
         # Connect handlers for clicking on a pixel
         self.plotter.map_figure.canvas.mpl_connect('button_press_event',
                                                    self.click_map_pixel)
+        # Connect handler for mousing over the frame image
+        self.plotter.frame_figure.canvas.mpl_connect('motion_notify_event',
+                                                     self.update_current_location)
         # Prepare animation
         self.event_source = FrameChangeSource(viewer=self)
         # Make everything visible
@@ -146,6 +150,28 @@ class GtkTxmViewer():
             self.active_xy = None
         self.draw_map_plots()
         self.update_map_window()
+
+    def update_current_location(self, event):
+        x_label = self.builder.get_object('XCursorLabel')
+        y_label = self.builder.get_object('YCursorLabel')
+        v_label = self.builder.get_object('VCursorLabel')
+        h_label = self.builder.get_object('HCursorLabel')
+        if event.inaxes == self.plotter.image_ax:
+            # Convert xy position to pixel values
+            xy = xycoord(x=round(event.xdata, 1), y=round(event.ydata, 1))
+            pixel = xy_to_pixel(xy, extent=self.frameset.extent(),
+                                shape=self.frameset.map_shape())
+            x_label.set_text(str(xy.x))
+            y_label.set_text(str(xy.y))
+            v_label.set_text(str(pixel.vertical))
+            h_label.set_text(str(pixel.horizontal))
+        else:
+            # Set all the cursor labels to blank values
+            s = "--"
+            x_label.set_text(s)
+            y_label.set_text(s)
+            v_label.set_text(s)
+            h_label.set_text(s)
 
     def draw_map_plots(self):
         self.plotter.draw_map(show_map=self.show_map,
@@ -233,7 +259,16 @@ class GtkTxmViewer():
         self.update_window()
 
     def previous_frame(self, widget=None):
+        """Go to the next frame in the sequence (or wrap around if at the
+        end).
+        """
         self.current_idx = (self.current_idx - 1) % len(self.frameset)
+        self.update_window()
+
+    def max_frame(self, widget=None):
+        """Find the frame with the highest intensity and active it"""
+        spectrum = self.frameset.xanes_spectrum()
+        self.current_idx = spectrum.values.argmax()
         self.update_window()
 
     def next_frame(self, widget=None):

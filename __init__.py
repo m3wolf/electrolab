@@ -43,3 +43,4 @@ from txm.importers import import_txm_framesets
 from txm.xanes_frameset import XanesFrameset
 from txm.frame import TXMFrame, calculate_particle_labels, rebin_image
 from txm.edges import k_edges
+from txm.plotter import FramesetMoviePlotter
