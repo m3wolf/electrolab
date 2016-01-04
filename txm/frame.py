@@ -14,7 +14,6 @@ from skimage.measure import regionprops, label
 from skimage import filters
 from skimage.filters import threshold_otsu, threshold_adaptive, rank, threshold_li
 from skimage.feature import peak_local_max
-from skimage.segmentation import clear_border
 from matplotlib.colors import Normalize
 
 import exceptions
@@ -395,11 +394,12 @@ def calculate_particle_labels(data, return_intermediates=False,
                               min_distance=0.016):
     """Identify and label material particles in the image data.
 
-    Generate and save a scikit-image style labels frame
-    identifying the different particles. `return_all=True` returns
-    a list of intermediates images (dict) instead of just the
-    final result. Returns the final computed labels image, or a
-    dictionary of all images (see kwarg return_intermediates.
+    Generate and save a scikit-image style labels frame identifying
+    the different particles. Returns an array with the same shape as
+    `data` with values ap`oximating the particles in the frame. If
+    kwarg `return_all` is truthy, returns an ordered dictionary of the
+    intermediate arrays calculated during the algorithm (useful for
+    debugging).
 
     Parameters
     ----------
@@ -407,46 +407,32 @@ def calculate_particle_labels(data, return_intermediates=False,
         Return intermediate images as a dict (default False)
     min_distance : float
         How far away (as a portion of image size) particle centers need to be in
-        order to register as different particles (default 0.2)
+        order to register as different particles (default 0.016)
 
     """
     with warnings.catch_warnings():
-        # Raises a lot of precision loss warnings that are irrelevant
+        # Supress precision loss warnings when we convert to binary mask
         warnings.simplefilter("ignore")
-        # Shift image into range -1 to 1
-        # normalizer = Normalize(vmin=self.image_data.value.min(),
-        #                        vmax=self.image_data.value.max())
+        # Shift image into range -1 to 1 by contrast stretching
         original = data
-        # equalized = skimage.exposure.equalize_hist(self.image_data.value)
-        # Contrast stretching
         in_range = (data.min(), data.max())
-        rescaled = rescale_intensity(original, in_range=in_range, out_range=(0, 1))
-        equalized = rescaled
-        # Stretch out the contrast to make identification easier
-        # with warnings.catch_warnings():
-        #     # Raises a lot of precision loss warnings that are irrelevant
-        #     warnings.simplefilter("ignore")
-        #     equalized = skimage.exposure.equalize_adapthist(rescaled, clip_limit=0.05)
-        # Identify foreground vs background with Otsu filter
+        equalized = rescale_intensity(original,
+                                     in_range=in_range,
+                                     out_range=(0, 1))
+        # Identify foreground vs background with adaptive Otsu filter
         average_shape = sum(equalized.shape)/len(equalized.shape)
-        # threshold = threshold_otsu(equalized)
         threshold = filters.threshold_otsu(equalized)
-        mask = equalized > 1 * threshold
-        block_size = average_shape / 2.72 # Determine imperically
+        multiplier = 1
+        block_size = average_shape / 2.72 # Determined emperically
         mask = threshold_adaptive(equalized, block_size=block_size, offset=0)
-        # Fill in the shapes a little
-        # closed = dilation(mask, square(3))
-        # Remove features at the edge of the frame since they can be incomplete
-        # border_cleared = clear_border(np.copy(closed))
-        border_cleared = np.copy(mask)
-        # Discard small particles
-        # Determine minimum size for discarding objects
+        mask_copy = np.copy(mask)
+        # Determine minimum size for discarding small objects
         min_size = 4. * average_shape
-        large_only = remove_small_objects(border_cleared, min_size=min_size)
+        large_only = remove_small_objects(mask, min_size=min_size)
         # Fill in the shapes a lot to round them out
-        reclosed = closing(large_only, disk(average_shape * 20 / 1024)) # 20
+        reclosed = closing(large_only, disk(average_shape * 20 / 1024))
         # Expand the particles to make sure we capture the edges
-        dilated = dilation(reclosed, disk(average_shape * 10 / 1024)) # 10
+        dilated = dilation(reclosed, disk(average_shape * 10 / 1024))
         # Compute each pixel's distance from the edge of a blob
         distances = ndimage.distance_transform_edt(dilated)
         in_range = (distances.min(), distances.max())
@@ -458,7 +444,6 @@ def calculate_particle_labels(data, return_intermediates=False,
             mean_distances,
             indices=False,
             min_distance=min_distance * average_shape,
-            # footprint=np.ones((64, 64)),
             labels=dilated
         )
         markers = label(local_maxima)
@@ -467,8 +452,7 @@ def calculate_particle_labels(data, return_intermediates=False,
         result = OrderedDict()
         result['original'] = original
         result['equalized'] = equalized
-        result['mask'] = mask
-        result['border_cleared'] = border_cleared
+        result['mask'] = mask_copy
         result['large_only'] = large_only
         result['reclosed'] = reclosed
         result['dilated'] = dilated
