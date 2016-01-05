@@ -141,10 +141,13 @@ class GtkTxmViewer():
         if event.inaxes == self.plotter.map_ax:
             # Convert xy position to pixel values
             xy = xycoord(x=event.xdata, y=event.ydata)
-            pixel = xy_to_pixel(xy, extent=self.frameset.extent(),
-                                shape=self.frameset.map_shape())
-            self.active_pixel = pixel
-            self.active_xy = xy
+            self.active_pixel = xy_to_pixel(xy,
+                                            extent=self.frameset.extent(),
+                                            shape=self.frameset.map_shape())
+            # Make sure active_xy is in the center of the pixel
+            self.active_xy = pixel_to_xy(self.active_pixel,
+                                         extent=self.frameset.extent(),
+                                         shape=self.frameset.map_shape())
         else:
             self.active_pixel = None
             self.active_xy = None
