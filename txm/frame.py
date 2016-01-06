@@ -367,20 +367,27 @@ class TXMFrame():
         return labels
 
     def activate_closest_particle(self, loc):
-        """Get a particle that's closest to location."""
-        if loc:
-            particles = self.particles()
-            current_min = 999999
-            current_idx = None
-            for idx, particle in enumerate(particles):
-                center = particle.sample_position()
-                distance = math.sqrt((loc[0]-center[0])**2 + (loc[1]-center[1])**2)
-                if distance < current_min:
-                    # New closest match
-                    current_min = distance
-                    current_idx = idx
-            self.active_particle_idx = current_idx
-            return particles[current_idx]
+        """Get a particle that's closest to frame location and save for future
+        reference."""
+        if loc: # Some calling routines may pass `None`
+            self.active_particle_idx = self.closest_particle_idx(loc)
+            return self.particles()[self.active_particle_idx]
+        else:
+            return None
+
+    def closest_particle_idx(self, loc):
+        """Get a particle that's closest to frame location."""
+        particles = self.particles()
+        current_min = 999999
+        current_idx = None
+        for idx, particle in enumerate(particles):
+            center = particle.sample_position()
+            distance = math.sqrt((loc[0]-center[0])**2 + (loc[1]-center[1])**2)
+            if distance < current_min:
+                # New closest match
+                current_min = distance
+                current_idx = idx
+        return current_idx
 
     def particles(self):
         labels = self.particle_labels()

@@ -295,6 +295,7 @@ class XanesFrameset():
         particle_img = np.copy(particle.image())
         # Set all values outside the particle itself to 0
         particle_img[np.logical_not(particle.mask())] = 0
+        # particle_img = np.ma.array(particle_img, mask=np.logical_not(particle.mask()))
         reference_key = self[reference_frame].key()
         reference_img = self[reference_frame].image_data.value
         reference_match = feature.match_template(reference_img, particle_img, pad_input=True)
@@ -460,6 +461,19 @@ class XanesFrameset():
         for frame in prog(self, "Rebinning"):
             frame.rebin(shape=shape, factor=factor)
 
+    def particle_area_spectrum(self, loc=xycoord(20, 20)):
+        """Calculate a spectrum based on the area of the particle closest to
+        the given location in the frame. This may be useful for assessing
+        magnification across multiple frames.
+        """
+        energies = [f.energy for f in self]
+        areas = []
+        for frame in self:
+            particle_idx = frame.closest_particle_idx(loc)
+            particle = frame.particles()[particle_idx]
+            areas.append(particle.area())
+        return pd.Series(areas, index=energies)
+
     def plot_mean_image(self, ax=None):
         if ax is None:
             ax = new_image_axes()
@@ -468,6 +482,7 @@ class XanesFrameset():
         return artist
 
     def mean_image(self):
+
         """Determine an overall image by taken the mean intensity of each
         pixel across all frames."""
         frames = np.array([f.image_data for f in self])
@@ -648,7 +663,7 @@ class XanesFrameset():
             norm = Normalize(norm_range[0], norm_range[1])
         masked_map = self.masked_map()
         n, bins, patches = ax.hist(masked_map[~masked_map.mask],
-                                   bins=self.edge.energies())
+                                   bins=self.edge.all_energies())
         # Set colors on histogram
         for patch in patches:
             x_position = patch.get_x()

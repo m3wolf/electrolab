@@ -106,8 +106,11 @@ def import_txm_framesets(directory, hdf_filename=None, flavor='ssrl'):
     for frameset in frameset_list:
         frameset.apply_references(bg_groupname=bg_groupname)
     # Apply magnification (zoom) correction
-    for frameset in frameset_list:
-        frameset.correct_magnification()
+    if flavor in ['ssrl']:
+        for frameset in frameset_list:
+            frameset.correct_magnification()
+    else:
+        print('Skipped magnification correction')
     # Identify particles
     for frameset in frameset_list:
         frameset.label_particles()
