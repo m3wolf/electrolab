@@ -8,6 +8,7 @@ from tqdm import format_meter
 from .xradia import XRMFile
 from .xanes_frameset import XanesFrameset
 from .frame import TXMFrame, average_frames
+from utilities import prog
 import exceptions
 
 def import_txm_framesets(directory, hdf_filename=None, flavor='ssrl'):
@@ -111,6 +112,12 @@ def import_txm_framesets(directory, hdf_filename=None, flavor='ssrl'):
             frameset.correct_magnification()
     else:
         print('Skipped magnification correction')
+    # Remove dead or hot pixels
+    if flavor in ['aps']:
+        sigma = 9
+        for fs in frameset_list:
+            for frame in prog(fs, 'Removing pixels beyond {}σ'.format(sigma)):
+                frame.remove_outliers(sigma=sigma)
     # Identify particles
     for frameset in frameset_list:
         frameset.label_particles()

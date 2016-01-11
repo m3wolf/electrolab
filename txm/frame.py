@@ -19,12 +19,13 @@ from matplotlib.colors import Normalize
 import exceptions
 import plots
 from hdf import HDFAttribute
-from utilities import xycoord
+from utilities import xycoord, Pixel
 from .particle import Particle
 
 position = namedtuple('position', ('x', 'y', 'z'))
 Extent = namedtuple('extent', ('left', 'right', 'bottom', 'top'))
-Pixel = namedtuple('pixel', ('vertical', 'horizontal'))
+# Moved to utilitiexs module
+# Pixel = namedtuple('pixel', ('vertical', 'horizontal'))
 
 def rebin_image(data, shape):
     """Resample image into new shape, but only if the new dimensions are
@@ -197,6 +198,15 @@ class TXMFrame():
         top = center.y + y_pixels * um_per_pixel.y / 2
         return Extent(left=left, right=right, bottom=bottom, top=top)
 
+    def plot_histogram(self, ax=None, *args, **kwargs):
+        if ax is None:
+            ax = plots.new_axes()
+        ax.set_xlabel('Absorbance (AU)')
+        ax.set_ylabel('Occurences')
+        data = np.nan_to_num(self.image_data.value)
+        artist = ax.hist(data.flat, bins=100, *args, **kwargs)
+        return artist
+
     def plot_image(self, data=None, ax=None, show_particles=True, *args, **kwargs):
         """Plot a frame's data image. Use frame.image_data if no data are
         given."""
@@ -242,6 +252,15 @@ class TXMFrame():
                               verticalalignment='center')
                 artists.append(txt)
         return artists
+
+    def remove_outliers(self, sigma):
+        """Mark as invalid any pixels more that `sigma` standard deviations
+        away from the median."""
+        d = np.abs(self.image_data - np.median(self.image_data))
+        sdev = np.std(self.image_data)
+        # mdev = np.median(d)
+        s = d/sdev if sdev else 0.
+        self.image_data[s>=sigma] = 0
 
     def crop(self, top, left, bottom, right):
         """Reduce the image size to given box (in pixels)."""

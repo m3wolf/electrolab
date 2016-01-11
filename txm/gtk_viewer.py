@@ -18,7 +18,7 @@ class GtkTxmViewer():
     active_pixel = None
     active_xy = None
     _current_idx = 0
-    animation_delay = 1000/18
+    animation_delay = 1000/15
     show_map = True
     show_map_background = True
     apply_edge_jump = False
