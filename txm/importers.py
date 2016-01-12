@@ -76,8 +76,11 @@ def import_txm_framesets(directory, hdf_filename=None, flavor='ssrl'):
             bg_frameset.add_frame(averaged_frame)
         else:
             # Determine which frameset to use or create a new one
-            identifier = "{}_{}".format(averaged_frame.sample_name,
-                                        averaged_frame.position_name)
+            if flavor == 'aps':
+                identifier = "{}_{}".format(averaged_frame.sample_name,
+                                            averaged_frame.position_name)
+            elif flavor == 'ssrl':
+                identifier = averaged_frame.sample_name
             if not identifier in sample_framesets.keys():
                 # First time seeing this frameset location
                 new_frameset = XanesFrameset(filename=hdf_filename,

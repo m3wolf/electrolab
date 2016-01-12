@@ -8,6 +8,37 @@ import numpy as np
 
 import exceptions
 
+def decode_ssrl_params(filename):
+    """Accept the filename of an XRM file and return sample parameters as
+    a dictionary."""
+    # Beamline 6-2c at SSRL
+    ssrl_regex_bg = re.compile(
+        'rep(\d{2})_(\d{6})_ref_[0-9]+_([a-zA-Z0-9_]+)_([0-9.]+)_eV_(\d{3})of(\d{3})\.xrm'
+    )
+    ssrl_regex_sample = re.compile(
+        'rep(\d{2})_[0-9]+_([a-zA-Z0-9_]+)_([0-9.]+)_eV_(\d{3})of(\d{3}).xrm'
+    )
+    # Check for background frames
+    bg_result = ssrl_regex_bg.search(filename)
+    if bg_result:
+        params = {
+            'date_string': '',
+            'sample_name': bg_result.group(3).strip("_"),
+            'position_name': '',
+            'is_background': True,
+            'energy': float(bg_result.group(4)),
+        }
+    else:
+        sample_result = ssrl_regex_sample.search(filename)
+        params = {
+            'date_string': '',
+            'sample_name': sample_result.group(2).strip("_"),
+            'position_name': '',
+            'is_background': False,
+            'energy': float(sample_result.group(3)),
+        }
+    return params
+
 # Some of the byte decoding was taken from
 # https://github.com/data-exchange/data-exchange/blob/master/xtomo/src/xtomo_reader.py
 
@@ -49,32 +80,7 @@ class XRMFile():
                 'energy': float(result.group(4)),
             }
         elif self.flavor == 'ssrl':
-            # Beamline 6-2c at SSRL
-            self.ssrl_regex_bg = re.compile(
-                'rep(\d{2})_(\d{6})_ref_([a-zA-Z0-9_]+)_([0-9.]+)_eV_(\d{3})of(\d{3})\.xrm'
-            )
-            self.ssrl_regex_sample = re.compile(
-                'rep(\d{2})_([a-zA-Z0-9_]+)_([0-9.]+)_eV_(\d{3})of(\d{3}).xrm'
-            )
-            # Check for background frames
-            bg_result = self.ssrl_regex_bg.search(self.filename)
-            if bg_result:
-                params = {
-                    'date_string': '',
-                    'sample_name': bg_result.group(3).strip("_"),
-                    'position_name': '',
-                    'is_background': True,
-                    'energy': float(bg_result.group(4)),
-                }
-            else:
-                sample_result = self.ssrl_regex_sample.search(self.filename)
-                params = {
-                    'date_string': '',
-                    'sample_name': sample_result.group(2).strip("_"),
-                    'position_name': '',
-                    'is_background': False,
-                    'energy': float(sample_result.group(3)),
-                }
+            params = decode_ssrl_params(self.filename)
         else:
             msg = "Unknown flavor for filename: {}"
             raise exceptions.FileFormatError(msg.format(self.filename))

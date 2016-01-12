@@ -800,12 +800,13 @@ class XanesFrameset():
         return self[0].extent()
 
     def plot_map(self, plotter=None, ax=None, norm_range=None, alpha=1,
-                 edge_jump_filter=False, return_type="axes"):
+                 edge_jump_filter=False, return_type="axes", *args, **kwargs):
         """Use a default frameset plotter to draw a map of the chemical data."""
         if plotter is None:
             plotter = FramesetPlotter(frameset=self, map_ax=ax)
         plotter.draw_map(norm_range=norm_range, alpha=alpha,
-                         edge_jump_filter=edge_jump_filter)
+                         edge_jump_filter=edge_jump_filter,
+                         *args, **kwargs)
         return plotter
 
     def plot_histogram(self, ax=None, norm_range=None):

@@ -16,7 +16,8 @@ from txm.frame import (
     rebin_image, apply_reference)
 from txm.edges import Edge, k_edges
 from txm.importers import import_txm_framesets
-from txm import gtk_viewer
+from txm.xradia import decode_ssrl_params
+# from txm import gtk_viewer
 from txm import xanes_frameset
 from txm import plotter
 
@@ -25,8 +26,7 @@ class HDFTestCase(unittest.TestCase):
     """A test case that sets up and tears down an HDF file."""
     def setUp(self):
         curdir = os.path.dirname(os.path.realpath(__file__))
-        print(curdir)
-        self.hdf_filename = os.path.join(curdir, 'test_data', 'txm-frame-test.hdf')
+        self.hdf_filename = os.path.join(curdir, 'txm-frame-test.hdf')
         if os.path.exists(self.hdf_filename):
             os.remove(self.hdf_filename)
         self.hdf_file = h5py.File(self.hdf_filename, 'w-')
@@ -87,7 +87,6 @@ class TXMMapTest(HDFTestCase):
             [8001, 8001, 8002]
         ]
         result = self.fs.whiteline_map()
-        print(result)
         self.assertTrue(np.array_equal(result, expected))
 
 class TXMFrameTest(HDFTestCase):
@@ -125,6 +124,30 @@ class TXMFrameTest(HDFTestCase):
         )
         # Check that the averaging is correct
         self.assertTrue(np.array_equal(avg_frame.image_data, expected_array))
+
+    def test_params_from_ssrl(self):
+        # First a reference frame
+        ref_filename = "rep01_000001_ref_201511202114_NCA_INSITU_OCV_FOV01_Ni_08250.0_eV_001of010.xrm"
+        result = decode_ssrl_params(ref_filename)
+        expected = {
+            'date_string': '',
+            'sample_name': 'NCA_INSITU_OCV_FOV01_Ni',
+            'position_name': '',
+            'is_background': True,
+            'energy': 8250.0,
+        }
+        self.assertEqual(result, expected)
+        # Now a sample field of view
+        sample_filename = "rep01_201511202114_NCA_INSITU_OCV_FOV01_Ni_08250.0_eV_001of010.xrm"
+        result = decode_ssrl_params(sample_filename)
+        expected = {
+            'date_string': '',
+            'sample_name': 'NCA_INSITU_OCV_FOV01_Ni',
+            'position_name': '',
+            'is_background': False,
+            'energy': 8250.0,
+        }
+        self.assertEqual(result, expected)
 
     def test_xy_to_pixel(self):
         extent = Extent(
@@ -230,13 +253,12 @@ class TXMFrameTest(HDFTestCase):
         )
         # Check that uneven samples are rebinned
         data = np.array([
-            [12, 8, 2.4, 0],
-            [9, 11, 0, 1.6],
-            [0.12, 0.08, 48, 50],
-            [0.09, 0.11, 52, 50],
+            [3, 1, 0.32, 0],
+            [2, 4, 0, 0.68],
+            [0.03, -.1, 22, 21],
+            [0.07, 0.1, 0, 7],
         ])
         result = apply_reference(data, background)
-        # print(result)
         self.assertTrue(
             np.array_equal(result, expected)
         )

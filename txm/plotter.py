@@ -39,7 +39,7 @@ class FramesetPlotter():
         return norm
 
     def draw_map(self, norm_range=None, alpha=1,
-                 edge_jump_filter=False):
+                 edge_jump_filter=False, *args, **kwargs):
         """Draw a map on the map_ax. If no axes exist, a new Axes is created
         with a colorbar."""
         # Construct a discrete normalizer so the colorbar is also discrete
@@ -55,7 +55,8 @@ class FramesetPlotter():
                                     extent=extent,
                                     cmap=self.map_cmap,
                                     norm=norm,
-                                    alpha=alpha)
+                                    alpha=alpha,
+                                    *args, **kwargs)
         # Decorate axes labels, etc
         self.map_ax.set_xlabel("TODO: Adjust extent when zooming and cropping! (µm)")
         self.map_ax.set_ylabel("µm")
