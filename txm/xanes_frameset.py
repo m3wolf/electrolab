@@ -897,20 +897,12 @@ class XanesFrameset():
         return group
 
     def add_frame(self, frame):
-        setname_template = "{energy}_eV{serial}"
+        setname_template = "{energy}_eV"
         frames_group = self.active_group()
         # Find a unique frame dataset name
         setname = setname_template.format(
             energy=frame.approximate_energy,
-            serial=""
         )
-        # counter = 0
-        # while setname in frames_group.keys():
-        #     counter += 1
-        #     setname = setname_template.format(
-        #         energy=frame.approximate_energy,
-        #         serial="-" + str(counter)
-        #     )
         # Name found, so create the actual dataset
         new_dataset = frame.create_dataset(setname=setname,
                                            hdf_group=frames_group)

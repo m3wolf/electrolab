@@ -21,7 +21,7 @@ from utilities import xycoord
 from refinement import fullprof
 
 from xrd.unitcell import CubicUnitCell, HexagonalUnitCell, TetragonalUnitCell
-from xrd import standards, lmo, bruker
+from xrd import standards, lmo
 from xrd.lmo import LMOPlateauMap
 from xrd.reflection import Reflection
 from xrd.scan import XRDScan, align_scans
