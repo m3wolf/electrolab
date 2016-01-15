@@ -140,6 +140,14 @@ class XRDScan():
         ax.set_title(self.axes_title())
         return ax
 
+    def plot_diffractogram_2d(self, ax=None, mask="auto"):
+        if ax is None:
+            ax = plots.new_image_axes()
+        adapter = adapter_from_filename(self.filename)
+        img = adapter.image()
+        img_ax = ax.imshow(img, cmap="viridis")
+        return img_ax
+
     def axes_title(self):
         if self.name is not None:
             title = self.name

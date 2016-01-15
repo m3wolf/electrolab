@@ -5,6 +5,7 @@ from tqdm import tqdm_gui, tqdm
 
 xycoord = namedtuple('xycoord', ('x', 'y'))
 Pixel = namedtuple('Pixel', ('vertical', 'horizontal'))
+shape = namedtuple('shape', ('rows', 'columns'))
 
 def prog(*args, **kwargs):
     """Progress meter. Wraps around tqdm with some custom defaults."""

@@ -7,7 +7,8 @@ FILE_ADAPTERS = {
     '.plt': adapters.BrukerPltFile,
     '.xye': adapters.BrukerXyeFile,
     '.dat': adapters.FullProfDataFile,
-    '.brml': adapters.BrukerBrmlFile
+    '.brml': adapters.BrukerBrmlFile,
+    '.gfrm': adapters.BrukerGfrmFile
 }
 
 def adapter_from_filename(filename):
