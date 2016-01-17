@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import re
+import os
 
 import pandas as pd
 import units
@@ -10,7 +11,7 @@ import exceptions
 from electrochem.cycle import Cycle
 from plots import new_axes
 import default_units
-from . import electrochem_units
+from . import electrochem_units, biologic
 
 def axis_label(key):
     axis_labels = {
@@ -30,7 +31,19 @@ class GalvanostatRun():
 
     def __init__(self, filename, mass=None, *args, **kwargs):
         self.filename = filename
-        self.load_csv(filename)
+        path, ext = os.path.splitext(filename)
+        file_readers = {
+            '.mpr': biologic.MPRFile,
+            '.mpt': biologic.MPTFile,
+        }
+        if ext in file_readers.keys():
+            FileReader = file_readers[ext]
+        else:
+            msg = "Unrecognized format {}".format(ext)
+            raise exceptions.FileFormatError(msg)
+        # self.load_csv(filename)
+        run = FileReader(filename)
+        self._df = run.dataframe
         self.cycles = []
         # Remove the initial resting period
         restingIndexes = self._df.loc[self._df['mode']==3].index
@@ -48,7 +61,7 @@ class GalvanostatRun():
             self.mass = mass
         else:
             # Get mass from eclab file
-            self.mass = self.mass_from_file()
+            self.mass = run.active_mass()
         mass_g = default_units.mass(self.mass).num
         self._df.loc[:,'capacity'] = self._df.loc[:,'(Q-Qo)/mA.h']/mass_g
         # Split the data into cycles, except the initial resting phase
@@ -59,35 +72,35 @@ class GalvanostatRun():
             self.cycles.append(new_cycle)
         super().__init__(*args, **kwargs)
 
-    def load_csv(self, filename, *args, **kwargs):
-        """Wrapper around pandas read_csv that filters out crappy data"""
-        # Determine start of data
-        with open(filename, encoding='latin-1') as dataFile:
-            # The second line states how long the header is
-            headerLength = int(dataFile.readlines()[1][18:20]) - 1
-        # Skip all the initial metadata
-        df = pd.read_csv(filename,
-                         *args,
-                         skiprows=headerLength,
-                         na_values='XXX',
-                         sep='\t',
-                         **kwargs)
-        self._df = df
-        return df
+    # def load_csv(self, filename, *args, **kwargs):
+    #     """Wrapper around pandas read_csv that filters out crappy data"""
+    #     # Determine start of data
+    #     with open(filename, encoding='latin-1') as dataFile:
+    #         # The second line states how long the header is
+    #         headerLength = int(dataFile.readlines()[1][18:20]) - 1
+    #     # Skip all the initial metadata
+    #     df = pd.read_csv(filename,
+    #                      *args,
+    #                      skiprows=headerLength,
+    #                      na_values='XXX',
+    #                      sep='\t',
+    #                      **kwargs)
+    #     self._df = df
+    #     return df
 
-    def mass_from_file(self):
-        """Read the mpt file and extract the sample mass"""
-        regexp = re.compile('^Mass of active material : ([0-9.]+) ([kmµ]?g)')
-        mass = None
-        with open(self.filename, encoding='latin-1') as f:
-            for line in f:
-                match = regexp.match(line)
-                if match:
-                    mass_num, mass_unit = match.groups()
-                    # We found the match, now save it
-                    mass = units.unit(mass_unit)(float(mass_num))
-                    break
-        return mass
+    # def mass_from_file(self):
+    #     """Read the mpt file and extract the sample mass"""
+    #     regexp = re.compile('^Mass of active material : ([0-9.]+) ([kmµ]?g)')
+    #     mass = None
+    #     with open(self.filename, encoding='latin-1') as f:
+    #         for line in f:
+    #             match = regexp.match(line)
+    #             if match:
+    #                 mass_num, mass_unit = match.groups()
+    #                 # We found the match, now save it
+    #                 mass = units.unit(mass_unit)(float(mass_num))
+    #                 break
+    #     return mass
 
     def capacity_from_file(self):
         """Read the mpt file and extract the theoretical capacity."""
