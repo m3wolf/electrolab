@@ -833,6 +833,14 @@ class XanesFrameset():
         ax.xaxis.get_major_formatter().set_useOffset(False)
         return ax
 
+    def movie_plotter(self):
+        """Creates an animation of all the frames in ascending energy, but
+        does not display it anywhere, that's up to you."""
+        pl = FramesetMoviePlotter(frameset=self)
+        pl.create_axes(figsize=(10, 6))
+        pl.connect_animation(repeat=False)
+        return pl
+
     def save_movie(self, filename, *args, **kwargs):
         """Save an animation of all the frames and XANES to the specified
         filename."""

@@ -1,4 +1,5 @@
 import gc
+from collections import namedtuple
 
 from matplotlib import figure, pyplot, cm, animation
 from matplotlib.colors import Normalize, BoundaryNorm
@@ -85,18 +86,21 @@ class FramesetPlotter():
 
 class FramesetMoviePlotter(FramesetPlotter):
     show_particles = False
-    def create_axes(self):
+    def create_axes(self, figsize=(13.8, 6)):
         # self.figure = pyplot.figure(figsize=(13.8, 6))
-        self.figure = figure.Figure(figsize=(13.8, 6))
+        self.figure = figure.Figure(figsize=figsize)
+        self.figure.subplots_adjust(bottom=0.2)
         self.canvas = FigureCanvasGTK3Agg(figure=self.figure)
         # self.canvas = FigureCanvasGTK3Agg(figure=self.figure)
         # Create figure grid layout
         self.image_ax = self.figure.add_subplot(1, 2, 1)
         plots.set_outside_ticks(self.image_ax)
+        plots.remove_extra_spines(ax=self.image_ax)
         self.xanes_ax = self.figure.add_subplot(1, 2, 2)
+        plots.remove_extra_spines(ax=self.xanes_ax)
         return (self.image_ax, self.xanes_ax)
 
-    def connect_animation(self):
+    def connect_animation(self, interval=50, repeat=True, repeat_delay=3000):
         # Draw the non-animated parts of the graphs
         self.plot_xanes_spectrum()
         # Create artists
@@ -126,8 +130,9 @@ class FramesetMoviePlotter(FramesetPlotter):
         # Prepare animation
         self.frame_animation = animation.ArtistAnimation(fig=self.figure,
                                                          artists=all_artists,
-                                                         interval=50,
-                                                         repeat_delay=3000,
+                                                         interval=interval,
+                                                         repeat=repeat,
+                                                         repeat_delay=repeat_delay,
                                                          blit=True)
 
     def show(self):
