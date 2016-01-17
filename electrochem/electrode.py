@@ -3,7 +3,7 @@ import math
 from units.predefined import define_units
 import units
 
-from scimap import default_units
+import default_units
 
 define_units()
 
