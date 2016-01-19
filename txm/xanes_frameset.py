@@ -52,8 +52,9 @@ class XanesFrameset():
         if filename:
             with self.hdf_file() as hdf_file:
                 if not groupname in hdf_file.keys():
-                    msg = "Created new frameset group: {}"
-                    print(msg.format(groupname))
+                    if not prog.quiet:
+                        msg = "Created new frameset group: {}"
+                        print(msg.format(groupname))
                     hdf_file.create_group(groupname)
             self.active_groupname = self.latest_groupname
 
@@ -100,6 +101,26 @@ class XanesFrameset():
     def active_labels_groupname(self):
         group = self.active_group()
         del group.attrs['active_labels']
+
+    def starttime(self):
+        """Determine the earliest timestamp amongst all of the frames."""
+        all_times = [f.starttime for f in self]
+        # Check background frames as well
+        old_groupname = self.active_groupname
+        self.switch_group('background_frames')
+        all_times += [f.starttime for f in self]
+        self.switch_group(old_groupname)
+        return min(all_times)
+
+    def endtime(self):
+        """Determine the latest timestamp amongst all of the frames."""
+        all_times = [f.endtime for f in self]
+        # Check background frames as well
+        old_groupname = self.active_groupname
+        self.switch_group('background_frames')
+        all_times += [f.endtime for f in self]
+        self.switch_group(old_groupname)
+        return max(all_times)
 
     def particle(self, particle_idx=0):
         """Prepare a particle frameset for the given particle index."""

@@ -28,6 +28,14 @@ class Cycle():
         # Default label for plot
         if label is None:
             label = "Cycle {}".format(self.number)
+        # Check that the columns given exist in the dataframe
+        error_msg = "Cannot find {dim}column. Choices are {choices}"
+        if xcolumn not in self.df.columns:
+            msg = error_msg.format(dim='x', choices=self.df.columns)
+            raise KeyError(msg)
+        if ycolumn not in self.df.columns:
+            msg = error_msg.format(dim='y', choices=self.df.columns)
+            raise KeyError(msg)
         # Drop missing data
         df = self.df.dropna(subset=[xcolumn, ycolumn])
         # Plot remaining values

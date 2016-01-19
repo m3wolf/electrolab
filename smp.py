@@ -4,6 +4,8 @@ from time import time
 
 from tqdm import format_meter
 
+from utilities import prog
+
 class Consumer(mp.Process):
     def __init__(self, target, task_queue, result_queue, **kwargs):
         ret = super().__init__(target=target, **kwargs)
@@ -59,18 +61,12 @@ class Queue():
         self.results_left -= 1
         curr = self.totalsize - self.results_left
         # Prepare a status bar
-        status = format_meter(n=curr,
-                              total=self.totalsize,
-                              elapsed=time()-self.start_time,
-                              prefix=self.description + ": ")
-        # status = '{description}: {bar} {curr}/{total} ({percent:.0f}%)'.format(
-        #     description=self.description,
-        #     bar=progress_bar(current=curr, total=self.totalsize),
-        #     curr=curr,
-        #     total=self.totalsize,
-        #     percent=(1 - (self.results_left/self.totalsize)) * 100
-        # )
-        print(status, end='\r')
+        if not prog.quiet:
+            status = format_meter(n=curr,
+                                  total=self.totalsize,
+                                  elapsed=time()-self.start_time,
+                                  prefix=self.description + ": ")
+            print(status, end='\r')
         return ret
 
     def join(self):
@@ -87,5 +83,6 @@ class Queue():
         #     description=self.description,
         #     bar=progress_bar(self.totalsize, self.totalsize),
         #     total=self.totalsize))
-        print()
+        if not prog.quiet:
+            print()
         return ret

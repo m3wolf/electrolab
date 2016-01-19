@@ -1,8 +1,10 @@
 from collections import namedtuple, OrderedDict
+import datetime as dt
 import os
 import math
 import warnings
 
+import dateutil.parser
 import numpy as np
 from matplotlib import pyplot
 from scipy import ndimage
@@ -133,6 +135,8 @@ class TXMFrame():
     approximate_position = HDFAttribute('approximate_position',
                                         default=position(0, 0, 0),
                                         wrapper=lambda coords: position(*coords))
+    _starttime = HDFAttribute('starttime')
+    _endtime = HDFAttribute('endtime')
     is_background = HDFAttribute('is_background', default=False)
     particle_labels_path = HDFAttribute('particle_labels_path', default=None)
     active_particle_idx = HDFAttribute('active_particle_idx', default=None)
@@ -171,6 +175,22 @@ class TXMFrame():
     @sample_position.setter
     def sample_position(self, new_position):
         self._sample_position = new_position
+
+    @property
+    def starttime(self):
+        return dateutil.parser.parse(self._starttime)
+
+    @starttime.setter
+    def starttime(self, newdt):
+        self._starttime =  newdt.isoformat()
+
+    @property
+    def endtime(self):
+        return dateutil.parser.parse(self._endtime)
+
+    @endtime.setter
+    def endtime(self, newdt):
+        self._endtime =  newdt.isoformat()
 
     def transmission_data(self, background_group):
         bg_data = self.background_dataset(group=background_group)

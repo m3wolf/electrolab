@@ -1,3 +1,4 @@
+import datetime as dt
 from collections import namedtuple
 import struct
 import os
@@ -5,6 +6,7 @@ import re
 
 from PIL import OleFileIO
 import numpy as np
+import pytz
 
 import exceptions
 
@@ -20,6 +22,7 @@ def decode_ssrl_params(filename):
     )
     # Check for background frames
     bg_result = ssrl_regex_bg.search(filename)
+    sample_result = ssrl_regex_sample.search(filename)
     if bg_result:
         params = {
             'date_string': '',
@@ -28,8 +31,7 @@ def decode_ssrl_params(filename):
             'is_background': True,
             'energy': float(bg_result.group(4)),
         }
-    else:
-        sample_result = ssrl_regex_sample.search(filename)
+    elif sample_result:
         params = {
             'date_string': '',
             'sample_name': sample_result.group(2).strip("_"),
@@ -37,6 +39,9 @@ def decode_ssrl_params(filename):
             'is_background': False,
             'energy': float(sample_result.group(3)),
         }
+    else:
+        msg = "Could not parse filename {filename} using flavor {flavor}"
+        raise exceptions.FilenameParseError(msg.format(filename=filename, flavor='ssrl'))
     return params
 
 # Some of the byte decoding was taken from
@@ -59,13 +64,17 @@ class XRMFile():
         return self
 
     def __exit__(self, type, value, traceback):
-        self.ole_file.close()
+        self.close()
 
     def __str__(self):
         return os.path.basename(self.filename)
 
     def __repr__(self):
         return "<XRMFile: '{}'>".format(os.path.basename(self.filename))
+
+    def close(self):
+        """Close original XRM (ole) file on disk."""
+        self.ole_file.close()
 
     def parameters_from_filename(self):
         """Determine various metadata from the frames filename (sample name etc)."""
@@ -94,6 +103,46 @@ class XRMFile():
         else:
             stream_value = stream_bytes
         return stream_value
+
+    def print_ole(self):
+        for l in self.ole_file.listdir():
+            if l[0] == 'ImageInfo':
+                try:
+                    val = self.ole_value(l, '<f')
+                except:
+                    pass
+                else:
+                    print(l, ':', val)
+
+    def endtime(self):
+        """Retrieve a datetime object representing when this frame was
+        finished collecting. Duration is decided by exposure time of the frame
+        and the start time."""
+        exptime = self.ole_value('ImageInfo/ExpTimes', '<f')
+        startime = self.starttime()
+        duration = dt.timedelta(seconds=exptime)
+        return startime + duration
+
+    def starttime(self):
+        """Retrieve a datetime object representing when this frame was
+        collected. Timezone is inferred from flavor (eg. ssrl -> california
+        time)."""
+        # Decode bytestring.
+        # (First 16 bytes contain a date and time, not sure about the rest)
+        dt_bytes = self.ole_value('ImageInfo/Date')[0:17]
+        dt_string = dt_bytes.decode()
+        # Determine most likely timezone based on synchrotron location
+        if self.flavor == 'ssrl':
+            timezone = pytz.timezone('US/Pacific')
+        elif self.flavor == 'aps':
+            timezone = pytz.timezone('US/Central')
+        else:
+            # Assume UTC?
+            timezone = pytz.utc
+        # Convert string into datetime object
+        fmt = "%m/%d/%y %H:%M:%S"
+        timestamp = dt.datetime.strptime(dt_string, fmt).replace(tzinfo=timezone)
+        return timestamp
 
     def energy(self):
         """Beam energy in electronvoltes."""

@@ -1,5 +1,6 @@
 from collections import namedtuple
 import sys
+import os
 
 from tqdm import tqdm_gui, tqdm
 
@@ -7,11 +8,27 @@ xycoord = namedtuple('xycoord', ('x', 'y'))
 Pixel = namedtuple('Pixel', ('vertical', 'horizontal'))
 shape = namedtuple('shape', ('rows', 'columns'))
 
-def prog(*args, **kwargs):
-    """Progress meter. Wraps around tqdm with some custom defaults."""
-    kwargs['file'] = kwargs.get('file', sys.stdout)
-    kwargs['leave'] = kwargs.get('leave', True)
-    return tqdm(*args, **kwargs)
+class Prog:
+    __global_state = {
+        'quiet': False
+    }
+    def __init__(self):
+        self.__dict__ = self.__global_state
+
+    def __call__(self, iterable, *args, **kwargs):
+        """Progress meter. Wraps around tqdm with some custom defaults."""
+        if self.quiet:
+            # Supress outputs by redirecting to stdout
+            # kwargs['file'] = open(os.devnull, 'w')
+            # # kwargs['file'] = os.devnull
+            ret = iterable
+        else:
+            kwargs['file'] = kwargs.get('file', sys.stdout)
+            kwargs['leave'] = kwargs.get('leave', True)
+            ret = tqdm(iterable, *args, **kwargs)
+        return ret
+
+prog = Prog()
 
 # def prog(objs, operation='Working'):
 #     """

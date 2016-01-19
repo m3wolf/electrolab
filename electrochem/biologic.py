@@ -62,42 +62,24 @@ def comma_converter(float_string):
         return float(float_string.translate(trans_table))
 
 
-# def MPTfile(file_or_path):
-#     """Opens .mpt files as numpy record arrays
-
-#     Checks for the correct headings, skips any comments and returns a
-#     numpy record array object and a list of comments
-#     """
-
-#     if isinstance(file_or_path, str):
-#         mpt_file = open(file_or_path, 'rb')
-#     else:
-#         mpt_file = file_or_path
-
-#     magic = next(mpt_file)
-#     if magic != b'EC-Lab ASCII FILE\r\n':
-#         raise ValueError("Bad first line for EC-Lab file: '%s'" % magic)
-
-#     nb_headers_match = re.match(b'Nb header lines : (\d+)\s*$', next(mpt_file))
-#     nb_headers = int(nb_headers_match.group(1))
-#     if nb_headers < 3:
-#         raise ValueError("Too few header lines: %d" % nb_headers)
-
-#     ## The 'magic number' line, the 'Nb headers' line and the column headers
-#     ## make three lines. Every additional line is a comment line.
-#     comments = [next(mpt_file) for i in range(nb_headers - 3)]
-
-#     fieldnames = str3(next(mpt_file)).strip().split('\t')
-#     record_type = np.dtype(list(map(fieldname_to_dtype, fieldnames)))
-
-#     ## Must be able to parse files where commas are used for decimal points
-#     converter_dict = dict(((i, comma_converter)
-#                            for i in range(len(fieldnames))))
-#     mpt_array = np.loadtxt(mpt_file, dtype=record_type,
-#                            converters=converter_dict)
-
-#     return mpt_array, comments
-
+def process_mpt_headers(headers):
+    """Process a list of text lines containing metadata from an MPT
+    file. Look for certain patterns and return them as a dictionary."""
+    mass_re = re.compile('^Mass of active material : ([0-9.]+) ([kmµ]?g)')
+    metadata = {}
+    for line in headers:
+        # Check for active mass
+        match = mass_re.match(line)
+        if match:
+            mass_num, mass_unit = match.groups()
+            # We found the match, now save it
+            metadata['mass'] = units.unit(mass_unit)(float(mass_num))
+        # Check for starttime
+        if line[0:25] == "Acquisition started on : ":
+            date_string = line[25:].strip()
+            start = datetime.strptime(date_string, "%m/%d/%Y %H:%M:%S")
+            metadata['start_time'] = start
+    return metadata
 
 class MPTFile():
     """Simple function to open MPT files as csv.DictReader objects
@@ -107,15 +89,15 @@ class MPTFile():
     """
     encoding = "latin-1"
     def __init__(self, filename):
-        # if isinstance(file_or_path, str):
-        #     self.mpt_file = open(file_or_path, 'r')
-        # else:
-        #     self.mpt_file = file_or_path
         self.filename = filename
 
         with open(self.filename, encoding=self.encoding) as mpt_file:
             magic = next(mpt_file)
-            if magic.rstrip() != 'EC-Lab ASCII FILE':
+            valid_magics = [
+                'EC-Lab ASCII FILE',
+                'BT-Lab ASCII FILE',
+            ]
+            if magic.rstrip() not in valid_magics:
                 raise ValueError("Bad first line for EC-Lab file: '%s'" % magic)
 
             nb_headers_match = re.match('Nb header lines : (\d+)\s*$', next(mpt_file))
@@ -125,7 +107,9 @@ class MPTFile():
 
             ## The 'magic number' line, the 'Nb headers' line and the column headers
             ## make three lines. Every additional line is a comment line.
-            self.comments = [next(mpt_file) for i in range(nb_headers - 3)]
+            header = [next(mpt_file) for i in range(nb_headers - 3)]
+
+        self.metadata = process_mpt_headers(header)
 
         self.load_csv(self.filename)
         # self.data = csv.DictReader(self.mpt_file, dialect='excel-tab')
@@ -135,29 +119,23 @@ class MPTFile():
         # Determine start of data
         with open(filename, encoding=self.encoding) as dataFile:
             # The second line states how long the header is
-            headerLength = int(dataFile.readlines()[1][18:20]) - 1
+            header_match = re.match("Nb header lines : (\d+)", dataFile.readlines()[1])
+            headerLength = int(header_match.groups()[0]) - 1
+            # headerLength = int(dataFile.readlines()[1][18:20]) - 1
         # Skip all the initial metadata
         df = pd.read_csv(filename,
                          *args,
                          skiprows=headerLength,
                          na_values='XXX',
                          sep='\t',
+                         error_bad_lines=False,
                          **kwargs)
         self.dataframe = df
         return df
 
     def active_mass(self):
         """Read the mpt file and extract the sample mass"""
-        regexp = re.compile('^Mass of active material : ([0-9.]+) ([kmµ]?g)')
-        mass = None
-        for line in self.comments:
-            match = regexp.match(line)
-            if match:
-                mass_num, mass_unit = match.groups()
-                # We found the match, now save it
-                mass = units.unit(mass_unit)(float(mass_num))
-                break
-        return mass
+        return self.metadata['mass']
 
 
 VMPmodule_hdr = np.dtype([('shortname', 'S10'),

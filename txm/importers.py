@@ -18,6 +18,7 @@ def import_txm_framesets(directory, hdf_filename=None, flavor='ssrl'):
     }
     # Prepare list of dataframes to be imported
     file_list = []
+    start_time = time()
     for filename in os.listdir(directory):
         # Make sure it's a file
         fullpath = os.path.join(directory, filename)
@@ -39,7 +40,8 @@ def import_txm_framesets(directory, hdf_filename=None, flavor='ssrl'):
         raise exceptions.FileExistsError(
             msg.format(os.path.basename(hdf_filename))
         )
-    print('Saving to HDF5 file: {}'.format(hdf_filename))
+    if not prog.quiet:
+        print('Saving to HDF5 file: {}'.format(hdf_filename))
     hdf_file = h5py.File(hdf_filename)
     # Find a unique name for the background frames
     formatter = "background_frames_{ctr}"
@@ -49,29 +51,37 @@ def import_txm_framesets(directory, hdf_filename=None, flavor='ssrl'):
         counter += 1
         bg_groupname = formatter.format(ctr=counter)
     hdf_file.create_group(bg_groupname)
-    print('Created background group {}'.format(bg_groupname))
+    if not prog.quiet:
+        print('Created background group {}'.format(bg_groupname))
     bg_frameset = XanesFrameset(filename=hdf_filename, groupname=bg_groupname)
     sample_framesets = {}
     # Now do the importing
     total_files = len(file_list)
-    start_time = time()
     while(len(file_list) > 0):
         current_file = file_list[0]
         name, extension = os.path.splitext(current_file)
+        # Arrays to keep track of the timestamps in this averaged frame
+        starttimes = []
+        endtimes = []
         # Average multiple frames together if necessary
         files_to_average = find_average_scans(current_file, file_list, flavor=flavor)
-        frames_to_average = []
         # Convert to Frame() objects
-        for filepath in files_to_average:
-            Importer = format_classes[extension]
-            with Importer(filepath, flavor=flavor) as txm_file:
-                frame = TXMFrame(file=txm_file)
-                frames_to_average.append(frame)
-        # Average scans
-        averaged_frame = average_frames(*frames_to_average)
-        # Remove from queue and add to frameset
-        for filepath in files_to_average:
-            file_list.remove(filepath)
+        def convert_to_frame(file_list):
+            frames_to_average = []
+            for filepath in file_list:
+                Importer = format_classes[extension]
+                with Importer(filepath, flavor=flavor) as txm_file:
+                    starttimes.append(txm_file.starttime())
+                    endtimes.append(txm_file.endtime())
+                    frame = TXMFrame(file=txm_file)
+                    frames_to_average.append(frame)
+            # Average scans
+            averaged_frame = average_frames(*frames_to_average)
+            return averaged_frame
+        averaged_frame = convert_to_frame(files_to_average)
+        # Set beginning and end timestamps
+        averaged_frame.starttime = min(starttimes)
+        averaged_frame.endtime = max(endtimes)
         if averaged_frame.is_background:
             bg_frameset.add_frame(averaged_frame)
         else:
@@ -89,24 +99,24 @@ def import_txm_framesets(directory, hdf_filename=None, flavor='ssrl'):
                 sample_framesets[identifier] = new_frameset
             # Add this frame to the appropriate group
             sample_framesets[identifier].add_frame(averaged_frame)
+                # Remove from queue
+        for filepath in files_to_average:
+            file_list.remove(filepath)
         # Display current progress
-        # template = 'Averaging frames: {curr}/{total} ({percent:.0f}%)'
-        # status = template.format(
-        #     curr=total_files - len(file_list),
-        #     total=total_files,
-        #     percent=(1 - (len(file_list)/total_files))*100
-        # )
-        status = format_meter(n=total_files - len(file_list),
-                              total=total_files,
-                              elapsed=time()-start_time,
-                              prefix="Importing raw frames: ")
-        print(status, end='\r')
-    print() # Blank line to avoid over-writing status message
+        if not prog.quiet:
+            status = format_meter(n=total_files - len(file_list),
+                                  total=total_files,
+                                  elapsed=time()-start_time,
+                                  prefix="Importing raw frames: ")
+            print(status, end='\r')
+    if not prog.quiet:
+        print() # Blank line to avoid over-writing status message
     # print(' frames: {curr}/{total} [done]'.format(curr=total_files,
     #                                                        total=total_files))
     frameset_list = list(sample_framesets.values())
     # Apply reference collection and convert to absorbance frames
-    print('Imported samples', [fs.hdf_group().name for fs in frameset_list])
+    if not prog.quiet:
+        print('Imported samples', [fs.hdf_group().name for fs in frameset_list])
     for frameset in frameset_list:
         frameset.apply_references(bg_groupname=bg_groupname)
     # Apply magnification (zoom) correction
@@ -133,7 +143,7 @@ def find_average_scans(filename, file_list, flavor='ssrl'):
     basename = os.path.basename(filename)
     dirname = os.path.dirname(filename)
     if flavor == 'ssrl':
-        avg_regex = re.compile("(\d+)of(\d+)")
+        avg_regex = re.compile(r"(\d+)of(\d+)")
         serial_string = "_\d{6}_ref_"
         serial_regex = re.compile(serial_string)
         # Look for average scans
@@ -143,7 +153,7 @@ def find_average_scans(filename, file_list, flavor='ssrl'):
             total = int(re_result.group(2))
             current_files = []
             for current in range(1, total+1):
-                new_regex = "0*{current}of0*{total}".format(
+                new_regex = r"0*{current}of0*{total}".format(
                     current=current, total=total)
                 filename_restring = avg_regex.sub(new_regex, basename)
                 # Replace serial number if necessary (reference frames only)

@@ -6,6 +6,7 @@ import os
 import pandas as pd
 import units
 import units.predefined
+import pytz
 
 import exceptions
 from electrochem.cycle import Cycle
@@ -64,6 +65,8 @@ class GalvanostatRun():
             self.mass = run.active_mass()
         mass_g = default_units.mass(self.mass).num
         self._df.loc[:,'capacity'] = self._df.loc[:,'(Q-Qo)/mA.h']/mass_g
+        # Process other metadata
+        self.start_time = run.metadata['start_time']
         # Split the data into cycles, except the initial resting phase
         cycles = list(self._df.groupby('cycle number'))
         # Create Cycle objects for each cycle
@@ -152,6 +155,14 @@ class GalvanostatRun():
         """
         return self.cycles[cycle_idx].charge_capacity()
 
+    def closest_datum(self, value, label):
+        """Retrieve the datapoint that is closest to the given value along the
+        given label. Works best for linear columns, like time."""
+        df = self._df
+        idx = df.iloc[(df[label]-value).abs().argsort()].first_valid_index()
+        series = df.ix[idx]
+        return series
+
     def plot_cycles(self, xcolumn='capacity', ycolumn='Ewe/V', ax=None, *args, **kwargs):
         """
         Plot each electrochemical cycle. Additional arguments gets passed
@@ -167,6 +178,33 @@ class GalvanostatRun():
             legend.append(cycle.number)
         ax.legend(legend)
         return ax
+
+    def plot_state_of_charge(self, framesets, ax, text="",
+                             timezone='US/Central', convert_to="capacity"):
+        """Plot an horizontal box with the state of charge based on the range
+        of timestamps in the operando framesets. "text" will be
+        plotted at the top of the box.
+        """
+        starttime = min([fs.starttime() for fs in framesets])
+        endtime = max([fs.endtime() for fs in framesets])
+        charge_start_time = self.start_time.replace(tzinfo=pytz.timezone(timezone))
+        timemin = (starttime - charge_start_time).total_seconds()
+        timemax = (endtime - charge_start_time).total_seconds()
+
+        # Convert units from time to capacity
+        capmin = self.closest_datum(value=timemin, label="time/s")[convert_to]
+        capmax = self.closest_datum(value=timemax, label="time/s")[convert_to]
+
+        # Plot a box highlighting the range of capacities
+        artist = ax.axvspan(capmin, capmax, zorder=1, facecolor="green", alpha=0.15)
+
+        # Add text label
+        x = (capmin + capmax) / 2
+        ylim = ax.get_ylim()
+        y = ylim[1] - 0.03 * (ylim[1]-ylim[0])
+        ax.text(x, y, text, horizontalalignment="center",
+               verticalalignment="top")
+        return artist
 
     def plot_discharge_capacity(self, ax=None, ax2=None):
         if not ax:
