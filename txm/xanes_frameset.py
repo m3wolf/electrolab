@@ -14,8 +14,9 @@ from mapping.colormaps import cmaps
 import h5py
 import numpy as np
 from skimage import morphology, filters, feature, transform, restoration, exposure
+from sklearn import linear_model
 
-from utilities import prog, xycoord
+from utilities import prog, xycoord, Pixel
 from .frame import (
     TXMFrame, average_frames, calculate_particle_labels, pixel_to_xy,
     apply_reference, position, Pixel)
@@ -51,8 +52,9 @@ class XanesFrameset():
         if filename:
             with self.hdf_file() as hdf_file:
                 if not groupname in hdf_file.keys():
-                    msg = "Created new frameset group: {}"
-                    print(msg.format(groupname))
+                    if not prog.quiet:
+                        msg = "Created new frameset group: {}"
+                        print(msg.format(groupname))
                     hdf_file.create_group(groupname)
             self.active_groupname = self.latest_groupname
 
@@ -99,6 +101,26 @@ class XanesFrameset():
     def active_labels_groupname(self):
         group = self.active_group()
         del group.attrs['active_labels']
+
+    def starttime(self):
+        """Determine the earliest timestamp amongst all of the frames."""
+        all_times = [f.starttime for f in self]
+        # Check background frames as well
+        old_groupname = self.active_groupname
+        self.switch_group('background_frames')
+        all_times += [f.starttime for f in self]
+        self.switch_group(old_groupname)
+        return min(all_times)
+
+    def endtime(self):
+        """Determine the latest timestamp amongst all of the frames."""
+        all_times = [f.endtime for f in self]
+        # Check background frames as well
+        old_groupname = self.active_groupname
+        self.switch_group('background_frames')
+        all_times += [f.endtime for f in self]
+        self.switch_group(old_groupname)
+        return max(all_times)
 
     def particle(self, particle_idx=0):
         """Prepare a particle frameset for the given particle index."""
@@ -224,6 +246,147 @@ class XanesFrameset():
             queue.put((key, energy, data))
         queue.join()
 
+    def apply_translation(self, shift_func, new_name,
+                          description="Applying translation"):
+        """Apply a translation to every frame using
+        multiprocessing. `shift_func` should be a function that
+        accepts a dictionary and returns an offset tuple (x, y) of
+        corrections to be applied to the frame and the labels. The
+        dictionary will contain the key, energy, data and labels for a
+        frame. All frames have their sample position set set to (0, 0)
+        since we don't know which one is the real position.
+        """
+        # Create new data groups to hold shifted image data
+        self.fork_group(new_name)
+        self.fork_labels(new_name + "_labels")
+        # Multiprocessing setup
+        def worker(payload):
+            # key, data, labels = payload
+            key = payload['key']
+            data = payload['data']
+            labels = payload['labels']
+            # Apply net transformation with bicubic interpolation
+            shift = shift_func(payload)
+            transformation = transform.SimilarityTransform(translation=shift)
+            new_data = transform.warp(data, transformation,
+                                      order=3, mode="wrap")
+            # Transform labels
+            original_dtype = labels.dtype
+            labels = labels.astype(np.float64)
+            new_labels = transform.warp(labels, transformation, order=0, mode="constant")
+            new_labels = new_labels.astype(original_dtype)
+            ret = {
+                'key': key,
+                'data': new_data,
+                'labels': new_labels
+            }
+            return ret
+        def process_result(payload):
+            # key, data, labels = payload
+            frame = self[payload['key']]
+            frame.image_data.write_direct(payload['data'])
+            frame.particle_labels().write_direct(payload['labels'])
+        queue = smp.Queue(worker=worker, result_callback=process_result,
+                          totalsize=len(self), description=description)
+        for frame in self:
+            # Prepare data arrays
+            data = frame.image_data.value
+            labels = frame.particle_labels().value
+            # Launch transformation for this frame
+            payload = {
+                'key': frame.key(),
+                'energy': frame.energy,
+                'data': frame.image_data.value,
+                'labels': frame.particle_labels().value
+            }
+            queue.put(payload)
+        queue.join()
+        # Update new positions
+        for frame in self:
+            frame.sample_position = position(0, 0, frame.sample_position.z)
+
+    def correct_drift(self, new_name="aligned_frames", method="ransac",
+                      loc=xycoord(x=20, y=20), reference_frame=0):
+        """Apply a linear correction for a misalignment of zoneplate in APS
+        8BM-B beamline as of Nov 2015.
+
+        Arguments
+        ---
+
+        method (default: "ransac": Which type of regression to use:
+            "ransac", "linear"
+
+        loc (default 20, 20): Which particle to use to track drift
+
+        reference_frame: index of the frame that stands still
+
+        """
+        # Create new data groups to hold shifted image data
+        # self.fork_group(new_name)
+        # self.fork_labels(new_name + "_labels")
+        # Regression values determined from cell 1 charge on 2015-11-11
+        slope_v = 0.34693115
+        slope_h = -0.28493559
+        # slope_v = 0.32418403
+        # slope_h = -0.25658992
+        E_0 = self[reference_frame].energy
+        # Prepare particle positions for regression
+        centroids = self.particle_centroid_spectrum(loc=loc)
+        x = np.array(centroids.index).reshape(-1, 1)
+        # Perform linear regression (RANSAC ignores outliers)
+        if method == "ransac":
+            regression_v = linear_model.RANSACRegressor(linear_model.LinearRegression())
+            regression_h = linear_model.RANSACRegressor(linear_model.LinearRegression())
+        elif method == "linear":
+            regression_v = linear_model.LinearRegression()
+            regression_h = linear_model.LinearRegression()
+        regression_v.fit(x, centroids.vertical)
+        regression_h.fit(x, centroids.horizontal)
+        if method == "ransac":
+            inliers_v = np.count_nonzero(regression_v.inlier_mask_)
+            regression_v = regression_v.estimator_
+            inliers_h = np.count_nonzero(regression_h.inlier_mask_)
+            regression_h = regression_h.estimator_
+        slope_v = regression_v.coef_[0]
+        slope_h = regression_h.coef_[0]
+        icpt_v = regression_v.intercept_
+        icpt_h = regression_h.intercept_
+        # print(slope_v, icpt_v, slope_h, icpt_h)
+        error_v = regression_v.score(x, centroids.vertical)
+        error_h = regression_h.score(x, centroids.horizontal)
+        # print('slopes', slope_v, slope_h)
+        def shift_func(payload):
+            delta_E = payload['energy'] - E_0
+            correction = xycoord(
+                x = slope_h * delta_E,
+                y = slope_v * delta_E
+            )
+            return correction
+        # for frame in self:
+        #     delta_E = frame.energy - E_0
+        #     correction = Pixel(
+        #         vertical = - slope_v * delta_E,
+        #         horizontal = - slope_h * delta_E
+        #     )
+        #     print(correction)
+        #     transformation = transform.SimilarityTransform(translation=correction)
+        #     new_data = transform.warp(frame.image_data, transformation,
+        #                               order=3, mode="wrap")
+        #     frame.image_data.write_direct(new_data)
+        if method == "ransac":
+            description = "Correcting drift (R²: {}v, {}h, {}, {} inliers)".format(
+                round(error_v, 3), round(error_h, 3),
+                inliers_v, inliers_h
+            )
+        else:
+            description = "Correcting drift (R²: {}v, {}h)".format(
+                round(error_v, 3), round(error_h, 3)
+            )
+        self.apply_translation(shift_func, new_name=new_name, description=description)
+        # Set active particles
+        for frame in self:
+            frame.activate_closest_particle(loc=loc)
+
     def align_frames(self, new_name="aligned_frames", reference_frame=None):
         """Use phase correlation algorithm to line up the frames. All frames
         have their sample position set set to (0, 0) since we don't
@@ -233,9 +396,6 @@ class XanesFrameset():
         if reference_frame is None:
             spectrum = self.xanes_spectrum()
             reference_frame = np.argmax(spectrum.values)
-        # Create new data groups to hold shifted image data
-        self.fork_group(new_name)
-        self.fork_labels(new_name + "_labels")
         reference_image = self[reference_frame].image_data.value
         # Multiprocessing setup
         def worker(payload):
@@ -357,7 +517,7 @@ class XanesFrameset():
         """Reduce the image size to just show the particle in question."""
         # Create new HDF5 groups
         self.fork_group(new_name)
-        self.fork_labels('cropped_labels')
+        self.fork_labels(new_name + '_labels')
         # Activate particle if necessary
         if loc is not None:
             for frame in prog(self, 'Idetifying closest particle'):
@@ -473,6 +633,22 @@ class XanesFrameset():
             particle = frame.particles()[particle_idx]
             areas.append(particle.area())
         return pd.Series(areas, index=energies)
+
+    def particle_centroid_spectrum(self, loc=xycoord(20, 20)):
+        """Calculate a spectrum based on the image centroid of the particle
+        closest to the given location in the frame. This may be useful
+        for assessing systematic drift across multiple frames.
+        """
+        energies = [f.energy for f in self]
+        vs = []
+        hs = []
+        for frame in self:
+            particle_idx = frame.closest_particle_idx(loc)
+            particle = frame.particles()[particle_idx]
+            centroid = particle.centroid()
+            vs.append(centroid.vertical)
+            hs.append(centroid.horizontal)
+        return pd.DataFrame({'vertical': vs, 'horizontal': hs}, index=energies)
 
     def plot_mean_image(self, ax=None):
         if ax is None:
@@ -645,12 +821,13 @@ class XanesFrameset():
         return self[0].extent()
 
     def plot_map(self, plotter=None, ax=None, norm_range=None, alpha=1,
-                 edge_jump_filter=False, return_type="axes"):
+                 edge_jump_filter=False, return_type="axes", *args, **kwargs):
         """Use a default frameset plotter to draw a map of the chemical data."""
         if plotter is None:
             plotter = FramesetPlotter(frameset=self, map_ax=ax)
         plotter.draw_map(norm_range=norm_range, alpha=alpha,
-                         edge_jump_filter=edge_jump_filter)
+                         edge_jump_filter=edge_jump_filter,
+                         *args, **kwargs)
         return plotter
 
     def plot_histogram(self, ax=None, norm_range=None):
@@ -676,6 +853,14 @@ class XanesFrameset():
         ax.set_xlim(norm.vmin, norm.vmax)
         ax.xaxis.get_major_formatter().set_useOffset(False)
         return ax
+
+    def movie_plotter(self):
+        """Creates an animation of all the frames in ascending energy, but
+        does not display it anywhere, that's up to you."""
+        pl = FramesetMoviePlotter(frameset=self)
+        pl.create_axes(figsize=(10, 6))
+        pl.connect_animation(repeat=False)
+        return pl
 
     def save_movie(self, filename, *args, **kwargs):
         """Save an animation of all the frames and XANES to the specified
@@ -741,20 +926,12 @@ class XanesFrameset():
         return group
 
     def add_frame(self, frame):
-        setname_template = "{energy}_eV{serial}"
+        setname_template = "{energy}_eV"
         frames_group = self.active_group()
         # Find a unique frame dataset name
         setname = setname_template.format(
             energy=frame.approximate_energy,
-            serial=""
         )
-        # counter = 0
-        # while setname in frames_group.keys():
-        #     counter += 1
-        #     setname = setname_template.format(
-        #         energy=frame.approximate_energy,
-        #         serial="-" + str(counter)
-        #     )
         # Name found, so create the actual dataset
         new_dataset = frame.create_dataset(setname=setname,
                                            hdf_group=frames_group)
@@ -782,9 +959,18 @@ class XanesFrameset():
         global_max = 0
         for frame in self:
             data = frame.image_data.value
+            # Remove outliers temporarily
+            sigma = 9
+            median = np.median(data)
+            sdev = np.std(data)
+            d = np.abs(data - median)
+            s = d/sdev if sdev else 0.
+            data[s>=sigma] = median
+            # Check if this frame has the minimum intensity
             local_min = np.min(data)
             if local_min < global_min:
                 global_min = local_min
+            # Check if this has the maximum intensity
             local_max = np.max(data)
             if local_max > global_max:
                 global_max = local_max

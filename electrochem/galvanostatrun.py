@@ -1,16 +1,18 @@
 # -*- coding: utf-8 -*-
 
 import re
+import os
 
 import pandas as pd
 import units
 import units.predefined
+import pytz
 
 import exceptions
 from electrochem.cycle import Cycle
 from plots import new_axes
 import default_units
-from . import electrochem_units
+from . import electrochem_units, biologic
 
 def axis_label(key):
     axis_labels = {
@@ -30,7 +32,19 @@ class GalvanostatRun():
 
     def __init__(self, filename, mass=None, *args, **kwargs):
         self.filename = filename
-        self.load_csv(filename)
+        path, ext = os.path.splitext(filename)
+        file_readers = {
+            '.mpr': biologic.MPRFile,
+            '.mpt': biologic.MPTFile,
+        }
+        if ext in file_readers.keys():
+            FileReader = file_readers[ext]
+        else:
+            msg = "Unrecognized format {}".format(ext)
+            raise exceptions.FileFormatError(msg)
+        # self.load_csv(filename)
+        run = FileReader(filename)
+        self._df = run.dataframe
         self.cycles = []
         # Remove the initial resting period
         restingIndexes = self._df.loc[self._df['mode']==3].index
@@ -48,9 +62,11 @@ class GalvanostatRun():
             self.mass = mass
         else:
             # Get mass from eclab file
-            self.mass = self.mass_from_file()
+            self.mass = run.active_mass()
         mass_g = default_units.mass(self.mass).num
         self._df.loc[:,'capacity'] = self._df.loc[:,'(Q-Qo)/mA.h']/mass_g
+        # Process other metadata
+        self.start_time = run.metadata['start_time']
         # Split the data into cycles, except the initial resting phase
         cycles = list(self._df.groupby('cycle number'))
         # Create Cycle objects for each cycle
@@ -59,35 +75,35 @@ class GalvanostatRun():
             self.cycles.append(new_cycle)
         super().__init__(*args, **kwargs)
 
-    def load_csv(self, filename, *args, **kwargs):
-        """Wrapper around pandas read_csv that filters out crappy data"""
-        # Determine start of data
-        with open(filename, encoding='latin-1') as dataFile:
-            # The second line states how long the header is
-            headerLength = int(dataFile.readlines()[1][18:20]) - 1
-        # Skip all the initial metadata
-        df = pd.read_csv(filename,
-                         *args,
-                         skiprows=headerLength,
-                         na_values='XXX',
-                         sep='\t',
-                         **kwargs)
-        self._df = df
-        return df
+    # def load_csv(self, filename, *args, **kwargs):
+    #     """Wrapper around pandas read_csv that filters out crappy data"""
+    #     # Determine start of data
+    #     with open(filename, encoding='latin-1') as dataFile:
+    #         # The second line states how long the header is
+    #         headerLength = int(dataFile.readlines()[1][18:20]) - 1
+    #     # Skip all the initial metadata
+    #     df = pd.read_csv(filename,
+    #                      *args,
+    #                      skiprows=headerLength,
+    #                      na_values='XXX',
+    #                      sep='\t',
+    #                      **kwargs)
+    #     self._df = df
+    #     return df
 
-    def mass_from_file(self):
-        """Read the mpt file and extract the sample mass"""
-        regexp = re.compile('^Mass of active material : ([0-9.]+) ([kmµ]?g)')
-        mass = None
-        with open(self.filename, encoding='latin-1') as f:
-            for line in f:
-                match = regexp.match(line)
-                if match:
-                    mass_num, mass_unit = match.groups()
-                    # We found the match, now save it
-                    mass = units.unit(mass_unit)(float(mass_num))
-                    break
-        return mass
+    # def mass_from_file(self):
+    #     """Read the mpt file and extract the sample mass"""
+    #     regexp = re.compile('^Mass of active material : ([0-9.]+) ([kmµ]?g)')
+    #     mass = None
+    #     with open(self.filename, encoding='latin-1') as f:
+    #         for line in f:
+    #             match = regexp.match(line)
+    #             if match:
+    #                 mass_num, mass_unit = match.groups()
+    #                 # We found the match, now save it
+    #                 mass = units.unit(mass_unit)(float(mass_num))
+    #                 break
+    #     return mass
 
     def capacity_from_file(self):
         """Read the mpt file and extract the theoretical capacity."""
@@ -139,6 +155,14 @@ class GalvanostatRun():
         """
         return self.cycles[cycle_idx].charge_capacity()
 
+    def closest_datum(self, value, label):
+        """Retrieve the datapoint that is closest to the given value along the
+        given label. Works best for linear columns, like time."""
+        df = self._df
+        idx = df.iloc[(df[label]-value).abs().argsort()].first_valid_index()
+        series = df.ix[idx]
+        return series
+
     def plot_cycles(self, xcolumn='capacity', ycolumn='Ewe/V', ax=None, *args, **kwargs):
         """
         Plot each electrochemical cycle. Additional arguments gets passed
@@ -154,6 +178,33 @@ class GalvanostatRun():
             legend.append(cycle.number)
         ax.legend(legend)
         return ax
+
+    def plot_state_of_charge(self, framesets, ax, text="",
+                             timezone='US/Central', convert_to="capacity"):
+        """Plot an horizontal box with the state of charge based on the range
+        of timestamps in the operando framesets. "text" will be
+        plotted at the top of the box.
+        """
+        starttime = min([fs.starttime() for fs in framesets])
+        endtime = max([fs.endtime() for fs in framesets])
+        charge_start_time = self.start_time.replace(tzinfo=pytz.timezone(timezone))
+        timemin = (starttime - charge_start_time).total_seconds()
+        timemax = (endtime - charge_start_time).total_seconds()
+
+        # Convert units from time to capacity
+        capmin = self.closest_datum(value=timemin, label="time/s")[convert_to]
+        capmax = self.closest_datum(value=timemax, label="time/s")[convert_to]
+
+        # Plot a box highlighting the range of capacities
+        artist = ax.axvspan(capmin, capmax, zorder=1, facecolor="green", alpha=0.15)
+
+        # Add text label
+        x = (capmin + capmax) / 2
+        ylim = ax.get_ylim()
+        y = ylim[1] - 0.03 * (ylim[1]-ylim[0])
+        ax.text(x, y, text, horizontalalignment="center",
+               verticalalignment="top")
+        return artist
 
     def plot_discharge_capacity(self, ax=None, ax2=None):
         if not ax:

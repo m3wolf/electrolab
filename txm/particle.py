@@ -2,7 +2,7 @@ from collections import namedtuple
 
 import numpy as np
 
-from utilities import xycoord
+from utilities import xycoord, Pixel
 
 """
 Describes a single particle detected by image processing (skimage).
@@ -24,20 +24,20 @@ class Particle():
     def sample_position(self):
         """Convert centroid in pixels to sample position in x, y (µm)."""
         frame_center_pos = self.frame.sample_position
-        frame_center_pix = xycoord(self.frame.image_data.shape[1]/2,
-                                   self.frame.image_data.shape[0]/2)
-        pixel_distance_x = self.centroid().x - frame_center_pix.x
-        pixel_distance_y = frame_center_pix.y - self.centroid().y
+        frame_center_pix = Pixel(self.frame.image_data.shape[0]/2,
+                                 self.frame.image_data.shape[1]/2)
+        pixel_distance_h = self.centroid().horizontal - frame_center_pix.horizontal
+        pixel_distance_v = frame_center_pix.vertical - self.centroid().vertical
         um_per_pixel = self.frame.um_per_pixel()
         new_center = xycoord(
-            x = frame_center_pos.x + pixel_distance_x * um_per_pixel.x,
-            y = frame_center_pos.y + pixel_distance_y * um_per_pixel.y
+            x = frame_center_pos.x + pixel_distance_h * um_per_pixel.x,
+            y = frame_center_pos.y + pixel_distance_v * um_per_pixel.y
         )
         return new_center
 
     def centroid(self):
         center = self.regionprops.centroid
-        return xycoord(x=center[1], y=center[0])
+        return Pixel(vertical=center[0], horizontal=center[1])
 
     def area(self):
         area = self.regionprops.area

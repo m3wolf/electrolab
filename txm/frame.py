@@ -1,8 +1,10 @@
 from collections import namedtuple, OrderedDict
+import datetime as dt
 import os
 import math
 import warnings
 
+import dateutil.parser
 import numpy as np
 from matplotlib import pyplot
 from scipy import ndimage
@@ -19,12 +21,13 @@ from matplotlib.colors import Normalize
 import exceptions
 import plots
 from hdf import HDFAttribute
-from utilities import xycoord
+from utilities import xycoord, Pixel
 from .particle import Particle
 
 position = namedtuple('position', ('x', 'y', 'z'))
 Extent = namedtuple('extent', ('left', 'right', 'bottom', 'top'))
-Pixel = namedtuple('pixel', ('vertical', 'horizontal'))
+# Moved to utilitiexs module
+# Pixel = namedtuple('pixel', ('vertical', 'horizontal'))
 
 def rebin_image(data, shape):
     """Resample image into new shape, but only if the new dimensions are
@@ -132,6 +135,8 @@ class TXMFrame():
     approximate_position = HDFAttribute('approximate_position',
                                         default=position(0, 0, 0),
                                         wrapper=lambda coords: position(*coords))
+    _starttime = HDFAttribute('starttime')
+    _endtime = HDFAttribute('endtime')
     is_background = HDFAttribute('is_background', default=False)
     particle_labels_path = HDFAttribute('particle_labels_path', default=None)
     active_particle_idx = HDFAttribute('active_particle_idx', default=None)
@@ -171,6 +176,22 @@ class TXMFrame():
     def sample_position(self, new_position):
         self._sample_position = new_position
 
+    @property
+    def starttime(self):
+        return dateutil.parser.parse(self._starttime)
+
+    @starttime.setter
+    def starttime(self, newdt):
+        self._starttime =  newdt.isoformat()
+
+    @property
+    def endtime(self):
+        return dateutil.parser.parse(self._endtime)
+
+    @endtime.setter
+    def endtime(self, newdt):
+        self._endtime =  newdt.isoformat()
+
     def transmission_data(self, background_group):
         bg_data = self.background_dataset(group=background_group)
         return bg_data/np.exp(self.image_data)
@@ -196,6 +217,15 @@ class TXMFrame():
         bottom = center.y - y_pixels * um_per_pixel.y / 2
         top = center.y + y_pixels * um_per_pixel.y / 2
         return Extent(left=left, right=right, bottom=bottom, top=top)
+
+    def plot_histogram(self, ax=None, *args, **kwargs):
+        if ax is None:
+            ax = plots.new_axes()
+        ax.set_xlabel('Absorbance (AU)')
+        ax.set_ylabel('Occurences')
+        data = np.nan_to_num(self.image_data.value)
+        artist = ax.hist(data.flat, bins=100, *args, **kwargs)
+        return artist
 
     def plot_image(self, data=None, ax=None, show_particles=True, *args, **kwargs):
         """Plot a frame's data image. Use frame.image_data if no data are
@@ -237,8 +267,20 @@ class TXMFrame():
             ys = [particle.sample_position().y for particle in self.particles()]
             for idx, x in enumerate(xs):
                 y = ys[idx]
-                artists.append(ax.text(x, y, idx))
+                txt = ax.text(x, y, str(idx),
+                              horizontalalignment='center',
+                              verticalalignment='center')
+                artists.append(txt)
         return artists
+
+    def remove_outliers(self, sigma):
+        """Mark as invalid any pixels more that `sigma` standard deviations
+        away from the median."""
+        d = np.abs(self.image_data - np.median(self.image_data))
+        sdev = np.std(self.image_data)
+        # mdev = np.median(d)
+        s = d/sdev if sdev else 0.
+        self.image_data[s>=sigma] = 0
 
     def crop(self, top, left, bottom, right):
         """Reduce the image size to given box (in pixels)."""
