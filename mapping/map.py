@@ -15,7 +15,7 @@ from mapping.locus import Locus, DummyLocus
 from mapping.gtkmapwindow import GtkMapWindow
 from mapping.colormaps import cmaps
 from plots import new_axes, dual_axes
-from utilities import prog as display_progress
+from utilities import prog
 
 class Map():
     """A physical sample that gets mapped by some scientific process,
@@ -186,7 +186,7 @@ class Map():
 
     def calculate_metrics(self):
         """Force recalculation of all metrics in the map."""
-        for scan in display_progress(self.scans, 'Calculating metrics'):
+        for scan in prog(self.scans, desc='Calculating metrics'):
             scan.cached_data['metric'] = None
             scan.metric
 
@@ -195,12 +195,12 @@ class Map():
         return [scan.reliability for scan in self.scans]
 
     def calculate_colors(self):
-        for scan in display_progress(self.scans, 'Transposing colorspaces'):
+        for scan in prog(self.scans, desc='Transposing colorspaces'):
             scan.cached_data['color'] = None
             scan.color()
 
     def subtract_backgrounds(self):
-        for scan in display_progress(self.scans, 'Fitting background'):
+        for scan in prog(self.scans, desc='Fitting background'):
             scan.subtract_background()
 
     def mapscan_metric(self, scan):
@@ -296,7 +296,7 @@ class Map():
         ax.set_xlabel('mm')
         ax.set_ylabel('mm')
         num_scans = len(self.loci)
-        for locus in display_progress(self.loci, 'Mapping'):
+        for locus in prog(self.loci, desc='Mapping'):
             locus.plot_hexagon(ax=ax)
         # If there's space between beam locations, plot beam location
         if self.coverage != 1:
@@ -377,7 +377,7 @@ class Map():
                 # Set to white by default
                 compositeImage.fill(0)
                 # Step through each scan
-                for locus in display_progress(self.loci, operation="Building Composite Image"):
+                for locus in prog(self.loci, desc="Building Composite Image"):
                     # pad raw image to composite image size
                     locusImage = locus.padded_image(height=compositeHeight,
                                                     width=compositeWidth)

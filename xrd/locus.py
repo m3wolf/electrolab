@@ -6,7 +6,7 @@ from xrd.scan import XRDScan
 from refinement.native import NativeRefinement
 
 class XRDLocus(Locus):
-
+    diffractogram_is_loaded = False
     def __init__(self, *args, phases=[], background_phases=[],
                  two_theta_range=(10, 80), refinement=NativeRefinement, **kwargs):
         ret = super().__init__(*args, **kwargs)

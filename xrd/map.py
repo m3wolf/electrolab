@@ -8,11 +8,12 @@ import pandas
 import jinja2
 
 import exceptions
-from mapping.map import Map, display_progress
+from mapping.map import Map
 from plots import new_axes
 from xrd.locus import XRDLocus
 from xrd.gtkmapwindow import GtkXrdMapWindow
 from refinement.native import NativeRefinement
+from utilities import prog
 
 class XRDMap(Map):
     """A map using X-ray diffraction to determine cell values. Runs on
@@ -212,7 +213,7 @@ class XRDMap(Map):
 
     def set_metric_phase_ratio(self, phase_idx=0):
         """Set the plotting metric as the proportion of given phase."""
-        for locus in display_progress(self.loci, 'Calculating metrics'):
+        for locus in prog(self.loci, desc='Calculating metrics'):
             phase_scale = locus.phases[phase_idx].scale_factor
             total_scale = sum([phase.scale_factor for phase in locus.phases])
             locus.metric = phase_scale/total_scale
@@ -232,7 +233,7 @@ class XRDMap(Map):
         return ax
 
     def set_metric_cell_parameter(self, parameter='a', phase_idx=0):
-        for locus in display_progress(self.loci, 'Calculating cell parameters'):
+        for locus in prog(self.loci, desc='Calculating cell parameters'):
             phase = locus.phases[phase_idx]
             locus.metric = getattr(phase.unit_cell, parameter)
 
@@ -248,7 +249,7 @@ class XRDMap(Map):
         return self.plot_map(*args, **kwargs)
 
     def set_metric_fwhm(self, phase_idx=0):
-        for locus in display_progress(self.loci, 'Calculating peak widths'):
+        for locus in prog(self.loci, desc='Calculating peak widths'):
             phase = locus.phases[phase_idx]
             locus.metric = locus.refinement.fwhm()
 
@@ -286,7 +287,7 @@ class XRDMap(Map):
         Refine a series of parameters on each scan. Continue if an
         exceptions.RefinementError occurs.
         """
-        for locus in display_progress(self.loci, 'Reticulating splines'):
+        for locus in prog(self.loci, desc='Reticulating splines'):
             try:
                 current_step = 'background'
                 locus.refinement.refine_background()
