@@ -1,12 +1,35 @@
 # -*- coding: utf-8 -*-
+#
+# Copyright © 2016 Mark Wolf
+#
+# This file is part of scimap.
+#
+# Scimap is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# Scimap is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with Foobar.  If not, see <http://www.gnu.org/licenses/>.
+
+"""Collection of functions for transforming data that are not
+specific to any one technique.
+"""
 
 import numpy as np
 import pandas as pd
 from scipy import fftpack
 
 def fourier_transform(data):
-    """Perform a discrete fourier transform on the data. Input should
-    be a pandas Series(). Assumes data are all real."""
+    """Perform a discrete fourier transform on the data. Input should be a
+    pandas Series(). Assumes data are all real. Returns a new series
+    with the data in the frequency domain.
+    """
     # Transform y data
     yf = fftpack.rfft(data.values)
     # Transform x data
@@ -20,7 +43,7 @@ def fourier_transform(data):
 
 def inverse_fourier_transform(data):
     """Perform an inverse discrete fourier transform on the data. Input should
-    be a pandas Series(). Assumes data are all real. Returns a Series"""
+    be a pandas Series(). Assumes data are all real. Returns a Series."""
     # Transform y data
     yf = fftpack.irfft(data.values)
     # Transform x data
@@ -34,7 +57,6 @@ def inverse_fourier_transform(data):
 
 
 class Filter():
-
     def __init__(self, cutoff=10):
         self.cutoff=cutoff
 
@@ -49,7 +71,8 @@ class Filter():
 
 class LowPassFilter(Filter):
     """Applies a sharp cutoff filter and allows low frequencies to pass
-    unmodified and high frequencies set to 0."""
+    unmodified and high frequencies set to 0.
+    """
     def apply(self, data):
         # Transform data into frequency space
         fData = fourier_transform(data)
@@ -67,6 +90,9 @@ class LowPassFilter(Filter):
         return filtered
 
 class HighPassFilter(Filter):
+    """Applies a sharp cutoff filter and allows high frequencies to pass
+    unmodified and low frequencies set to 0.
+    """
     def apply(self, data):
         # Transform data into frequency space
         fData = fourier_transform(data)

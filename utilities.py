@@ -1,3 +1,27 @@
+# -*- coding: utf-8 -*-
+#
+# Copyright © 2016 Mark Wolf
+#
+# This file is part of scimap.
+#
+# Scimap is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# Scimap is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with Foobar.  If not, see <http://www.gnu.org/licenses/>.
+
+"""A collection of classes and functions that arent' specific to any
+one type of measurement. Also, it defines some namedtuples for
+describing coordinates.
+"""
+
 from collections import namedtuple
 import sys
 import os
@@ -9,6 +33,12 @@ Pixel = namedtuple('Pixel', ('vertical', 'horizontal'))
 shape = namedtuple('shape', ('rows', 'columns'))
 
 class Prog:
+    """A progress bar for displaying how many iterations have been
+    completed. This is mostly just a wrapper around the tqdm
+    library. Additionally it makes use of the borg pattern, so setting
+    Prog.quiet to True once silences all progress bars. This is useful
+    for testing.
+    """
     __global_state = {
         'quiet': False
     }
@@ -29,21 +59,3 @@ class Prog:
         return ret
 
 prog = Prog()
-
-# def prog(objs, operation='Working'):
-#     """
-#     Display the progress of the current operation via print statements.
-#     """
-#     print("{operation}...".format(operation=operation), end='\r')
-#     ctr = 1
-#     total = len(objs)
-#     for obj in objs:
-#         status = '{operation}: {bar} {curr}/{total} ({percent:.0f}%)'.format(
-#             operation=operation, bar=progress_bar(ctr, total),
-#             curr=ctr, total=total, percent=(ctr)/total*100
-#         )
-#         print(status, end='\r')
-#         ctr += 1
-#         yield obj
-#     # print('{operation}: {bar} {total}/{total} [done]'.format(
-#     #     operation=operation, bar=progress_bar(total, total), total=total))

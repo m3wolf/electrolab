@@ -1,4 +1,23 @@
 # -*- coding: utf-8 -*-
+#
+# Copyright © 2016 Mark Wolf
+#
+# This file is part of scimap.
+#
+# Scimap is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# Scimap is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with Foobar.  If not, see <http://www.gnu.org/licenses/>.
+
+"""Helper functions for setting up and displaying plots using matplotlib."""
 
 from matplotlib import pyplot
 from matplotlib.ticker import ScalarFormatter
@@ -28,6 +47,8 @@ def remove_extra_spines(ax):
     return ax
 
 def set_outside_ticks(ax):
+    """Convert all the axes so that the ticks are on the outside and don't
+    obscure data."""
     ax.get_yaxis().set_tick_params(which='both', direction='out')
     ax.get_xaxis().set_tick_params(which='both', direction='out')
     return ax
@@ -52,9 +73,12 @@ def new_image_axes(height=5, width=5):
     return set_outside_ticks(ax)
 
 def big_axes():
+    """Return a new Axes object, but larger than the default."""
     return new_axes(height=9, width=16)
 
 def xrd_axes():
+    """Return a new Axes object, with a size appropriate for display x-ray
+    diffraction data."""
     return new_axes(width=8)
 
 def dual_axes(orientation='horizontal'):
@@ -73,10 +97,9 @@ def dual_axes(orientation='horizontal'):
     return (ax1, ax2)
 
 def plot_scans(scan_list, step_size=0, ax=None):
-    """
-    Plot a series of XRDScans as a waterfall. step_size controls how
-    far apart the waterfall stacking is. Optional keyword arg 'ax' plots
-    on a specific Axes.
+    """Plot a series of XRDScans as a waterfall. step_size controls the
+    spacing between the waterfall stacking. Optional keyword arg 'ax'
+    plots on a specific Axes.
     """
     if ax is None:
         ax = big_axes()
@@ -99,6 +122,11 @@ def plot_scans(scan_list, step_size=0, ax=None):
     return ax
 
 def plot_txm_intermediates(images):
+    """Accept a dictionary of images and plots them each on its own
+    axes. This is a complement to routines that operate on a
+    microscopy frame and optionally return all the intermediate
+    calculated frames.
+    """
     for key in images.keys():
         ax1, ax2 = dual_axes()
         ax1.imshow(images[key], cmap='gray')
