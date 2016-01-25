@@ -12,7 +12,6 @@ import scipy
 import exceptions
 from mapping.coordinates import Cube
 from mapping.locus import Locus, DummyLocus
-from mapping.gtkmapwindow import GtkMapWindow
 from mapping.colormaps import cmaps
 from plots import new_axes, dual_axes
 from utilities import prog
@@ -313,10 +312,13 @@ class Map():
         pyplot.colorbar(mappable, ax=ax)
         return ax
 
-    def plot_map_gtk(self, WindowClass=GtkMapWindow):
+    def plot_map_gtk(self, WindowClass=None):
         """
         Create a gtk window with plots and images for interactive data analysis.
         """
+        if WindowClass is None:
+            from mapping.gtkmapwindow import GtkMapWindow
+            WindowClass = GtkMapWindow
         # Show GTK window
         title = "Maps for sample '{}'".format(self.sample_name)
         window = WindowClass(parent_map=self, title=title)
