@@ -11,7 +11,6 @@ import exceptions
 from mapping.map import Map
 from plots import new_axes
 from xrd.locus import XRDLocus
-from xrd.gtkmapwindow import GtkXrdMapWindow
 from refinement.native import NativeRefinement
 from utilities import prog
 
@@ -265,6 +264,7 @@ class XRDMap(Map):
         return self.plot_map(*args, **kwargs)
 
     def plot_map_gtk(self):
+        from xrd.gtkmapwindow import GtkXrdMapWindow
         return super().plot_map_gtk(WindowClass=GtkXrdMapWindow)
 
     def dots_per_mm(self):

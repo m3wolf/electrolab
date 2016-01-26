@@ -4,9 +4,13 @@ from collections import namedtuple
 from matplotlib import figure, pyplot, cm, animation
 from matplotlib.colors import Normalize, BoundaryNorm
 from matplotlib.backends.backend_agg import FigureCanvasAgg
-from matplotlib.backends.backend_gtk3agg import FigureCanvasGTK3Agg
 # from matplotlib.backends.backend_gtk import FigureCanvasGTK
 import numpy as np
+# May not import if not installed
+try:
+    from matplotlib.backends.backend_gtk3agg import FigureCanvasGTK3Agg
+except TypeError:
+    pass
 
 import plots
 from .animation import FrameAnimation

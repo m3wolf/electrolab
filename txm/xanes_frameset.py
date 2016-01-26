@@ -20,7 +20,6 @@ from utilities import prog, xycoord, Pixel
 from .frame import (
     TXMFrame, average_frames, calculate_particle_labels, pixel_to_xy,
     apply_reference, position, Pixel)
-from .gtk_viewer import GtkTxmViewer
 from .plotter import FramesetPlotter, FramesetMoviePlotter
 from plots import new_axes, new_image_axes, DegreeFormatter, ElectronVoltFormatter
 import exceptions
@@ -1017,5 +1016,6 @@ class XanesFrameset():
         return Normalize(global_min, global_max)
 
     def gtk_viewer(self):
+        from .gtk_viewer import GtkTxmViewer
         viewer = GtkTxmViewer(frameset=self)
         viewer.show()
