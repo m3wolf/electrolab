@@ -29,11 +29,11 @@ from xrd.peak import XRDPeak
 # from xrdpeak import PeakFit
 
 from plots import (new_axes, big_axes, dual_axes, plot_scans, xrd_axes,
-                   plot_txm_intermediates)
+                   plot_txm_intermediates, new_image_axes)
 
 import filters
 
-from utilities import xycoord
+from utilities import xycoord, Pixel, shape
 
 from refinement import fullprof
 

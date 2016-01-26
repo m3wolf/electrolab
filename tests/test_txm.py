@@ -7,12 +7,13 @@ import math
 import os
 
 import numpy as np
+import pandas as pd
 import h5py
 from matplotlib.colors import Normalize
 import pytz
 
 from utilities import xycoord, prog
-from txm.xanes_frameset import XanesFrameset
+from txm.xanes_frameset import XanesFrameset, calculate_whiteline
 from txm.frame import (
     average_frames, TXMFrame, xy_to_pixel, pixel_to_xy, Extent, Pixel,
     rebin_image, apply_reference)
@@ -92,6 +93,23 @@ class TXMMapTest(HDFTestCase):
         ]
         result = self.fs.whiteline_map()
         self.assertTrue(np.array_equal(result, expected))
+
+
+class TXMMathTest(unittest.TestCase):
+    """Holds tests for functions that perform base-level calculations."""
+    def test_calculate_whiteline(self):
+        absorbances = [700, 705, 703]
+        energies = [50, 55, 60]
+        data = pd.Series(absorbances, index=energies)
+        out = calculate_whiteline(data)
+        self.assertEqual(out, 55)
+        # Test using multi-dimensional absorbances (eg image frames)
+        absorbances = [np.array([700, 700]),
+                       np.array([705, 703]),
+                       np.array([703, 707])]
+        data = pd.Series(absorbances, index=energies)
+        out = calculate_whiteline(data)
+        self.assertTrue(np.array_equal(out, [55, 60]))
 
 
 class TXMImporterTest(unittest.TestCase):
@@ -368,13 +386,13 @@ class MockFrameset(XanesFrameset):
             frame.image_data.value = d
             yield frame
 
-class TXMGtkViewerTest(unittest.TestCase):
-    @unittest.expectedFailure
-    def test_background_frame(self):
-        from txm import gtk_viewer
-        fs = MockFrameset()
-        viewer = gtk_viewer.GtkTxmViewer(frameset=fs,
-                                         plotter=plotter.DummyGtkPlotter(frameset=fs))
+# class TXMGtkViewerTest(unittest.TestCase):
+#     @unittest.expectedFailure
+#     def test_background_frame(self):
+#         from txm import gtk_viewer
+#         fs = MockFrameset()
+#         viewer = gtk_viewer.GtkTxmViewer(frameset=fs,
+#                                          plotter=plotter.DummyGtkPlotter(frameset=fs))
 
 if __name__ == '__main__':
     unittest.main()

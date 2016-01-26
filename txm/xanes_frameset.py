@@ -28,11 +28,37 @@ from hdf import HDFAttribute
 import smp
 
 
-def build_dataframe(frames):
-    index = [frame.energy for frame in frames]
-    images = [pd.DataFrame(frame.image_data) for frame in frames]
-    series = pd.Series(images, index=index)
+def build_series(frames):
+    energies = [frame.energy for frame in frames]
+    images = [frame.image_data.value for frame in frames]
+    series = pd.Series(images, index=energies)
     return series
+
+def calculate_whiteline(data):
+    """Calculates the whiteline position of the absorption edge data
+    contained in `data`.
+
+    The "whiteline" for an absorption K-edge is the energy at which
+    the specimin has its highest absorbance. This function will return
+    an array with the same shape as each entry in the data series,
+    that gives the energy of the highest absorbance.
+
+    Arguments
+    ---------
+    data - The X-ray absorbance data. Should be similar to a pandas
+    Series. Assumes that the index is energy. This can be a Series of
+    numpy arrays, which allows calculation of image frames, etc.
+    """
+    # First disassemble the data series
+    energies = data.index
+    imagestack = np.array(list(data.values))
+    # Now calculate the indices of the whiteline
+    whiteline_indices = np.argmax(imagestack, axis=0)
+    # Convert indices to energy
+    map_energy = np.vectorize(lambda idx: energies[idx],
+                              otypes=[np.float])
+    whiteline_energies = map_energy(whiteline_indices)
+    return whiteline_energies
 
 class XanesFrameset():
     _attrs = {}
@@ -351,10 +377,8 @@ class XanesFrameset():
         slope_h = regression_h.coef_[0]
         icpt_v = regression_v.intercept_
         icpt_h = regression_h.intercept_
-        # print(slope_v, icpt_v, slope_h, icpt_h)
         error_v = regression_v.score(x, centroids.vertical)
         error_h = regression_h.score(x, centroids.horizontal)
-        # print('slopes', slope_v, slope_h)
         def shift_func(payload):
             delta_E = payload['energy'] - E_0
             correction = xycoord(
@@ -362,17 +386,6 @@ class XanesFrameset():
                 y = slope_v * delta_E
             )
             return correction
-        # for frame in self:
-        #     delta_E = frame.energy - E_0
-        #     correction = Pixel(
-        #         vertical = - slope_v * delta_E,
-        #         horizontal = - slope_h * delta_E
-        #     )
-        #     print(correction)
-        #     transformation = transform.SimilarityTransform(translation=correction)
-        #     new_data = transform.warp(frame.image_data, transformation,
-        #                               order=3, mode="wrap")
-        #     frame.image_data.write_direct(new_data)
         if method == "ransac":
             description = "Correcting drift (R²: {}v, {}h, {}, {} inliers)".format(
                 round(error_v, 3), round(error_h, 3),
@@ -658,16 +671,30 @@ class XanesFrameset():
         return artist
 
     def mean_image(self):
-
-        """Determine an overall image by taken the mean intensity of each
+        """Determine an overall image by taking the mean intensity of each
         pixel across all frames."""
         frames = np.array([f.image_data for f in self])
         avg_frame = np.mean(frames, axis=0)
         return avg_frame
 
     @functools.lru_cache()
-    def xanes_spectrum(self, pixel=None):
-        """Collapse the dataset down to a two-d spectrum."""
+    def xanes_spectrum(self, pixel=None, edge_jump_filter=False):
+        """Collapse the dataset down to a two-dimensional spectrum. Returns a
+        pandas series containing the resulting spectrum. If a frame
+        has the attribute `active_particle_index` set to a truthy
+        value, only pixels inside the detected particle area are
+        counted for the spectrum (provided pixel or edge_jump_filter
+        are not passed).
+
+        Arguments
+        ---------
+        pixel: A 2-tuple that causes the returned series to represent
+            the spectrum for only 1 pixel in the frameset.
+
+        edge_jump_filter (bool): If true, only pixels that pass the
+            edge jump filter are used to calculate the spectrum.
+
+        """
         energies = []
         intensities = []
         for frame in self:
@@ -683,7 +710,9 @@ class XanesFrameset():
                 # No particle
                 particle = None
             # Create mask that's the same size as the image
-            if particle:
+            if edge_jump_filter:
+                masked_data = np.ma.array(data, mask=self.edge_jump_mask())
+            elif particle:
                 bbox = particle.bbox()
                 mask = np.zeros_like(data)
                 mask[bbox.top:bbox.bottom, bbox.left:bbox.right] = particle.mask()
@@ -772,6 +801,17 @@ class XanesFrameset():
         # Apply normalizer? (maybe later)
         return filtered_img
 
+    def edge_jump_mask(self):
+        """Calculate the edge jump image for this frameset, apply some image
+        processing to fill out the space, and convert it into a binary
+        mask."""
+        edge_jump = self.edge_jump_filter()
+        threshold = filters.threshold_otsu(edge_jump)
+        mask = edge_jump > 0.5 * threshold
+        mask = morphology.dilation(mask)
+        mask = np.logical_not(mask)
+        return mask
+
     def calculate_map(self, new_name=None):
         """Generate a map based on pixel-wise Xanes spectra. Default is to
         compute X-ray whiteline position."""
@@ -802,11 +842,7 @@ class XanesFrameset():
             map_data = self.hdf_file()[self.map_name]
         if edge_jump_filter:
             # Apply edge jump mask
-            edge_jump = self.edge_jump_filter()
-            threshold = filters.threshold_otsu(edge_jump)
-            mask = edge_jump > 0.5 * threshold
-            mask = morphology.dilation(mask)
-            mask = np.logical_not(mask)
+            mask = self.edge_jump_mask()
         else:
             # No-op filter
             mask = np.zeros_like(map_data)
@@ -873,15 +909,19 @@ class XanesFrameset():
     def whiteline_map(self):
         """Calculate a map where each pixel is the energy of the whiteline."""
         print('Calculating whiteline map...', end='')
-        # Determine indices of max frame per pixel
-        imagestack = np.array([frame.image_data for frame in self])
-        indices = np.argmax(imagestack, axis=0)
-        # Map indices to energies
-        map_energy = np.vectorize(lambda idx: self[idx].energy,
-                                  otypes=[np.float])
-        energies = map_energy(indices)
+        imagestack = build_series(self)
+        whiteline = calculate_whiteline(imagestack)
         print('done')
-        return energies
+        return whiteline
+
+    def whiteline_energy(self):
+        """Calculate the energy corresponding to the whiteline (maximum
+        absorbance) for the whole frame. This first applies an
+        edge-jump filter.
+        """
+        spectrum = self.xanes_spectrum(edge_jump_filter=True)
+        whiteline = calculate_whiteline(spectrum)
+        return whiteline
 
     def hdf_file(self):
         if self.hdf_filename is not None:
