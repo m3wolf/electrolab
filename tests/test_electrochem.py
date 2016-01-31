@@ -1,4 +1,21 @@
 # -*- coding: utf-8 -*-
+#
+# Copyright © 2016 Mark Wolf
+#
+# This file is part of scimap.
+#
+# Scimap is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# Scimap is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with Scimap.  If not, see <http://www.gnu.org/licenses/>.
 
 import datetime as dt
 import unittest
@@ -11,28 +28,14 @@ from electrochem.electrode import CathodeLaminate, CoinCellElectrode
 from electrochem.galvanostatrun import GalvanostatRun
 from electrochem import electrochem_units
 from electrochem import biologic
+from tests.cases import ScimapTestCase
 
 testdir = os.path.join(os.path.dirname(__file__), 'testdata')
 mptfile = os.path.join(testdir, 'NEI-C10_4cycles_C14.mpt')
 # eclab-test-data.mpt
 mprfile = os.path.join(testdir, 'NEI-C10_4cycles_C14.mpr')
 
-class ElectrolabTestCase(unittest.TestCase):
-    def assertApproximatelyEqual(self, actual, expected, tolerance=0.01, msg=None):
-        """Assert that 'actual' is within relative 'tolerance' of 'expected'."""
-        # Check for lists
-        if isinstance(actual, list) or isinstance(actual, tuple):
-            for a, b in zip(actual, expected):
-                self.assertApproximatelyEqual(a, b, tolerance=tolerance)
-        else:
-            diff = abs(actual-expected)
-            acceptable_diff = abs(expected * tolerance)
-            if diff > acceptable_diff:
-                msg = "{actual} is not close to {expected}"
-                self.fail(msg=msg.format(actual=actual, expected=expected))
-
-
-class ElectrochemUnitsTest(ElectrolabTestCase):
+class ElectrochemUnitsTest(ScimapTestCase):
     """Check that various values for current, capacity, etc are compatible."""
     def setUp(self):
         self.mAh = electrochem_units.mAh
@@ -58,7 +61,7 @@ class CycleTest(unittest.TestCase):
             99.736
         )
 
-class GalvanostatRunTest(ElectrolabTestCase):
+class GalvanostatRunTest(ScimapTestCase):
     # Currently just tests import statement
     def test_import(self):
         GalvanostatRun(mptfile)
