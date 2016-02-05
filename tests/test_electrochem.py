@@ -49,6 +49,31 @@ class ElectrochemUnitsTest(ScimapTestCase):
                                       tolerance=10**-10)
 
 
+class ElectrodeTest(ScimapTestCase):
+    def setUp(self):
+        self.laminate = CathodeLaminate(mass_active_material=0.9,
+                                        mass_carbon=0.05,
+                                        mass_binder=0.05,
+                                        name="LMO-NEI")
+        self.electrode = CoinCellElectrode(total_mass=unit('mg')(15),
+                                           substrate_mass=unit('mg')(5),
+                                           laminate=self.laminate,
+                                           name="DummyElectrode",
+                                           diameter=unit('mm')(12.7))
+
+    def test_area(self):
+        area_unit = unit('cm') * unit('cm')
+        expected_area = area_unit(math.pi * (1.27/2)**2)
+        self.assertEqual(self.electrode.area(), expected_area)
+
+    def test_mass_loading(self):
+        """Ensure the electrode can calculate the loading in mg/cm^2."""
+        loading_units = unit('mg')/(unit('cm')*unit('cm'))
+        area = math.pi * (1.27/2)**2
+        expected = loading_units((15-5)*0.9 / area)
+        self.assertEqual(self.electrode.mass_loading(), expected)
+
+
 class CycleTest(unittest.TestCase):
     def setUp(self):
         self.run = GalvanostatRun(mptfile, mass=0.022563)

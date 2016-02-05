@@ -25,7 +25,8 @@ sys.path.append(os.path.dirname(__file__))
 import default_units
 from electrochem.electrochem_units import *
 
-from xrd.peak import XRDPeak
+from peakfitting import Peak
+# from xrd.peak import XRDPeak
 # from xrdpeak import PeakFit
 
 from plots import (new_axes, big_axes, dual_axes, plot_scans, xrd_axes,
@@ -34,6 +35,8 @@ from plots import (new_axes, big_axes, dual_axes, plot_scans, xrd_axes,
 import filters
 
 from utilities import xycoord, Pixel, shape
+
+from peakfitting import Peak
 
 from refinement import fullprof
 

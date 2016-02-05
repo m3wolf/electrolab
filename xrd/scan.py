@@ -128,8 +128,10 @@ class XRDScan():
         ax.set_xlim(left=df.index.min(), right=df.index.max())
         ax.xaxis.set_major_formatter(plots.DegreeFormatter())
         ax.plot(df.index, df.loc[:, 'counts'])
+
         # Plot refinement
         self.refinement.plot(ax=ax)
+
         # Plot fitted peaks
         # for phase in self.phases:
         #     for peak in phase.peak_list:

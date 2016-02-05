@@ -17,6 +17,7 @@ from skimage import morphology, filters, feature, transform, restoration, exposu
 from sklearn import linear_model
 
 from utilities import prog, xycoord, Pixel
+from peakfitting import Peak
 from .frame import (
     TXMFrame, average_frames, calculate_particle_labels, pixel_to_xy,
     apply_reference, position, Pixel)
@@ -32,6 +33,41 @@ def build_series(frames):
     images = [frame.image_data.value for frame in frames]
     series = pd.Series(images, index=energies)
     return series
+
+def fit_whiteline(data, width=4):
+    """Fits the whiteline peak with a Gaussian curve.
+
+    The "whiteline" for an absorption K-edge is the energy at which
+    the specimin has its highest absorbance. This function will return
+    a namedtuple of arrays with the same shape as each entry in the data
+    series. Each tuple will describe a different fitted parameter.
+
+    Arguments
+    ---------
+    data - The X-ray absorbance data. Should be similar to a pandas
+    Series. Assumes that the index is energy. This can be a Series of
+    numpy arrays, which allows calculation of image frames, etc.
+    Returns a tuple of (peak, goodness) where peak is a fitted peak
+    object and goodness is a measure of the goodness of fit.
+
+    width (int) - How many points on either side of the maximum to
+    fit.
+    """
+    # Filter out data based on peak width
+    max_idx = data.index.get_loc(data.argmax())
+    left = max_idx - width
+    right = max_idx + width + 1
+    subset = data.iloc[left:right]
+    # Correct for background
+    vertical_offset = subset.min()
+    normalized = subset - vertical_offset
+    # Perform fitting
+    peak = Peak()
+    peak.vertical_offset = vertical_offset
+    peak.fit(x=normalized.index, y=normalized.values, method="gaussian")
+    # Save residuals
+    goodness = peak.goodness(subset)
+    return (peak, goodness)
 
 def calculate_whiteline(data):
     """Calculates the whiteline position of the absorption edge data

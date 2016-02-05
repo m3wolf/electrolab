@@ -30,7 +30,8 @@ from matplotlib.colors import Normalize
 import pytz
 
 from utilities import xycoord, prog
-from txm.xanes_frameset import XanesFrameset, calculate_whiteline
+from peakfitting import Peak
+from txm.xanes_frameset import XanesFrameset, calculate_whiteline, fit_whiteline
 from txm.frame import (
     average_frames, TXMFrame, xy_to_pixel, pixel_to_xy, Extent, Pixel,
     rebin_image, apply_reference)
@@ -127,6 +128,37 @@ class TXMMathTest(unittest.TestCase):
         data = pd.Series(absorbances, index=energies)
         out = calculate_whiteline(data)
         self.assertTrue(np.array_equal(out, [55, 60]))
+
+    def test_generic_fit(self):
+        """This tries to fit the whole peak and as such does not do very
+        well."""
+        filename = 'tests/testdata/NCA-cell2-soc1-fov1-xanesspectrum.tsv'
+        data = pd.Series.from_csv(filename, sep="\t")
+        peak = Peak()
+        peak.fit(x=data.index, y=data.values)
+        goodness = peak.goodness(data)
+        self.assertTrue(
+            goodness < 0.06,
+            "residuals too high: {}".format(goodness)
+        )
+        peak_center = peak.center()
+        # Verify that the peak center is between the two highest points
+        self.assertTrue(8352 < peak_center < 8353)
+
+    def test_fit_whiteline(self):
+        filename = 'tests/testdata/NCA-cell2-soc1-fov1-xanesspectrum.tsv'
+        data = pd.Series.from_csv(filename, sep="\t")
+        data = data[8325:8360]
+        peak, goodness = fit_whiteline(data, width=5)
+        self.assertTrue(8352 < peak.center() < 8353,
+                        "Center not within range {} eV".format(peak.center()))
+
+        # Check that the residual differences are not too high
+        # residuals = peak.residuals
+        self.assertTrue(
+            goodness < 0.01,
+            "residuals too high: {}".format(goodness)
+        )
 
 
 class TXMImporterTest(unittest.TestCase):

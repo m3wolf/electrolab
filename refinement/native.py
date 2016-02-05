@@ -8,7 +8,8 @@ import pandas
 
 import exceptions
 import plots
-from xrd.peak import remove_peak_from_df, XRDPeak
+# from xrd.peak import remove_peak_from_df, XRDPeak
+from peakfitting import remove_peak_from_df
 from refinement.base import BaseRefinement
 from mapping.datadict import DataDict
 
