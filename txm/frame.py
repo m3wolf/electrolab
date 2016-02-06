@@ -218,13 +218,13 @@ class TXMFrame():
         top = center.y + y_pixels * um_per_pixel.y / 2
         return Extent(left=left, right=right, bottom=bottom, top=top)
 
-    def plot_histogram(self, ax=None, *args, **kwargs):
+    def plot_histogram(self, ax=None, bins=100, *args, **kwargs):
         if ax is None:
             ax = plots.new_axes()
         ax.set_xlabel('Absorbance (AU)')
         ax.set_ylabel('Occurences')
         data = np.nan_to_num(self.image_data.value)
-        artist = ax.hist(data.flat, bins=100, *args, **kwargs)
+        artist = ax.hist(data.flatten(), bins=bins, *args, **kwargs)
         return artist
 
     def plot_image(self, data=None, ax=None, show_particles=True, *args, **kwargs):
