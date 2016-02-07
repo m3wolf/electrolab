@@ -2,6 +2,7 @@
 
 import pandas as pd
 
+
 class BrukerPltFile():
     def __init__(self, filename):
         self.filename = filename

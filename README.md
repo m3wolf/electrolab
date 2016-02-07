@@ -51,3 +51,5 @@ works with data collected from the Stanford Synchrotron Light Source
 Not related to mapping, this section contains some
 importers and classes used to read in electrochemical cycling data
 from several BioLogic instruments.
+
+(\# flake8: noqa)

@@ -1,9 +1,7 @@
 import gc
-from collections import namedtuple
 
 from matplotlib import figure, pyplot, cm, animation
-from matplotlib.colors import Normalize, BoundaryNorm
-from matplotlib.backends.backend_agg import FigureCanvasAgg
+from matplotlib.colors import BoundaryNorm
 # from matplotlib.backends.backend_gtk import FigureCanvasGTK
 import numpy as np
 # May not import if not installed
@@ -15,11 +13,14 @@ except TypeError:
 import plots
 from .animation import FrameAnimation
 
+
 class FramesetPlotter():
     """A class that handles the graphic display of TXM data. It should be
     thought of as an interface to a plotting library, such as
-    matplotlib."""
+    matplotlib.
+    """
     map_cmap = "plasma"
+
     def __init__(self, frameset, map_ax=None):
         self.map_ax = map_ax
         self.frameset = frameset
@@ -52,7 +53,7 @@ class FramesetPlotter():
         # Create a new axes if necessary
         if self.map_ax is None:
             self.map_ax = plots.new_image_axes()
-            self.draw_colorbar() # norm=norm, ticks=energies[0:-1])
+            self.draw_colorbar()  # norm=norm, ticks=energies[0:-1])
         # Plot chemical map (on top of absorbance image, if present)
         extent = self.frameset.extent()
         masked_map = self.frameset.masked_map(edge_jump_filter=edge_jump_filter)
@@ -88,10 +89,11 @@ class FramesetPlotter():
             self.map_crosshairs = (xline, yline)
         self.map_ax.figure.canvas.draw()
 
+
 class FramesetMoviePlotter(FramesetPlotter):
     show_particles = False
+
     def create_axes(self, figsize=(13.8, 6)):
-        # self.figure = pyplot.figure(figsize=(13.8, 6))
         self.figure = figure.Figure(figsize=figsize)
         self.figure.subplots_adjust(bottom=0.2)
         self.canvas = FigureCanvasGTK3Agg(figure=self.figure)
@@ -147,27 +149,22 @@ class FramesetMoviePlotter(FramesetPlotter):
         kwargs['codec'] = kwargs.get('codec', 'h264')
         kwargs['bitrate'] = kwargs.get('bitrate', -1)
         kwargs['writer'] = 'ffmpeg'
-        # codec = kwargs.get('codec', 'h264')
-        # bitrate = kwargs.pop('bitrate', -1)
-        # Generate a writer object
-        # if 'writer' not in kwargs.keys():
-        #     writer = animation.FFMpegFileWriter(bitrate=bitrate, codec=codec)
-        # else:
-        #     writer = kwargs['writer']
         self.figure.canvas.draw()
         return self.frame_animation.save(*args, **kwargs)
+
 
 class GtkFramesetPlotter(FramesetPlotter):
     """Variation of the frameset plotter that uses canvases made for GTK."""
     show_particles = False
     xanes_scatter = None
     map_crosshairs = None
+
     def __init__(self, frameset):
         super().__init__(frameset=frameset)
         # Figures for drawing images of frames
         self._frame_fig = figure.Figure(figsize=(13.8, 10))
         self.frame_canvas = FigureCanvasGTK3Agg(self._frame_fig)
-        self.frame_canvas.set_size_request(400,400)
+        self.frame_canvas.set_size_request(400, 400)
         # Figures for overall chemical map
         self._map_fig = figure.Figure(figsize=(13.8, 10))
         self.map_canvas = FigureCanvasGTK3Agg(self._map_fig)
@@ -237,14 +234,15 @@ class GtkFramesetPlotter(FramesetPlotter):
         transitioning."""
         all_artists = []
         self.plot_xanes_spectrum()
-        # self.xanes_ax.figure.canvas.draw()
         # Get image artists
         self.image_ax.clear()
         for frame in self.frameset:
-            frame_artist = frame.plot_image(ax=self.image_ax,
-                                            show_particles=False,
-                                            norm=self.frameset.image_normalizer(),
-                                            animated=True)
+            frame_artist = frame.plot_image(
+                ax=self.image_ax,
+                show_particles=False,
+                norm=self.frameset.image_normalizer(),
+                animated=True
+            )
             frame_artist.set_visible(False)
             # Get Xanes highlight artists
             energy = frame.energy
@@ -254,7 +252,7 @@ class GtkFramesetPlotter(FramesetPlotter):
             [a.set_visible(False) for a in xanes_artists]
             # xanes_artists.append(xanes_artist[0])
             if self.show_particles:
-            # Get particle labels artists
+                # Get particle labels artists
                 particle_artists = frame.plot_particle_labels(
                     ax=self.image_ax,
                     extent=frame.extent(),

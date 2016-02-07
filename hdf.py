@@ -20,6 +20,7 @@
 """HDF is a format for storing large sets of data to disk. These
 classes provide some wrappers around the h5py module."""
 
+
 class HDFAttribute():
     """A descriptor that returns an HDF5 attribute if possible or else an
     in-memory value. An optional `wrapper` argument will wrap the data

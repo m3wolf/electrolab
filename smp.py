@@ -28,6 +28,7 @@ from tqdm import format_meter
 
 from utilities import prog
 
+
 class Consumer(mp.Process):
     """A process that will be spawned and then start emptying the queue
     until killed.
@@ -56,6 +57,7 @@ class Consumer(mp.Process):
 class Queue():
     """A joinable queue that adds objects to a queue and then spawns
     workers to process them."""
+
     def __init__(self, worker, totalsize, result_callback=None, description="Processing data"):
         """Prepare the queue.
 
@@ -115,7 +117,7 @@ class Queue():
         if not prog.quiet:
             status = format_meter(n=curr,
                                   total=self.totalsize,
-                                  elapsed=time()-self.start_time,
+                                  elapsed=time() - self.start_time,
                                   prefix=self.description + ": ")
             print(status, end='\r')
         return ret

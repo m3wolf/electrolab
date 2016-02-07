@@ -15,22 +15,25 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with Foobar.  If not, see <http://www.gnu.org/licenses/>.
+# along with Scimap.  If not, see <http://www.gnu.org/licenses/>.
 
 """Routines related to fitting curves to data (eg fitting XANES data
 with a Gaussian curve."""
 
 from collections import namedtuple
 import math
+import warnings
 
 import numpy as np
 from scipy import optimize
 import pandas as pd
 
+import exceptions
 import plots
 
 # How strongly to penalize negative peak heights, etc
 BASE_PENALTY = 300
+
 
 def remove_peak_from_df(reflection, df):
     """Accept an xrd scan dataframe and remove the given reflection's peak from
@@ -38,14 +41,17 @@ def remove_peak_from_df(reflection, df):
     peak = reflection.two_theta_range
     df.drop(df[peak[0]:peak[1]].index, inplace=True)
 
+
 def gaussian_fwhm(width_parameter):
     """Calculates full-width half max based on width parameter."""
     # Taken from wikipedia page for "Gaussian Function".
     return 2.35482 * width_parameter
 
+
 def cauchy_fwhm(width_parameter):
     """Calculates full-width half max based on width parameter."""
-    return 2*width_parameter
+    return 2 * width_parameter
+
 
 class PeakFit():
     Parameters = namedtuple('Parameters', ('height', 'center', 'width'))
@@ -55,7 +61,7 @@ class PeakFit():
 
     def __repr__(self):
         return "<{cls}: {center}>".format(cls=self.__class__.__name__,
-                                              center=round(self.center, 2))
+                                          center=round(self.center, 2))
 
     @property
     def parameters(self):
@@ -82,39 +88,47 @@ class PeakFit():
                 penalty += BASE_PENALTY
         return penalty
 
-    def initial_parameters(self, xdata, ydata, center=0):
+    def initial_parameters(self, xdata, ydata, center=0, height=None):
         """Estimate intial parameters from data. Calling function is
         responsible for determining peak center since multiple peaks
-        may be involved.
+        may be involved. If `height` is not given it is estimated.
         """
+        data = pd.Series(ydata, index=xdata)
         # Determine maximum peak height
         maxHeight = ydata.max()
 
         # Determine full-width half-max
         # Split the dataset into an upper half and a lower half
-        maxidx = ydata.argmax()
-        rightdata = ydata[maxidx:]
-        leftdata = ydata[:maxidx]
+        maxidx = data.argmax()
+        rightdata = data[maxidx:]
+        leftdata = data[:maxidx]
+        # Only interested in data that are less than half-max
+        rightdata = rightdata[rightdata < maxHeight / 2]
+        leftdata = leftdata[leftdata < maxHeight / 2]
         # Find the nearest datum to halfmax in each half
-        halfmax = ydata.max() / 2
-        rightidx = (np.abs(rightdata - halfmax)).argmin()
-        leftidx = (np.abs(leftdata - halfmax)).argmin()
-        # Subtract the two points to get full-width-half-max
-        rightx = xdata[rightidx + maxidx]
-        leftx = xdata[leftidx]
+        rightx = (np.abs(rightdata.index - maxidx)).min() + maxidx
+        leftx = maxidx - (np.abs(leftdata.index - maxidx)).min()
 
         # Convert FWHM to stdDev (taken from wolfram alpha page for Gaussian)
-        stdDev = (leftx - rightx) / 2.3548
+        stdDev = abs(leftx - rightx) / 2.3548
+
+        # Decide which value to use for the peak height
+        if height is None:
+            new_height = maxHeight
+        else:
+            new_height = height
 
         # Prepare tuples of parameters
-        p1 = self.Parameters(height=maxHeight,
+        p1 = self.Parameters(height=new_height,
                              center=center,
                              width=stdDev)
         return p1
 
+
 class EstimatedFit(PeakFit):
     """Fallback fit using just estimated intial parameters."""
     pass
+
 
 class GaussianFit(PeakFit):
     @staticmethod
@@ -123,12 +137,11 @@ class GaussianFit(PeakFit):
         Compute a Gaussian distribution of peak height and width around center.
         x is an array of points for which to return y values.
         """
-        y = height * np.exp(-np.square(x-center)/2/np.square(width))
+        y = height * np.exp(-np.square(x - center) / 2 / np.square(width))
         return y
 
 
 class CauchyFit(PeakFit):
-
     @staticmethod
     def kernel(x, height, center, width):
         """
@@ -136,7 +149,10 @@ class CauchyFit(PeakFit):
         around center.  x is an array of points for which to return y
         values.
         """
-        y = height * np.square(width)/(np.square(width)+np.square(x-center))
+        y = (
+            height * np.square(width) /
+            (np.square(width) + np.square(x - center))
+        )
         return y
 
 
@@ -170,7 +186,7 @@ class PseudoVoigtFit(PeakFit):
         # Gaussian component
         fwhm = self.eta * gaussian_fwhm(self.width_g)
         # Cauchy component
-        fwhm += (1-self.eta) * cauchy_fwhm(self.width_c)
+        fwhm += (1 - self.eta) * cauchy_fwhm(self.width_c)
         return fwhm
 
     @property
@@ -205,29 +221,23 @@ class PseudoVoigtFit(PeakFit):
                                     width=params.width_c)
         penalty += parent.penalty(cParams)
         # Check for eta between zero and 1
-        if not( 0 < params.eta < 1):
+        if not(0 < params.eta < 1):
             penalty += BASE_PENALTY
         return penalty
 
-    def initial_parameters(self, xdata, ydata, center=0):
-        """Estimate intial parameters from data. Calling function is
-        responsible for determining peak center since multiple peaks
-        may be involved.
-        """
-        # Determine maximum peak height
-        maxHeight = ydata.max()
-        # Determine full-width half-max
-        print("TODO: Estimate initial peak width")
-        stdDev = self.width
+    def initial_parameters(self, *args, **kwargs):
+        """Estimate intial parameters for this peak. Arguments are passed to a
+        `PeakFit` object then modified for psuedo-voigt compatibility."""
+        # Use a vanilla peak fit to estimate the initial parameters
+        vanilla_params = PeakFit().initial_parameters(*args, **kwargs)
         # Prepare tuples of parameters
-        params = self.Parameters(height_g=maxHeight,
-                                 height_c=maxHeight,
-                                 center=center,
-                                 width_g=stdDev,
-                                 width_c=stdDev,
+        params = self.Parameters(height_g=vanilla_params.height,
+                                 height_c=vanilla_params.height,
+                                 center=vanilla_params.center,
+                                 width_g=vanilla_params.width,
+                                 width_c=vanilla_params.width,
                                  eta=0.5)
         return params
-
 
     @staticmethod
     def kernel(x, height_g, height_c, center, width_g, width_c, eta):
@@ -240,7 +250,7 @@ class PseudoVoigtFit(PeakFit):
         """
         g = GaussianFit.kernel(x, height_g, center, width_g)
         c = CauchyFit.kernel(x, height_c, center, width_c)
-        y = eta*g + (1-eta)*c
+        y = eta * g + (1 - eta) * c
         return y
 
 
@@ -250,18 +260,69 @@ class Peak():
     etc.) are described in PeakFit objects.
     """
     vertical_offset = 0
+    fit_list = []
+    fit_classes = {
+        'gaussian': GaussianFit,
+        'cauchy': CauchyFit,
+        'pearson vii': PearsonVIIFit,
+        'pseudo-voigt': PseudoVoigtFit,
+        'estimated': EstimatedFit,
+    }
+
+    def __init__(self, num_peaks=1, method='gaussian'):
+        """Arguments
+        ---------
+        num_peaks : How many subpeaks should be used for pitting.
+        """
+        self.num_peaks = num_peaks
+        self.FitClass = self.fit_classes[method.lower()]
+
+    def __repr__(self):
+        name = "<{cls}: {center}>".format(
+            cls=self.__class__.__name__,
+            center=self.center()
+        )
+        return name
+
     def split_parameters(self, params):
         """
-        Take a full list of parameters and divide it groups for each subpeak.
+        Take a full list of parameters and divide it into groups for each
+        subpeak.
         """
-        numFits = len(self.fit_list)
-        chunkSize = int(len(params)/numFits)
+        chunkSize = int(len(params) / self.num_peaks)
         groups = []
         for i in range(0, len(params), chunkSize):
-            groups.append(params[i:i+chunkSize])
+            end = i + chunkSize
+            groups.append(params[i:end])
         return groups
 
-    def fit(self, x, y, num_peaks=1, method='pseudo-voigt'):
+    def guess_parameters(self, x, y):
+        """Use the data to guess appropriate starting parameters before
+        fitting can take place. Returns a list the same length as the
+        number of sub-peaks. Each entry is a tuple of sub-peak
+        parameters.
+
+        Arguments
+        ---------
+        - x (numpy.ndarray) : Independent data to use for guessing
+          peak properties.
+
+        - y (numpy.ndarray) : Dependent data to use for guess peak
+          properties.
+        """
+        guess = []
+        # Guess peak position based on maximum value
+        max_idx = y.argmax()
+        peak_max = x[max_idx]
+        # Guess values for width (based on fitting method)
+        for i in range(0, self.num_peaks):
+            sub_params = self.FitClass().initial_parameters(xdata=x,
+                                                            ydata=y,
+                                                            center=peak_max)
+            guess.append(sub_params)
+        return guess
+
+    def fit(self, x, y):
         """Least squares refinement of a function to the data.
 
         Arguments
@@ -282,23 +343,14 @@ class Peak():
             - 'Pseudo-Voigt'
             - 'estimated'
         """
-        fitClasses = {
-            'gaussian': GaussianFit,
-            'cauchy': CauchyFit,
-            'pearson vii': PearsonVIIFit,
-            'pseudo-voigt': PseudoVoigtFit,
-            'estimated': EstimatedFit,
-        }
-        # Have not yet determined correct way to handle multiple peaks
-        if not num_peaks == 1:
-            raise NotImplementedError('Fitting multiple peaks not yet ready.')
         # Save x range for later
         self.x_range = (x[0], x[-1])
         # Create fit object(s)
         self.fit_list = []
-        FitClass = fitClasses[method.lower()]
-        for i in range(0, num_peaks):
+        FitClass = self.FitClass
+        for i in range(0, self.num_peaks):
             self.fit_list.append(FitClass())
+
         # Define objective function
         def objective(x, *params):
             # Unpack the parameters
@@ -308,6 +360,7 @@ class Peak():
                 y = fit.kernel(x, *paramGroups[idx])
                 result += y
             return result
+
         # Error function, penalizes values out of range
         def residual_error(obj_params):
             penalty = 0
@@ -318,32 +371,25 @@ class Peak():
                 # Calculate single peak penalties
                 penalty += fit.penalty(paramTuple)
             result = objective(x, *obj_params)
-            return (y-result)**2+penalty
-        # Guess reasonable values for initial parameters
-        max_idx = y.argmax()
-        peak_max = x[max_idx]
-        initialParameters = FitClass().initial_parameters(xdata=x,
-                                                          ydata=y,
-                                                          center=peak_max)
+            return (y - result)**2 + penalty
+        initialParameters = self.guess_parameters(x=x, y=y)
         # Minimize the residual least squares
         try:
-            result = optimize.leastsq(residual_error, x0=initialParameters,
+            result = optimize.leastsq(residual_error,
+                                      x0=initialParameters,
                                       full_output=True)
         except RuntimeError as e:
             # Could not find optimum fit
-            angle = (self.x_range[0]+self.x_range[1])/2
+            angle = (self.x_range[0] + self.x_range[1]) / 2
             msg = "Peak ~{angle:.1f}°: {error}".format(angle=angle, error=e)
             raise exceptions.PeakFitError(msg)
         else:
             popt = result[0]
-            # self.residuals = result[2]['fvec'].sum()
             # Split optimized parameters by number of fits
             paramsList = self.split_parameters(popt)
             # Save optimized parameters for each fit
             for idx, fit in enumerate(self.fit_list):
                 fit.parameters = paramsList[idx]
-            # return self.residuals
-
 
     def predict(self, xdata=None):
         """Get a dataframe of the predicted peak fits.
@@ -365,9 +411,6 @@ class Peak():
         y = np.zeros_like(x)
         for fit in self.fit_list:
             y += fit.evaluate(x)
-            # if background is not None:
-            #     # I don't know why I have to divide by 2 here but it works(!?)
-            #     y += background(x)/2
         # Correct for vertical offset
         y += self.vertical_offset
         return pd.Series(data=y, index=x)
@@ -395,19 +438,28 @@ class Peak():
         observations (pandas series): The original data against which
             to compare the fit.
         """
-        predicted = self.predict(xdata=observations.index)
-        print(predicted)
-        print(observations)
         # Determine total residual
         sum_of_squares = (self.residuals(observations)**2).sum()
         # Divide by degrees of freedom
-        goodness = math.sqrt(sum_of_squares) / (len(observations)-1)
+        goodness = math.sqrt(sum_of_squares) / (len(observations) - 1)
         return goodness
 
     def center(self):
         centers = [f.center for f in self.fit_list]
-        mean_center = sum(centers) / len(centers)
+        mean_center = sum(centers) / self.num_peaks
         return mean_center
+
+    def fwhm(self):
+        """Full width at half-maximum. This concept is not clearly defined if
+        there is more than one sub-peak fit.
+        """
+        if self.num_peaks > 1:
+            msg = "FWHM is not clearly defined for multiple sub-peaks"
+            warnings.warn(RuntimeWarning(msg))
+        width = 0
+        for fit in self.fit_list:
+            width += fit.fwhm()
+        return width
 
     def plot_fit(self, ax=None, background=None):
         df = self.predict()

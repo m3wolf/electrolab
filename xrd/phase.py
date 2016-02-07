@@ -4,14 +4,13 @@ from collections import namedtuple
 import copy
 import math
 
-import scipy
-
-import exceptions
 from mapping.datadict import DataDict
 from .reflection import hkl_to_tuple
 from .unitcell import UnitCell
 
+
 class PhaseDataDict(DataDict):
+
     def __get__(self, obj, cls):
         new_dict = super().__get__(obj, cls)
         new_dict['unit_cell'] = obj.unit_cell.data_dict
@@ -23,10 +22,11 @@ class PhaseDataDict(DataDict):
             del new_dict['unit_cell']
         return super().__set__(obj, new_dict)
 
+
 class Phase():
     """A crystallographic phase that can be found in a Material."""
     name = None
-    reflection_list = [] # Predicted peaks by crystallography
+    reflection_list = []  # Predicted peaks by crystallography
     spacegroup = ''
     scale_factor = 1
     unit_cell = UnitCell
@@ -80,8 +80,8 @@ class Phase():
             # Calculate predicted position
             hkl = reflection.hkl
             d = unit_cell.d_spacing(hkl)
-            radians = math.asin(wavelength/2/d)
-            two_theta = 2*math.degrees(radians)
+            radians = math.asin(wavelength / 2 / d)
+            two_theta = 2 * math.degrees(radians)
             predicted_peaks.append(
                 PredictedPeak(reflection.hkl_string, d, two_theta)
             )

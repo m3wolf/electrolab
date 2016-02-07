@@ -10,6 +10,7 @@ import pytz
 
 import exceptions
 
+
 def decode_ssrl_params(filename):
     """Accept the filename of an XRM file and return sample parameters as
     a dictionary."""
@@ -47,9 +48,11 @@ def decode_ssrl_params(filename):
 # Some of the byte decoding was taken from
 # https://github.com/data-exchange/data-exchange/blob/master/xtomo/src/xtomo_reader.py
 
+
 class XRMFile():
     """Single X-ray micrscopy frame created using XRadia XRM format."""
     aps_regex = re.compile("(\d{8})_([a-zA-Z0-9_]+)_([a-zA-Z0-9]+)_(\d{4}).xrm")
+
     def __init__(self, filename, flavor):
         self.filename = filename
         self.flavor = flavor

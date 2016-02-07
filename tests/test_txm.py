@@ -17,6 +17,8 @@
 # You should have received a copy of the GNU General Public License
 # along with Scimap.  If not, see <http://www.gnu.org/licenses/>.
 
+# flake8: noqa
+
 import datetime as dt
 import unittest
 from unittest.mock import MagicMock, Mock
@@ -25,10 +27,10 @@ import os
 
 import numpy as np
 import pandas as pd
-import h5py
 from matplotlib.colors import Normalize
 import pytz
 
+from tests.cases import HDFTestCase
 from utilities import xycoord, prog
 from peakfitting import Peak
 from txm.xanes_frameset import XanesFrameset, calculate_whiteline, fit_whiteline
@@ -44,20 +46,6 @@ from txm import plotter
 testdir = os.path.join(os.path.dirname(__file__), 'testdata')
 ssrldir = os.path.join(testdir, 'ssrl-txm-data')
 apsdir = os.path.join(testdir, 'aps-txm-data')
-
-class HDFTestCase(unittest.TestCase):
-    """A test case that sets up and tears down an HDF file."""
-    def setUp(self):
-        curdir = os.path.dirname(os.path.realpath(__file__))
-        self.hdf_filename = os.path.join(curdir, 'txm-frame-test.hdf')
-        if os.path.exists(self.hdf_filename):
-            os.remove(self.hdf_filename)
-        self.hdf_file = h5py.File(self.hdf_filename, 'w-')
-
-    def tearDown(self):
-        self.hdf_file.close()
-        if os.path.exists(self.hdf_filename):
-            os.remove(self.hdf_filename)
 
 
 class XrayEdgeTest(unittest.TestCase):
@@ -84,14 +72,18 @@ class XrayEdgeTest(unittest.TestCase):
 
 
 class TXMMapTest(HDFTestCase):
+
     def setUp(self):
         ret = super().setUp()
+        # Disable progress bars and notifications
+        prog.quiet = True
         # Create an HDF Frameset for testing
         self.fs = XanesFrameset(filename=self.hdf_filename,
                                 groupname='mapping-test')
         for i in range(0, 3):
             frame = TXMFrame()
             frame.energy = i + 8000
+            frame.approximate_energy = frame.energy
             ds = np.zeros(shape=(3, 3))
             ds[:] = i + 1
             frame.image_data = ds
@@ -115,6 +107,7 @@ class TXMMapTest(HDFTestCase):
 
 class TXMMathTest(unittest.TestCase):
     """Holds tests for functions that perform base-level calculations."""
+
     def test_calculate_whiteline(self):
         absorbances = [700, 705, 703]
         energies = [50, 55, 60]
@@ -128,22 +121,6 @@ class TXMMathTest(unittest.TestCase):
         data = pd.Series(absorbances, index=energies)
         out = calculate_whiteline(data)
         self.assertTrue(np.array_equal(out, [55, 60]))
-
-    def test_generic_fit(self):
-        """This tries to fit the whole peak and as such does not do very
-        well."""
-        filename = 'tests/testdata/NCA-cell2-soc1-fov1-xanesspectrum.tsv'
-        data = pd.Series.from_csv(filename, sep="\t")
-        peak = Peak()
-        peak.fit(x=data.index, y=data.values)
-        goodness = peak.goodness(data)
-        self.assertTrue(
-            goodness < 0.06,
-            "residuals too high: {}".format(goodness)
-        )
-        peak_center = peak.center()
-        # Verify that the peak center is between the two highest points
-        self.assertTrue(8352 < peak_center < 8353)
 
     def test_fit_whiteline(self):
         filename = 'tests/testdata/NCA-cell2-soc1-fov1-xanesspectrum.tsv'
@@ -256,11 +233,16 @@ class TXMFrameTest(HDFTestCase):
         sample_filename = "rep01_201502221044_NAT1050_Insitu03_p01_OCV_08250.0_eV_001of002.xrm"
         xrm = XRMFile(os.path.join(ssrldir, sample_filename), flavor="ssrl")
         # Check start time
-        start = dt.datetime(2015, 2, 22, 10, 47, 19, tzinfo=pytz.timezone('US/Pacific'))
+        start = dt.datetime(2015, 2, 22,
+                            10, 47, 19,
+                            tzinfo=pytz.timezone('US/Pacific'))
         self.assertEqual(xrm.starttime(), start)
         # Check end time (offset determined by exposure time)
-        end = dt.datetime(2015, 2, 22, 10, 47, 19, 500000, tzinfo=pytz.timezone('US/Pacific'))
+        end = dt.datetime(2015, 2, 22,
+                          10, 47, 19, 500000,
+                          tzinfo=pytz.timezone('US/Pacific'))
         self.assertEqual(xrm.endtime(), end)
+        xrm.close()
 
         # Test APS frame
         sample_filename = "20151111_UIC_XANES00_sam01_8313.xrm"
@@ -271,6 +253,7 @@ class TXMFrameTest(HDFTestCase):
         # Check end time (offset determined by exposure time)
         end = dt.datetime(2015, 11, 11, 15, 43, 16, tzinfo=pytz.timezone('US/Central'))
         self.assertEqual(xrm.endtime(), end)
+        xrm.close()
 
     # def test_magnification_from_xrm(self):
     #     sample_filename = "rep01_201502221044_NAT1050_Insitu03_p01_OCV_08250.0_eV_001of002.xrm"

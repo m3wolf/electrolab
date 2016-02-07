@@ -4,6 +4,7 @@ from collections import namedtuple
 
 HKL = namedtuple('HKL', ('h', 'k', 'l'))
 
+
 def hkl_to_tuple(hkl_input):
     """If hkl_input is a string, extract the hkl values and
     return them as (h, k, l). If hkl_string is not a string, return it
@@ -21,6 +22,7 @@ def hkl_to_tuple(hkl_input):
             int(hkl_input[2])
         )
     return hklTuple
+
 
 class Reflection():
     """An XRD reflection with a specific hkl value."""

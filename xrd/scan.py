@@ -1,18 +1,14 @@
 # -*- coding: utf-8 -*-
 
-import os
-
-import numpy as np
 import pandas as pd
 from matplotlib import pyplot
 
-import exceptions
 import plots
 from filters import fourier_transform
 from xrd.tube import tubes
 from refinement.native import NativeRefinement
-from refinement.fullprof import ProfileMatch as ProfileMatch
 from adapters.shortcuts import adapter_from_filename
+
 
 def align_scans(scan_list, peak):
     """Align each scan to the peak in the given range. The first scan in
@@ -26,16 +22,18 @@ def align_scans(scan_list, peak):
         scan.shift_diffractogram(offset)
     return scan_list
 
+
 class XRDScan():
     """
     A set of data collected on an x-ray diffractometer, 2theta dispersive.
     'refinement' argument accepts a refinement class that is used for
     backend calculations.
     """
-    _df = None # Replaced by load_diffractogram() method
+    _df = None  # Replaced by load_diffractogram() method
     diffractogram_is_loaded = False
     spline = None
     filename = None
+
     def __init__(self, filename='', name=None,
                  phases=[], phase=None, background_phases=[],
                  tube='Cu', wavelength=None,
@@ -202,8 +200,8 @@ class XRDScan():
         df = self.diffractogram
         two_theta_max = df.index.max()
         two_theta_min = df.index.min()
-        isInRange = (two_theta_min < two_theta_range[0] < two_theta_max
-                     or two_theta_min < two_theta_range[1] < two_theta_max)
+        isInRange = (two_theta_min < two_theta_range[0] < two_theta_max or
+                     two_theta_min < two_theta_range[1] < two_theta_max)
         return isInRange
 
     @property
@@ -223,8 +221,10 @@ class XRDScan():
 
     def peak_position(self, twotheta_range):
         fullDF = self.diffractogram
-        if self.has_background: column = 'subtracted'
-        else: column = 'counts'
+        if self.has_background:
+            column = 'subtracted'
+        else:
+            column = 'counts'
         peakDF = fullDF.loc[
             twotheta_range[0]:twotheta_range[1],
             column
@@ -244,10 +244,11 @@ class XRDScan():
         # Split dataframe into left and right
         leftDF = peakDF.loc[two_theta_range[0]:maxIdx]
         rightDF = peakDF.loc[maxIdx:two_theta_range[1]]
+
         # Find the data points around the half-max
         def half_max(df, maximum):
             """Return index of half-maximum of dataframe."""
-            halfMax = maximum/2
+            halfMax = maximum / 2
             upperDf = df[df > halfMax]
             lowerDf = df[df < halfMax]
             if upperDf.empty or lowerDf.empty:
@@ -259,8 +260,8 @@ class XRDScan():
                 lowerIdx = df[df < halfMax].argmax()
                 lowerVal = df[lowerIdx]
                 # Interpolate between the two data points
-                slope = (upperVal - lowerVal)/(upperIdx - lowerIdx)
-                newIdx = (halfMax - lowerVal)/slope + lowerIdx
+                slope = (upperVal - lowerVal) / (upperIdx - lowerIdx)
+                newIdx = (halfMax - lowerVal) / slope + lowerIdx
             return newIdx
         leftIdx = half_max(leftDF, maxCounts)
         rightIdx = half_max(rightDF, maxCounts)

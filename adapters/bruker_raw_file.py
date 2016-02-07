@@ -19,6 +19,7 @@ HEADER_BYTES = [
     ByteField('sample_name', 'str', None),
 ]
 
+
 class BrukerRawFile():
 
     def __init__(self, filename):
@@ -46,7 +47,9 @@ class BrukerRawFile():
         for field in field_list:
             # Extract field value from data
             if field.type == 'int':
-                value = self.data[currentPos:currentPos+field.length]
+                start = currentPos
+                end = currentPos + field.length
+                value = self.data[start:end]
                 currentPos += field.length
             elif field.type == 'str' and field.length is None:
                 # Variable length string
@@ -54,7 +57,12 @@ class BrukerRawFile():
                 currentPos += length
             elif field.type == 'str':
                 # Fixed length string
-                value = codecs.decode(self.data[currentPos:currentPos+field.length], ENCODING)
+                start = currentPos
+                end = currentPos + field.length
+                value = codecs.decode(
+                    self.data[start:end],
+                    ENCODING
+                )
                 currentPos += field.length
             result = FieldValue(name=field.name, value=value)
             yield(result)
@@ -71,4 +79,4 @@ class BrukerRawFile():
             marker += 1
         byteString = self.data[offset:marker]
         newString = codecs.decode(byteString, ENCODING)
-        return newString, marker-offset
+        return newString, marker - offset

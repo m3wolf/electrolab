@@ -1,33 +1,76 @@
 # -*- coding: utf-8 -*-
 
-from collections import namedtuple
-
-import pandas
+import pandas as pd
 import numpy as np
-from scipy import optimize
-from matplotlib import pyplot
 
-import exceptions
 from xrd.tube import tubes, KALPHA2_RATIO
-import plots
+from peakfitting import Peak
 
 
-# class XRDPeak():
-#     """
-#     A peak in an X-ray diffractogram. May be composed of multiple
-#     overlapping subpeaks from different wavelengths.
-#     """
-#     fit_list = []
+class XRDPeak(Peak):
+    """
+    A peak in an X-ray diffractogram. May be composed of multiple
+    overlapping subpeaks from different wavelengths.
 
-#     def __init__(self, reflection=None):
-#         self.reflection = reflection
+    Arguments
+    ---------
+    - reflection : A diffraction reflection corresponding to this peak.
+    - num_peaks (int) : How many subpeaks are present in this peak.
+    - method (str) : Selects which peak shape to use. See
+        peakfitting.Peak for valid choices
+    """
 
-#     def __repr__(self):
-#         name = "<{cls}: {angle}°>".format(
-#             cls=self.__class__.__name__,
-#             angle=self.center_mean
-#         )
-#         return name
+    def __init__(self, reflection=None, num_peaks=2, method="pseudo-voigt",
+                 tube=tubes["Cu"], *args, **kwargs):
+        self.reflection = reflection
+        self.tube = tube
+        super().__init__(num_peaks=num_peaks, method=method, *args, **kwargs)
+
+    def __repr__(self):
+        name = "<{cls}: {angle}°>".format(
+            cls=self.__class__.__name__,
+            angle=self.center()
+        )
+        return name
+
+    def guess_parameters(self, x, y):
+        # Currently assumes two overlapping k-alpha peaks
+        assert self.num_peaks == 2
+        # Filter out data that is below half standard deviation of the whole set
+        data = pd.Series(y, index=x)
+        threshold = 0.5 * np.std(y)
+        peak_data = data[data > threshold]
+        # Guess mean peak position based on weight average of x values
+        mean_center = np.average(peak_data.index, weights=peak_data.values)
+
+        # Convert average center to k-alpha1, k-alpha2
+        center1, center2 = self.tube.split_angle_by_kalpha(mean_center)
+        # Estimate kα₁, kα₂ heights
+        height1 = y.max()
+        height2 = height1 / 2
+        # Guess initial parameters for the selected fitting method
+        guess = [
+            self.FitClass().initial_parameters(xdata=x,
+                                               ydata=y,
+                                               center=center1,
+                                               height=height1),
+            self.FitClass().initial_parameters(xdata=x,
+                                               ydata=y,
+                                               center=center2,
+                                               height=height2),
+        ]
+        return guess
+
+    def fit(self, two_theta, intensity):
+        """Least squares refinement of a function to a peak in XRD data.
+
+        Arguments
+        ---------
+        - two_theta (array-like) : Array of two-theta values to be fit
+
+        - y (array-like) : Array of intensities to be fit
+        """
+        return super().fit(x=two_theta, y=intensity)
 
 #     @property
 #     def center_mean(self):
@@ -39,22 +82,17 @@ import plots
 #             center = None
 #         return center
 
-#     @property
-#     def center_kalpha(self):
-#         """Determine the peak center based on relative intensities of kalpha1
-#         and kalpha2."""
-#         total = self.fit_list[0].center + KALPHA2_RATIO*self.fit_list[1].center
-#         center = total/(1+KALPHA2_RATIO)
-#         return center
-
-#     def fwhm(self):
-#         """Full width at half-maximum. Currently, uses the sum of kα1 and kα2,
-#         which is not accurate if the peaks overlap significantly.
-#         """
-#         width = 0
-#         for fit in self.fit_list:
-#             width += fit.fwhm()
-#         return width
+    @property
+    def center_kalpha(self):
+        """Determine the peak center based on relative intensities of kalpha1
+        and kalpha2."""
+        # Assumes only 2 peaks
+        assert len(self.fit_list) == 2
+        peak_alpha1 = self.fit_list[0].center
+        peak_alpha2 = self.fit_list[1].center
+        total = peak_alpha1 + (KALPHA2_RATIO * peak_alpha2)
+        center = total / (1 + KALPHA2_RATIO)
+        return center
 
 #     def split_parameters(self, params):
 #         """
@@ -66,78 +104,6 @@ import plots
 #         for i in range(0, len(params), chunkSize):
 #             groups.append(params[i:i+chunkSize])
 #         return groups
-
-#     def fit(self, two_theta, intensity, num_peaks=2, method='pseudo-voigt'):
-#         """Least squares refinement of a function to the data in two_theta
-#         and intensity. Method can be any of the following peak shapes:
-#             - 'Gaussian'
-#             - 'Cauchy'
-#             - 'Pearson VII'
-#             - 'Pseudo-Voigt'
-#         """
-#         fitClasses = {
-#             'gaussian': GaussianFit,
-#             'cauchy': CauchyFit,
-#             'pearson vii': PearsonVIIFit,
-#             'pseudo-voigt': PseudoVoigtFit,
-#             'estimated': EstimatedFit,
-#         }
-#         # Save two_theta range for later
-#         self.two_theta_range = (two_theta[0], two_theta[-1])
-#         # Create fit object(s)
-#         self.fit_list = []
-#         FitClass = fitClasses[method.lower()]
-#         for i in range(0, num_peaks):
-#             self.fit_list.append(FitClass())
-#         # Define objective function
-#         def objective(two_theta, *params):
-#             # Unpack the parameters
-#             paramGroups = self.split_parameters(params)
-#             result = np.zeros_like(two_theta)
-#             for idx, fit in enumerate(self.fit_list):
-#                 y = fit.kernel(two_theta, *paramGroups[idx])
-#                 result += y
-#             return result
-#         # Error function, penalizes values out of range
-#         def residual_error(obj_params):
-#             penalty = 0
-#             # Calculate dual peak penalties
-#             params1, params2 = self.split_parameters(obj_params)
-#             params1 = FitClass.Parameters(*params1)
-#             params2 = FitClass.Parameters(*params2)
-#             # if not (params1.height*0.4 < params2.height < params1.height*0.6):
-#             #     penalty += BASE_PENALTY
-#             for fit, paramTuple in zip(self.fit_list, [params1, params2]):
-#                 # Calculate single peak penalties
-#                 penalty += fit.penalty(paramTuple)
-#             result = objective(two_theta, *obj_params)
-#             return (intensity-result)**2+penalty
-#         # Compute initial parameters
-#         initialParameters = FitClass().initial_parameters(xdata=two_theta,
-#                                                           ydata=intensity)
-#         initialParameters = initialParameters[0] + initialParameters[1]
-#         # Minimize the residual least squares
-#         try:
-#             # popt, pcov = optimize.curve_fit(objective,
-#             #                                 xdata=two_theta,
-#             #                                 ydata=intensity,
-#             #                                 p0=initialParameters)
-#             result = optimize.leastsq(residual_error, x0=initialParameters,
-#                                       full_output=True)
-#         except RuntimeError as e:
-#             # Could not find optimum fit
-#             angle = (self.two_theta_range[0]+self.two_theta_range[1])/2
-#             msg = "Peak ~{angle:.1f}°: {error}".format(angle=angle, error=e)
-#             raise exceptions.PeakFitError(msg)
-#         else:
-#             popt = result[0]
-#             residual = result[2]['fvec'].sum()
-#             # Split optimized parameters by number of fits
-#             paramsList = self.split_parameters(popt)
-#             # Save optimized parameters for each fit
-#             for idx, fit in enumerate(self.fit_list):
-#                 fit.parameters = paramsList[idx]
-#             return residual
 
 #     def x_range(self):
 #         """Return a range of x values over which this fit is reasonably defined."""

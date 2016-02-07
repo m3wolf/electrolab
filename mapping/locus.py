@@ -8,7 +8,6 @@ import scipy
 import pandas
 from matplotlib import patches
 
-from xrd.scan import XRDScan
 from mapping.coordinates import Cube
 from plots import new_axes
 
@@ -47,8 +46,8 @@ class Locus():
     An mapping cell at one X,Y location. Several Locus objects make up a
     Map object.
     """
-    IMAGE_HEIGHT = 480 # px
-    IMAGE_WIDTH = 640 # px
+    IMAGE_HEIGHT = 480  # px
+    IMAGE_WIDTH = 640  # px
     metric = 0
 
     def __init__(self, location, parent_map, filebase):
@@ -98,8 +97,8 @@ class Locus():
             unit = unit_size
         # Calculate x and y positions
         cube = self.cube_coords
-        x = unit * 1/2 * (cube.i - cube.j)
-        y = unit * math.sqrt(3)/2 * (cube.i + cube.j)
+        x = unit * 0.5 * (cube.i - cube.j)
+        y = unit * (math.sqrt(3) / 2) * (cube.i + cube.j)
         return (x, y)
 
     def instrument_coords(self, unit_size=1):
@@ -121,8 +120,8 @@ class Locus():
         dots_per_mm = self.parent_map.dots_per_mm()
         xy_coords = self.xy_coords()
         pixel_coords = {
-            'height': round(height/2 - xy_coords[1] * dots_per_mm),
-            'width': round(width/2 + xy_coords[0] * dots_per_mm)
+            'height': round(height / 2 - xy_coords[1] * dots_per_mm),
+            'width': round(width / 2 + xy_coords[0] * dots_per_mm)
         }
         return pixel_coords
 
@@ -140,12 +139,12 @@ class Locus():
         """Build and plot a hexagon for display on the mapping routine.
         Return the hexagon patch object."""
         # Check for cached data
-        radius = 0.595*self.parent_map.unit_size
+        radius = 0.595 * self.parent_map.unit_size
         # Determine how opaque to make the hexagon
         if self.parent_map.coverage == 1:
             alpha = self.reliability
         else:
-            alpha = self.reliability/3
+            alpha = self.reliability / 3
         hexagon = patches.RegularPolygon(
             xy=self.xy_coords(),
             numVertices=6,
@@ -213,9 +212,9 @@ class Locus():
         Retrieve the image file taken by the diffractometer.
         """
         filename = '{dir}/{file_base}_01.jpg'.format(
-                dir=self.parent_map.directory(),
-                file_base=self.filebase
-            )
+            dir=self.parent_map.directory(),
+            file_base=self.filebase
+        )
         imageArray = scipy.misc.imread(filename)
         # Rotate to align with sample coords
         imageArray = scipy.misc.imrotate(imageArray, 180)
@@ -229,19 +228,22 @@ class Locus():
             ax = new_axes()
         # Calculate axes limit
         center = self.xy_coords()
-        xMin = center[0] - self.IMAGE_WIDTH/2/self.parent_map.dots_per_mm()
-        xMax = center[0] + self.IMAGE_WIDTH/2/self.parent_map.dots_per_mm()
-        yMin = center[1] - self.IMAGE_HEIGHT/2/self.parent_map.dots_per_mm()
-        yMax = center[1] + self.IMAGE_HEIGHT/2/self.parent_map.dots_per_mm()
+        xMin = center[0] - self.IMAGE_WIDTH / 2 / self.parent_map.dots_per_mm()
+        xMax = center[0] + self.IMAGE_WIDTH / 2 / self.parent_map.dots_per_mm()
+        yMin = center[1] - self.IMAGE_HEIGHT / 2 / self.parent_map.dots_per_mm()
+        yMax = center[1] + self.IMAGE_HEIGHT / 2 / self.parent_map.dots_per_mm()
         axes_limits = (xMin, xMax, yMin, yMax)
         try:
             ax.imshow(self.image(), extent=axes_limits)
         except FileNotFoundError as file_error:
             # Plot error message
-            x = (xMax-xMin)/2
-            y = (yMax-yMin)/2
-            msg = 'Could not load image'
-            ax.text(x, y, file_error, horizontalalignment='center', verticalalignment='center')
+            x = (xMax - xMin) / 2
+            y = (yMax - yMin) / 2
+            ax.text(x,
+                    y,
+                    file_error,
+                    horizontalalignment='center',
+                    verticalalignment='center')
         # Add plot annotations
         ax.set_title('Micrograph of Mapped Area')
         ax.set_xlabel('mm')
@@ -259,10 +261,10 @@ class Locus():
             image = image + 1
         # Calculate padding
         center = self.pixel_coords(height=height, width=width)
-        padLeft = int(center['width'] - self.IMAGE_WIDTH/2)
-        padRight = int(width - center['width'] - self.IMAGE_WIDTH/2)
-        padTop = int(center['height'] - self.IMAGE_HEIGHT/2)
-        padBottom = int(height - center['height'] - self.IMAGE_HEIGHT/2)
+        padLeft = int(center['width'] - self.IMAGE_WIDTH / 2)
+        padRight = int(width - center['width'] - self.IMAGE_WIDTH / 2)
+        padTop = int(center['height'] - self.IMAGE_HEIGHT / 2)
+        padBottom = int(height - center['height'] - self.IMAGE_HEIGHT / 2)
         # Apply padding
         paddedImage = numpy.pad(
             image,
@@ -308,7 +310,8 @@ class DummyLocus(Locus):
         Retrieve a dummy image file taken by the diffractometer.
         """
         directory = os.path.dirname(os.path.realpath(__file__))
-        filename = '{dir}/../images/sample-electrode-image.jpg'.format(dir=directory)
+        filename = '{dir}/../images/sample-electrode-image.jpg'
+        filename = filename.format(dir=directory)
         imageArray = scipy.misc.imread(filename)
         # Rotate to align with sample coords
         imageArray = scipy.misc.imrotate(imageArray, 180)

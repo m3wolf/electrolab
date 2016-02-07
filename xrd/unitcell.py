@@ -6,6 +6,7 @@ import math
 from exceptions import UnitCellError
 from mapping.datadict import DataDict
 
+
 class UnitCell():
     """Describes a crystallographic unit cell for XRD Refinement. Composed
     of up to three lengths (a, b and c) in angstroms and three angles
@@ -21,6 +22,7 @@ class UnitCell():
     beta = 90
     gamma = 90
     data_dict = DataDict(['a', 'b', 'c', 'alpha', 'beta', 'gamma'])
+
     def __init__(self, a=None, b=None, c=None,
                  alpha=None, beta=None, gamma=None):
         # Set initial cell parameters.
@@ -114,8 +116,8 @@ class CubicUnitCell(UnitCell):
     def d_spacing(self, hkl):
         """Determine d-space for the given hkl plane."""
         h, k, l = hkl
-        inverse_d_squared = (h**2 + k**2 + l**2)/(self.a**2)
-        d = math.sqrt(1/inverse_d_squared)
+        inverse_d_squared = (h**2 + k**2 + l**2) / (self.a**2)
+        d = math.sqrt(1 / inverse_d_squared)
         return d
 
 
@@ -132,8 +134,8 @@ class HexagonalUnitCell(UnitCell):
         """Determine d-space for the given hkl plane."""
         h, k, l = hkl
         a, c = (self.a, self.c)
-        inverse_d_squared = 4*(h**2 + h*k + k**2)/(3*a**2) + l**2/(c**2)
-        d = math.sqrt(1/inverse_d_squared)
+        inverse_d_squared = 4 * (h**2 + h * k + k**2) / (3 * a**2) + l**2 / (c**2)
+        d = math.sqrt(1 / inverse_d_squared)
         return d
 
 
@@ -150,6 +152,6 @@ class TetragonalUnitCell(UnitCell):
         """Determine d-space for the given hkl plane."""
         h, k, l = hkl
         a, c = (self.a, self.c)
-        inverse_d_squared = (h**2 + k**2)/(a**2) + l**2/(c**2)
-        d = math.sqrt(1/inverse_d_squared)
+        inverse_d_squared = (h**2 + k**2) / (a**2) + l**2 / (c**2)
+        d = math.sqrt(1 / inverse_d_squared)
         return d

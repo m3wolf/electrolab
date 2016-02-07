@@ -1,4 +1,5 @@
-from collections import namedtuple
+"""Descriptions of X-ray energy absorption edge."""
+
 
 class Edge():
     """An X-ray absorption edge. It is defined by a series of energy
@@ -34,7 +35,7 @@ class Edge():
     def all_energies(self):
         energies = []
         for region in self.regions:
-            energies += range(region[0], region[1]+region[2], region[2])
+            energies += range(region[0], region[1] + region[2], region[2])
         return sorted(list(set(energies)))
 
     def energies_in_range(self, norm_range=None):

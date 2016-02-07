@@ -1,4 +1,5 @@
 #!/bin/sh
+# flake8: noqa
 
 # Pulled from https://github.com/chatcannon/galvani/blob/master/get_testdata.sh
 

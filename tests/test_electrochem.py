@@ -17,6 +17,9 @@
 # You should have received a copy of the GNU General Public License
 # along with Scimap.  If not, see <http://www.gnu.org/licenses/>.
 
+# flake8: noqa
+
+import math
 import datetime as dt
 import unittest
 import os

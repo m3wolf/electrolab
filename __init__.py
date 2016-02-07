@@ -17,9 +17,12 @@
 # You should have received a copy of the GNU General Public License
 # along with Foobar.  If not, see <http://www.gnu.org/licenses/>.
 
-# Make sure this directory is in python path for imports
+# flake8: noqa
+
 import sys
 import os
+
+# Make sure this directory is in python path for imports
 sys.path.append(os.path.dirname(__file__))
 
 import default_units
@@ -44,6 +47,7 @@ from xrd.unitcell import CubicUnitCell, HexagonalUnitCell, TetragonalUnitCell
 from xrd import standards, lmo
 from xrd.lmo import LMOPlateauMap
 from xrd.reflection import Reflection
+from xrd.peak import XRDPeak
 from xrd.scan import XRDScan, align_scans
 from xrd.map import XRDMap
 

@@ -17,6 +17,8 @@
 # You should have received a copy of the GNU General Public License
 # along with Scimap.  If not, see <http://www.gnu.org/licenses/>.
 
+# flake8: noqa
+
 import unittest
 import math
 import os
@@ -28,6 +30,7 @@ if __name__ == '__main__':
 from matplotlib import colors
 
 import exceptions
+from peakfitting import PeakFit, remove_peak_from_df
 from tests.cases import ScimapTestCase
 from xrd.lmo import CubicLMO
 from xrd.unitcell import UnitCell, CubicUnitCell, HexagonalUnitCell
@@ -35,13 +38,20 @@ from xrd.reflection import Reflection, hkl_to_tuple
 from xrd.scan import XRDScan
 from mapping.coordinates import Cube
 from xrd.standards import Corundum, Aluminum
-from xrd.peak import XRDPeak, PeakFit, remove_peak_from_df
+from xrd.peak import XRDPeak
 from xrd.locus import XRDLocus
 from xrd.map import XRDMap
 from refinement import fullprof, native
 from mapping.locus import Locus, cached_property
 from adapters.bruker_raw_file import BrukerRawFile
 from adapters.bruker_brml_file import BrukerBrmlFile
+
+
+corundum_path = os.path.join(
+    os.path.dirname(__file__),
+    'testdata/corundum.xye'
+)
+
 
 # Some phase definitions for testing
 class LMOHighV(CubicLMO):
@@ -77,28 +87,47 @@ class PeakTest(ScimapTestCase):
 
     def test_initial_parameters(self):
         # Does the class guess reasonable starting values for peak fitting
-        peakScan = XRDScan('test-sample-frames/corundum.xye',
-                           phase=Corundum())
+        peakScan = XRDScan(corundum_path, phase=Corundum())
         df = peakScan.diffractogram[34:36]
-        peakFit = PeakFit()
-        # Returns two peaks for kalpha1 and kalpha2
-        p1, p2 = peakFit.initial_parameters(df.index, df.counts)
+        peak = XRDPeak(method="gaussian")
+        guess = peak.guess_parameters(x=df.index, y=df.counts.values)
+        # Should be two peaks present
+        self.assertEqual(len(guess), 2)
         tolerance = 0.001
+        # Returns two peaks for kα₁ and kα₂
+        p1, p2 = guess
         self.assertApproximatelyEqual(p1.height, 426.604, tolerance=tolerance)
         self.assertApproximatelyEqual(p1.center, 35.123, tolerance=tolerance)
-        self.assertApproximatelyEqual(p1.width, 0.02, tolerance=tolerance)
+        self.assertApproximatelyEqual(p1.width, 0.02604, tolerance=tolerance)
         self.assertApproximatelyEqual(p2.height, 213.302, tolerance=tolerance)
         self.assertApproximatelyEqual(p2.center, 35.222, tolerance=tolerance)
-        self.assertApproximatelyEqual(p2.width, 0.02, tolerance=tolerance)
+        self.assertApproximatelyEqual(p2.width, 0.02604, tolerance=tolerance)
+
+    def test_initial_pseudovoigt(self):
+        # Does the class guess reasonable starting values for peak fitting
+        # This specific peak originally guessed widths that are too large
+        peakScan = XRDScan(corundum_path, phase=Corundum())
+        df = peakScan.diffractogram[42.5:44]
+        peak = XRDPeak(method="pseudo-voigt")
+        guess = peak.guess_parameters(x=df.index, y=df.counts.values)
+        # Should be two peaks present
+        self.assertEqual(len(guess), 2)
+        tolerance = 0.001
+        # Returns two peaks for kα₁ and kα₂
+        p1, p2 = guess
+        self.assertApproximatelyEqual(p1.width_g, 0.02604, tolerance=tolerance)
+        self.assertApproximatelyEqual(p1.width_c, 0.02604, tolerance=tolerance)
+        self.assertApproximatelyEqual(p2.width_g, 0.02604, tolerance=tolerance)
+        self.assertApproximatelyEqual(p2.width_c, 0.02604, tolerance=tolerance)
 
     def test_peak_fit(self):
         """This particular peak was not fit properly. Let's see why."""
-        peak = XRDPeak(reflection=Reflection('110', (37, 39)))
+        peak = XRDPeak(reflection=Reflection('110', (37, 39)), method="gaussian")
         peakScan = XRDScan('test-sample-frames/corundum.xye',
                            phase=Corundum())
         peakScan.refinement.refine_background()
         df = peakScan.refinement.subtracted[37:39]
-        peak.fit(two_theta=df.index, intensity=df, method='gaussian')
+        peak.fit(two_theta=df.index, intensity=df)
         fit_kalpha1 = peak.fit_list[0]
         fit_kalpha2 = peak.fit_list[1]
         self.assertApproximatelyEqual(
@@ -220,7 +249,7 @@ class NativeRefinementTest(ScimapTestCase):
             205
         )
 
-    # @unittest.expectedFailure
+    @unittest.expectedFailure
     def test_peak_fwhm(self):
         """Method for computing full-width at half max of a peak."""
         result = self.onephase_scan.refinement.fwhm()
@@ -241,9 +270,8 @@ class NativeRefinementTest(ScimapTestCase):
         )
 
     def test_peak_list(self):
-        corundum_scan = XRDScan(filename='test-sample-frames/corundum.xye',
+        corundum_scan = XRDScan(corundum_path,
                                 phase=Corundum())
-        # corundum_scan.refinement.fit_peaks(scan=self.corundum_scan)
         peak_list = corundum_scan.refinement.peak_list
         two_theta_list = [peak.center_kalpha for peak in peak_list]
         hkl_list = [peak.reflection.hkl_string for peak in peak_list]

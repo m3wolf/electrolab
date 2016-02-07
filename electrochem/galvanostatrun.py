@@ -1,9 +1,25 @@
 # -*- coding: utf-8 -*-
+#
+# Copyright © 2016 Mark Wolf
+#
+# This file is part of scimap.
+#
+# Scimap is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# Scimap is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with Scimap.  If not, see <http://www.gnu.org/licenses/>.
 
 import re
 import os
 
-import pandas as pd
 import units
 import units.predefined
 import pytz
@@ -12,7 +28,8 @@ import exceptions
 from electrochem.cycle import Cycle
 from plots import new_axes
 import default_units
-from . import electrochem_units, biologic
+from . import biologic
+
 
 def axis_label(key):
     axis_labels = {
@@ -47,14 +64,15 @@ class GalvanostatRun():
         self._df = run.dataframe
         self.cycles = []
         # Remove the initial resting period
-        restingIndexes = self._df.loc[self._df['mode']==3].index
+        restingIndexes = self._df.loc[self._df['mode'] == 3].index
         self._df.drop(restingIndexes, inplace=True)
         # Get theoretical capacity from eclab file
         self.theoretical_capacity = self.capacity_from_file()
         # Get currents from eclab file
         try:
-            self.charge_current, self.discharge_current = self.currents_from_file()
-        except exceptions.ReadCurrentError as e:
+            currents = self.currents_from_file()
+            self.charge_current, self.discharge_current = currents
+        except exceptions.ReadCurrentError:
             pass
         # Calculate capacity from charge and mass
         if mass:
@@ -64,7 +82,7 @@ class GalvanostatRun():
             # Get mass from eclab file
             self.mass = run.active_mass()
         mass_g = default_units.mass(self.mass).num
-        self._df.loc[:,'capacity'] = self._df.loc[:,'(Q-Qo)/mA.h']/mass_g
+        self._df.loc[:, 'capacity'] = self._df.loc[:, '(Q-Qo)/mA.h'] / mass_g
         # Process other metadata
         self.start_time = run.metadata['start_time']
         # Split the data into cycles, except the initial resting phase
@@ -122,7 +140,9 @@ class GalvanostatRun():
     def currents_from_file(self):
         """Read the mpt file and extract the theoretical capacity."""
         current_regexp = re.compile('^Is\s+[0-9.]+\s+([-0-9.]+)\s+([-0-9.]+)')
-        unit_regexp = re.compile('^unit Is\s+[kmuµ]?A\s+([kmuµ]?A)\s+([kmuµ]?A)')
+        unit_regexp = re.compile(
+            '^unit Is\s+[kmuµ]?A\s+([kmuµ]?A)\s+([kmuµ]?A)'
+        )
         data_found = False
         with open(self.filename, encoding='latin-1') as f:
             for line in f:
@@ -131,17 +151,20 @@ class GalvanostatRun():
                 unit_match = unit_regexp.match(line)
                 if current_match:
                     charge_num, discharge_num = current_match.groups()
+                    charge_num = float(charge_num)
+                    discharge_num = float(discharge_num)
                 if unit_match:
                     charge_unit, discharge_unit = unit_match.groups()
                     data_found = True
         if data_found:
-            charge_current = units.unit(charge_unit)(float(charge_num))
-            discharge_current = units.unit(discharge_unit)(float(discharge_num))
+            charge_current = units.unit(charge_unit)(charge_num)
+            discharge_current = units.unit(discharge_unit)(discharge_num)
             return charge_current, discharge_current
         else:
             # Current data could not be extracted from file
-            msg = "Could not read charge (and discharge!) currents from file {filename}."
-            raise exceptions.ReadCurrentError(msg.format(filename=self.filename))
+            msg = "Could not read currents from file {filename}."
+            msg = msg.format(filename=self.filename)
+            raise exceptions.ReadCurrentError(msg)
 
     def discharge_capacity(self, cycle_idx=-1):
         """
@@ -159,11 +182,13 @@ class GalvanostatRun():
         """Retrieve the datapoint that is closest to the given value along the
         given label. Works best for linear columns, like time."""
         df = self._df
-        idx = df.iloc[(df[label]-value).abs().argsort()].first_valid_index()
+        distance = (df[label] - value).abs()
+        idx = df.iloc[distance.argsort()].first_valid_index()
         series = df.ix[idx]
         return series
 
-    def plot_cycles(self, xcolumn='capacity', ycolumn='Ewe/V', ax=None, *args, **kwargs):
+    def plot_cycles(self, xcolumn='capacity', ycolumn='Ewe/V',
+                    ax=None, *args, **kwargs):
         """
         Plot each electrochemical cycle. Additional arguments gets passed
         on to matplotlib's plot function.
@@ -187,7 +212,8 @@ class GalvanostatRun():
         """
         starttime = min([fs.starttime() for fs in framesets])
         endtime = max([fs.endtime() for fs in framesets])
-        charge_start_time = self.start_time.replace(tzinfo=pytz.timezone(timezone))
+        tzinfo = pytz.timezone(timezone)
+        charge_start_time = self.start_time.replace(tzinfo=tzinfo)
         timemin = (starttime - charge_start_time).total_seconds()
         timemax = (endtime - charge_start_time).total_seconds()
 
@@ -196,14 +222,18 @@ class GalvanostatRun():
         capmax = self.closest_datum(value=timemax, label="time/s")[convert_to]
 
         # Plot a box highlighting the range of capacities
-        artist = ax.axvspan(capmin, capmax, zorder=1, facecolor="green", alpha=0.15)
+        artist = ax.axvspan(capmin,
+                            capmax,
+                            zorder=1,
+                            facecolor="green",
+                            alpha=0.15)
 
         # Add text label
         x = (capmin + capmax) / 2
         ylim = ax.get_ylim()
-        y = ylim[1] - 0.03 * (ylim[1]-ylim[0])
+        y = ylim[1] - 0.03 * (ylim[1] - ylim[0])
         ax.text(x, y, text, horizontalalignment="center",
-               verticalalignment="top")
+                verticalalignment="top")
         return artist
 
     def plot_discharge_capacity(self, ax=None, ax2=None):
@@ -218,10 +248,20 @@ class GalvanostatRun():
         for cycle in self.cycles:
             cycle_numbers.append(cycle.number)
             capacities.append(cycle.discharge_capacity())
-            efficiency = 100 * cycle.discharge_capacity() / cycle.charge_capacity()
+            discharge = cycle.discharge_capacity()
+            charge = cycle.charge_capacity()
+            efficiency = 100 * discharge / charge
             efficiencies.append(efficiency)
-        ax.plot(cycle_numbers, capacities, marker='o', linestyle='--', label="Discharge capacity")
-        ax2.plot(cycle_numbers, efficiencies, marker='^', linestyle='--', label="Coulombic efficiency")
+        ax.plot(cycle_numbers,
+                capacities,
+                marker='o',
+                linestyle='--',
+                label="Discharge capacity")
+        ax2.plot(cycle_numbers,
+                 efficiencies,
+                 marker='^',
+                 linestyle='--',
+                 label="Coulombic efficiency")
         # Format axes
         if max(cycle_numbers) < 20:
             # Only show all of the ticks if there are less than 20

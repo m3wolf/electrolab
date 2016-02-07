@@ -22,7 +22,8 @@ Define common units across the whole application. Dataframes
 assume the following units and can convert after calculation.
 """
 
-import units, units.predefined
+import units
+import units.predefined
 
 # Define default units
 units.predefined.define_units()
@@ -38,4 +39,4 @@ specific_capacity = units.unit('mA') * units.unit('h') / units.unit('g')
 potential = units.unit('V')
 # Electrode mass loading
 cm = units.unit('cm')
-electrode_loading = units.unit('mg')/(cm*cm)
+electrode_loading = units.unit('mg') / (cm * cm)

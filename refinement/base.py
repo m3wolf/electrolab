@@ -2,6 +2,7 @@
 
 import os
 
+
 class BaseRefinement():
     # Status flags
     is_refined = {

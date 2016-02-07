@@ -8,8 +8,10 @@ from utilities import shape, Pixel
 
 byte_value = namedtuple('byte_value', ('name', 'length'))
 
+
 class BrukerGfrmFile():
     sample_name = "TODO: sample name"
+
     def __init__(self, filename):
         self.filename = filename
 
@@ -19,6 +21,7 @@ class BrukerGfrmFile():
     @property
     def dataframe(self):
         print('Diffractogram coming soon')
+
 
 default_length = 80
 header_definitions = [
@@ -117,6 +120,7 @@ header_definitions = [
     byte_value('ending2', default_length),
 ]
 
+
 def read_header(header_bytes):
     """The GFRM header is a byte string with a series of meta data of the
     form "KEY: VALUE" with lots of whitespace padding. The dictionary
@@ -145,6 +149,7 @@ def read_header(header_bytes):
         data[definition.name] = value
     return data
 
+
 def import_gadds_frame(filename, mask_radius="auto"):
     """Import a two-dimensional X-ray diffraction pattern from a
     GADDS system detector, typically using the .gfrm
@@ -166,23 +171,23 @@ def import_gadds_frame(filename, mask_radius="auto"):
                             columns=int(metadata['ncols']))
         data_length = frame_shape.rows * frame_shape.columns
         data_bytes = raw_chunk.read(data_length)
-        leftover = raw_chunk.read()
+        # leftover = raw_chunk.read() # Not used
     # Prepare an array of the image data
     data = np.fromstring(data_bytes, dtype=np.dtype('u1'))
     data = data.reshape(frame_shape)
     # Apply a round mask
-    x,y = np.ogrid[:frame_shape.rows,:frame_shape.columns]
-    c = Pixel(vertical=frame_shape.rows/2,
-                  horizontal=frame_shape.columns/2)
+    x, y = np.ogrid[:frame_shape.rows, :frame_shape.columns]
+    c = Pixel(vertical=frame_shape.rows / 2,
+              horizontal=frame_shape.columns / 2)
 
     # convert cartesian --> polar coordinates
-    dx = x-c.horizontal
-    dy = y-c.vertical
-    r2 = dx*dx + dy*dy
+    dx = x - c.horizontal
+    dy = y - c.vertical
+    r2 = (dx * dx) + (dy * dy)
 
     # Determine radius from image dimensions
     if mask_radius == "auto":
-        radius = 0.95 * min(frame_shape)/2
-    circmask = np.logical_not(r2 <= radius*radius)
+        radius = 0.95 * min(frame_shape) / 2
+    circmask = np.logical_not(r2 <= radius * radius)
     masked_data = np.ma.array(data, mask=circmask)
     return masked_data

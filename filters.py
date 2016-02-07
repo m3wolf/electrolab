@@ -25,6 +25,7 @@ import numpy as np
 import pandas as pd
 from scipy import fftpack
 
+
 def fourier_transform(data):
     """Perform a discrete fourier transform on the data. Input should be a
     pandas Series(). Assumes data are all real. Returns a new series
@@ -34,12 +35,13 @@ def fourier_transform(data):
     yf = fftpack.rfft(data.values)
     # Transform x data
     x = data.index
-    T = (x.max()-x.min())/len(x) # Spacing of data
-    N = len(data) # Number of data
-    xf = np.linspace(0, 1/(2*T), N)
+    T = (x.max() - x.min()) / len(x)  # Spacing of data
+    N = len(data)  # Number of data
+    xf = np.linspace(0, (1 / (2 * T)), N)
     # Return new data series
     newData = pd.Series(data=yf, index=xf)
     return newData
+
 
 def inverse_fourier_transform(data):
     """Perform an inverse discrete fourier transform on the data. Input should
@@ -48,9 +50,9 @@ def inverse_fourier_transform(data):
     yf = fftpack.irfft(data.values)
     # Transform x data
     x = data.index
-    T = (x.max()-x.min())/len(x) # Spacing of data
-    N = len(data) # Number of data
-    xf = np.linspace(0, 1/(2*T), N)
+    T = (x.max() - x.min()) / len(x)  # Spacing of data
+    N = len(data)  # Number of data
+    xf = np.linspace(0, (1 / (2 * T)), N)
     # Return new data series
     newData = pd.Series(data=yf, index=xf)
     return newData
@@ -58,7 +60,7 @@ def inverse_fourier_transform(data):
 
 class Filter():
     def __init__(self, cutoff=10):
-        self.cutoff=cutoff
+        self.cutoff = cutoff
 
     def difference(self, data):
         """
@@ -84,10 +86,14 @@ class LowPassFilter(Filter):
             else:
                 transferFunction[idx] = 0
         # Apply filter
-        filtered = fData*transferFunction
+        filtered = fData * transferFunction
         # Transform back to 2-theta space
-        filtered = pd.Series(inverse_fourier_transform(filtered).values, data.index)
+        filtered = pd.Series(
+            inverse_fourier_transform(filtered).values,
+            data.index
+        )
         return filtered
+
 
 class HighPassFilter(Filter):
     """Applies a sharp cutoff filter and allows high frequencies to pass
@@ -104,7 +110,10 @@ class HighPassFilter(Filter):
             else:
                 transferFunction[idx] = 0
         # Apply filter
-        filtered = fData*transferFunction
+        filtered = fData * transferFunction
         # Transform back to 2-theta space
-        filtered = pd.Series(inverse_fourier_transform(filtered).values, data.index)
+        filtered = pd.Series(
+            inverse_fourier_transform(filtered).values,
+            data.index
+        )
         return filtered
