@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import pandas as pd
+from pandas import Series
 import numpy as np
 
 from xrd.tube import tubes, KALPHA2_RATIO
@@ -33,12 +34,11 @@ class XRDPeak(Peak):
         )
         return name
 
-    def guess_parameters(self, x, y):
+    def guess_parameters(self, data: Series):
         # Currently assumes two overlapping k-alpha peaks
         assert self.num_peaks == 2
         # Filter out data that is below half standard deviation of the whole set
-        data = pd.Series(y, index=x)
-        threshold = 0.5 * np.std(y)
+        threshold = 0.5 * np.std(data)
         peak_data = data[data > threshold]
         # Guess mean peak position based on weight average of x values
         mean_center = np.average(peak_data.index, weights=peak_data.values)
@@ -46,31 +46,27 @@ class XRDPeak(Peak):
         # Convert average center to k-alpha1, k-alpha2
         center1, center2 = self.tube.split_angle_by_kalpha(mean_center)
         # Estimate kα₁, kα₂ heights
-        height1 = y.max()
+        height1 = data.max()
         height2 = height1 / 2
         # Guess initial parameters for the selected fitting method
         guess = [
-            self.FitClass().initial_parameters(xdata=x,
-                                               ydata=y,
+            self.FitClass().initial_parameters(data=data,
                                                center=center1,
                                                height=height1),
-            self.FitClass().initial_parameters(xdata=x,
-                                               ydata=y,
+            self.FitClass().initial_parameters(data=data,
                                                center=center2,
                                                height=height2),
         ]
         return guess
 
-    def fit(self, two_theta, intensity):
+    def fit(self, diffractogram: Series):
         """Least squares refinement of a function to a peak in XRD data.
 
         Arguments
         ---------
-        - two_theta (array-like) : Array of two-theta values to be fit
-
-        - y (array-like) : Array of intensities to be fit
+        - diffractogram : pandas series of data to be fit.
         """
-        return super().fit(x=two_theta, y=intensity)
+        return super().fit(data=diffractogram)
 
 #     @property
 #     def center_mean(self):

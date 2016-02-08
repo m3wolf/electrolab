@@ -208,8 +208,7 @@ class NativeRefinement(BaseRefinement):
                     for method in fitMethods:
                         newPeak = XRDPeak(reflection=reflection, method=method)
                         try:
-                            newPeak.fit(two_theta=df.index,
-                                        intensity=df)
+                            newPeak.fit(df)
                         except exceptions.PeakFitError:
                             # Try next fit
                             continue
@@ -237,14 +236,15 @@ class NativeRefinement(BaseRefinement):
         # Highlight peaks
         self.highlight_peaks(ax=ax)
         # Plot peak fittings
-        dataframes = []
+        peaks = []
         for peak in self.peak_list:
             # dataframes.append(peak.dataframe(background=spline))
-            dataframes.append(peak.predict())
+            peaks.append(peak.predict())
             # peak.plot_overall_fit(ax=ax, background=spline)
-        if dataframes:
-            df = pandas.concat(dataframes)
-            df.plot(ax=ax)
+        if peaks:
+            predicted = pandas.concat(peaks)
+            predicted = predicted + self.spline(predicted.index)
+            predicted.plot(ax=ax)
         return ax
 
     def highlight_peaks(self, ax):

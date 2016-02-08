@@ -130,10 +130,6 @@ class XRDScan():
         # Plot refinement
         self.refinement.plot(ax=ax)
 
-        # Plot fitted peaks
-        # for phase in self.phases:
-        #     for peak in phase.peak_list:
-        #         peak.plot_overall_fit(ax=ax, background=self.spline)
         # Set plot annotations
         ax.set_xlabel(r'$2\theta$')
         ax.set_ylabel('Counts')

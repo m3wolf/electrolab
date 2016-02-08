@@ -26,7 +26,8 @@ import warnings
 
 import numpy as np
 from scipy import optimize
-import pandas as pd
+# import pandas as pd
+from pandas import Series
 
 import exceptions
 import plots
@@ -51,6 +52,22 @@ def gaussian_fwhm(width_parameter):
 def cauchy_fwhm(width_parameter):
     """Calculates full-width half max based on width parameter."""
     return 2 * width_parameter
+
+
+def discrete_fwhm(data: Series):
+    """Compute numerically the full-width half-max of peak described by data."""
+    maxheight = data.max()
+    # Split the dataset into an upper half and a lower half
+    maxidx = data.argmax()
+    rightdata = data[maxidx:]
+    leftdata = data[:maxidx]
+    # Only interested in data that are less than half-max
+    rightdata = rightdata[rightdata < maxheight / 2]
+    leftdata = leftdata[leftdata < maxheight / 2]
+    # Find the nearest datum to halfmax in each half
+    rightx = (np.abs(rightdata.index - maxidx)).min() + maxidx
+    leftx = maxidx - (np.abs(leftdata.index - maxidx)).min()
+    return abs(rightx - leftx)
 
 
 class PeakFit():
@@ -88,36 +105,19 @@ class PeakFit():
                 penalty += BASE_PENALTY
         return penalty
 
-    def initial_parameters(self, xdata, ydata, center=0, height=None):
+    def initial_parameters(self, data, center=0, height=None):
         """Estimate intial parameters from data. Calling function is
         responsible for determining peak center since multiple peaks
-        may be involved. If `height` is not given it is estimated.
+        may be involved. If `height` is None (default) it is estimated
+        from the maximum value in the data.
         """
-        data = pd.Series(ydata, index=xdata)
-        # Determine maximum peak height
-        maxHeight = ydata.max()
-
-        # Determine full-width half-max
-        # Split the dataset into an upper half and a lower half
-        maxidx = data.argmax()
-        rightdata = data[maxidx:]
-        leftdata = data[:maxidx]
-        # Only interested in data that are less than half-max
-        rightdata = rightdata[rightdata < maxHeight / 2]
-        leftdata = leftdata[leftdata < maxHeight / 2]
-        # Find the nearest datum to halfmax in each half
-        rightx = (np.abs(rightdata.index - maxidx)).min() + maxidx
-        leftx = maxidx - (np.abs(leftdata.index - maxidx)).min()
-
         # Convert FWHM to stdDev (taken from wolfram alpha page for Gaussian)
-        stdDev = abs(leftx - rightx) / 2.3548
-
+        stdDev = discrete_fwhm(data) / 2.3548
         # Decide which value to use for the peak height
         if height is None:
-            new_height = maxHeight
+            new_height = data.max()
         else:
             new_height = height
-
         # Prepare tuples of parameters
         p1 = self.Parameters(height=new_height,
                              center=center,
@@ -296,7 +296,7 @@ class Peak():
             groups.append(params[i:end])
         return groups
 
-    def guess_parameters(self, x, y):
+    def guess_parameters(self, data: Series):
         """Use the data to guess appropriate starting parameters before
         fitting can take place. Returns a list the same length as the
         number of sub-peaks. Each entry is a tuple of sub-peak
@@ -312,26 +312,21 @@ class Peak():
         """
         guess = []
         # Guess peak position based on maximum value
-        max_idx = y.argmax()
-        peak_max = x[max_idx]
+        max_idx = data.argmax()
+        # peak_max = x[max_idx]
         # Guess values for width (based on fitting method)
         for i in range(0, self.num_peaks):
-            sub_params = self.FitClass().initial_parameters(xdata=x,
-                                                            ydata=y,
-                                                            center=peak_max)
+            sub_params = self.FitClass().initial_parameters(data=data,
+                                                            center=max_idx)
             guess.append(sub_params)
         return guess
 
-    def fit(self, x, y):
+    def fit(self, data: Series):
         """Least squares refinement of a function to the data.
 
         Arguments
         ---------
-        - x (array-like) : Array of data to be fit along the
-          independent variable.
-
-        - y (array-like) : Array of data to be fit along the dependent
-          variable.
+        - data : series of data to be fit.
 
         - num_peaks (int) : How many overlapping peaks should be
           used. Eg. X-ray data often has kα1 and kα2 peaks (default 1)
@@ -344,7 +339,7 @@ class Peak():
             - 'estimated'
         """
         # Save x range for later
-        self.x_range = (x[0], x[-1])
+        self.x_range = (data.index[0], data.index[-1])
         # Create fit object(s)
         self.fit_list = []
         FitClass = self.FitClass
@@ -370,9 +365,9 @@ class Peak():
             for fit, paramTuple in zip(self.fit_list, paramlist):
                 # Calculate single peak penalties
                 penalty += fit.penalty(paramTuple)
-            result = objective(x, *obj_params)
-            return (y - result)**2 + penalty
-        initialParameters = self.guess_parameters(x=x, y=y)
+            result = objective(data.index, *obj_params)
+            return (data.values - result)**2 + penalty
+        initialParameters = self.guess_parameters(data=data)
         # Minimize the residual least squares
         try:
             result = optimize.leastsq(residual_error,
@@ -413,7 +408,7 @@ class Peak():
             y += fit.evaluate(x)
         # Correct for vertical offset
         y += self.vertical_offset
-        return pd.Series(data=y, index=x)
+        return Series(data=y, index=x)
 
     def residuals(self, observations):
         """Calculate the differences at each point between the fit and the
@@ -450,20 +445,16 @@ class Peak():
         return mean_center
 
     def fwhm(self):
-        """Full width at half-maximum. This concept is not clearly defined if
-        there is more than one sub-peak fit.
+        """Full width at half-maximum. A discrete curve is predicted from the
+        fit and the the width is found numerically.
         """
-        if self.num_peaks > 1:
-            msg = "FWHM is not clearly defined for multiple sub-peaks"
-            warnings.warn(RuntimeWarning(msg))
-        width = 0
-        for fit in self.fit_list:
-            width += fit.fwhm()
+        predicted = self.predict()
+        width = discrete_fwhm(predicted)
         return width
 
     def plot_fit(self, ax=None, background=None):
-        df = self.predict()
+        predicted = self.predict()
         if ax is None:
             ax = plots.new_axes()
-        ax.plot(df.index, df.values, label="overall fit")
+        ax.plot(predicted.index, predicted.values, label="overall fit")
         return ax

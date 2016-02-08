@@ -3,7 +3,7 @@ import unittest
 import pandas as pd
 
 from cases import ScimapTestCase
-from peakfitting import Peak
+from peakfitting import Peak, discrete_fwhm
 
 # flake8: noqa
 
@@ -17,8 +17,7 @@ class GuessParameters(ScimapTestCase):
 
     def test_single_peak(self):
         peak = Peak(num_peaks=1, method="Gaussian")
-        guess = peak.guess_parameters(x=self.data.index,
-                                      y=self.data.values)
+        guess = peak.guess_parameters(data=self.data)
         self.assertEqual(len(guess), 1)
         self.assertEqual(guess[0].height, 9)  # Height
         self.assertEqual(guess[0].center, 2)  # Center
@@ -26,6 +25,14 @@ class GuessParameters(ScimapTestCase):
 
     def test_two_peaks(self):
         pass
+
+class FullWidthHalfMax(ScimapTestCase):
+
+    def setUp(self):
+        self.data = pd.Series([0, 5.9, 6.1, 12, 6.1, 5.9, 0])
+
+    def test_calculate_fwhm(self):
+        self.assertEqual(discrete_fwhm(self.data), 4)
 
 
 if __name__ == "__main__":

@@ -59,7 +59,7 @@ def fit_whiteline(data, width=4):
     # Perform fitting
     peak = Peak(method="gaussian")
     peak.vertical_offset = vertical_offset
-    peak.fit(x=normalized.index, y=normalized.values)
+    peak.fit(data=normalized)
     # Save residuals
     goodness = peak.goodness(subset)
     return (peak, goodness)
@@ -971,6 +971,14 @@ class XanesFrameset():
         spectrum = self.xanes_spectrum(edge_jump_filter=True)
         whiteline = calculate_whiteline(spectrum)
         return whiteline
+
+    def fit_whiteline(self, width=4):
+        """Calculate the energy corresponding to the whiteline (maximum
+        absorbance) for the whole frame using gaussian peak fitting.
+        """
+        spectrum = self.xanes_spectrum(edge_jump_filter=True)
+        peak, goodness = fit_whiteline(spectrum, width=width)
+        return peak
 
     def hdf_file(self):
         if self.hdf_filename is not None:
