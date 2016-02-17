@@ -2,7 +2,7 @@
 #
 # Copyright © 2016 Mark Wolf
 #
-# This file is part of scimap.
+# This file is part of Scimap.
 #
 # Scimap is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -15,7 +15,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with Foobar.  If not, see <http://www.gnu.org/licenses/>.
+# along with Scimap.  If not, see <http://www.gnu.org/licenses/>.
 
 """Define some classes for more fine-grained control over exception
 handling."""

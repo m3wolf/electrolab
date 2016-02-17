@@ -30,22 +30,187 @@ import pandas as pd
 from matplotlib.colors import Normalize
 import pytz
 
-from tests.cases import HDFTestCase
+from tests.cases import HDFTestCase, ScimapTestCase
 from utilities import xycoord, prog
 from peakfitting import Peak
 from txm.xanes_frameset import XanesFrameset, calculate_whiteline, fit_whiteline
 from txm.frame import (
     average_frames, TXMFrame, xy_to_pixel, pixel_to_xy, Extent, Pixel,
-    rebin_image, apply_reference)
+    rebin_image, apply_reference, position)
 from txm.edges import Edge, k_edges
 from txm.importers import import_txm_framesets
 from txm.xradia import decode_ssrl_params, XRMFile
+from txm.beamlines import sector8_xanes_script, Zoneplate, ZoneplatePoint, Detector
 from txm import xanes_frameset
 from txm import plotter
 
 testdir = os.path.join(os.path.dirname(__file__), 'testdata')
 ssrldir = os.path.join(testdir, 'ssrl-txm-data')
 apsdir = os.path.join(testdir, 'aps-txm-data')
+
+
+class ApsScriptTest(unittest.TestCase):
+    """Verify that a script is created for running an operando
+    TXM experiment at APS beamline 8-BM-B."""
+
+    def setUp(self):
+        self.output_path = os.path.join(testdir, 'aps_script.txt')
+        # Check to make sure the file doesn't already exists
+        if os.path.exists(self.output_path):
+            os.remove(self.output_path)
+        assert not os.path.exists(self.output_path)
+        # Values taken from APS beamtime on 2015-11-11
+        self.zp = Zoneplate(
+            start=ZoneplatePoint(z=3110.7, energy=8313),
+            step=9.9329 / 2 # Original script assumed 2eV steps
+        )
+        self.det = Detector(
+            start=ZoneplatePoint(z=389.8, energy=8313),
+            step=0.387465 / 2 # Original script assumed 2eV steps
+        )
+
+    def tear_down(self):
+        pass
+    # os.remove(self.output_path)
+
+    def test_file_created(self):
+        with open(self.output_path, 'w') as f:
+            sector8_xanes_script(dest=f, edge=k_edges["Ni"],
+                                 zoneplate=self.zp, detector=self.det,
+                                 names=["test_sample"], sample_positions=[])
+        # Check that a file was created
+        self.assertTrue(
+            os.path.exists(self.output_path)
+        )
+
+    def test_binning(self):
+        with open(self.output_path, 'w') as f:
+            sector8_xanes_script(dest=f, edge=k_edges["Ni"],
+                                 binning=2, zoneplate=self.zp,
+                                 detector=self.det, names=[],
+                                 sample_positions=[])
+        with open(self.output_path, 'r') as f:
+            firstline = f.readline().strip()
+        self.assertEqual(firstline, "setbinning 2")
+
+    def test_exposure(self):
+        with open(self.output_path, 'w') as f:
+            sector8_xanes_script(dest=f, edge=k_edges["Ni"],
+                                 exposure=44, zoneplate=self.zp,
+                                 detector=self.det, names=["test_sample"],
+                                 sample_positions=[])
+        with open(self.output_path, 'r') as f:
+            f.readline()
+            secondline = f.readline().strip()
+        self.assertEqual(secondline, "setexp 44")
+
+    def test_energy_approach(self):
+        """This instrument can behave poorly unless the target energy is
+        approached from underneath (apparently)."""
+        with open(self.output_path, 'w') as f:
+            sector8_xanes_script(dest=f, edge=k_edges['Ni'],
+                                 zoneplate=self.zp, detector=self.det,
+                                 names=[], sample_positions=[])
+        with open(self.output_path, 'r') as f:
+            lines = f.readlines()
+        # Check that the first zone plate is properly set
+
+    def test_first_frame(self):
+        with open(self.output_path, 'w') as f:
+            sector8_xanes_script(
+                dest=f,
+                edge=k_edges['Ni'],
+                sample_positions=[position(x=1653, y=-1727, z=0)],
+                zoneplate=self.zp,
+                detector=self.det,
+                names=["test_sample"],
+            )
+        with open(self.output_path, 'r') as f:
+            lines = f.readlines()
+        # Check that x, y are set
+        self.assertEqual(lines[2].strip(), "moveto x 1653.00")
+        self.assertEqual(lines[3].strip(), "moveto y -1727.00")
+        self.assertEqual(lines[4].strip(), "moveto z 0.00")
+        # Check that the energy approach lines are in tact
+        self.assertEqual(lines[5].strip(), "moveto energy 8150.00")
+        self.assertEqual(lines[54].strip(), "moveto energy 8248.00")
+        # Check that energy is set
+        self.assertEqual(lines[55].strip(), "moveto energy 8250.00")
+        # Check that zone-plate and detector are set
+        self.assertEqual(lines[56].strip(), "moveto zpz 2797.81")
+        self.assertEqual(lines[57].strip(), "moveto detz 377.59")
+        # Check that collect command is sent
+        self.assertEqual(
+            lines[58].strip(),
+            "collect test_sample_xanes0_8250_0eV.xrm"
+        )
+
+    def test_second_location(self):
+        with open(self.output_path, 'w') as f:
+            sector8_xanes_script(
+                dest=f,
+                edge=k_edges['Ni'],
+                sample_positions=[position(x=1653, y=-1727, z=0),
+                                  position(x=1706.20, y=-1927.20, z=0)],
+                zoneplate=self.zp,
+                detector=self.det,
+                names=["test_sample", "test_reference"],
+            )
+        with open(self.output_path, 'r') as f:
+            lines = f.readlines()
+        self.assertEqual(lines[247], "moveto x 1706.20\n")
+        self.assertEqual(lines[248], "moveto y -1927.20\n")
+        self.assertEqual(lines[250].strip(), "moveto energy 8150.00")
+
+    def test_multiple_iterations(self):
+        with open(self.output_path, 'w') as f:
+            sector8_xanes_script(
+                dest=f,
+                edge=k_edges['Ni'],
+                sample_positions=[position(x=1653, y=-1727, z=0),
+                                  position(x=1706.20, y=-1927.20, z=0)],
+                zoneplate=self.zp,
+                detector=self.det,
+                iterations=["ocv"] + ["{:02d}".format(soc) for soc in range(1, 10)],
+                names=["test_sample", "test_reference"],
+            )
+        with open(self.output_path, 'r') as f:
+            lines = f.readlines()
+        self.assertEqual(
+            lines[58].strip(),
+            "collect test_sample_xanesocv_8250_0eV.xrm"
+        )
+        self.assertEqual(
+            lines[1090].strip(),
+            "collect test_sample_xanes02_8342_0eV.xrm"
+        )
+
+
+class ZoneplateTest(ScimapTestCase):
+    def setUp(self):
+        # Values taken from APS beamtime on 2015-11-11
+        self.zp = Zoneplate(
+            start=ZoneplatePoint(z=3110.7, energy=8313),
+            step=9.9329 / 2 # Original script assumed 2eV steps
+        )
+
+    def test_constructor(self):
+        with self.assertRaises(ValueError):
+            # Either `step` or `end` must be passed
+            Zoneplate(start=None)
+        with self.assertRaises(ValueError):
+            # Passing both step and end is confusing
+            Zoneplate(start=None, step=1, end=1)
+        # Check that step is set if not expicitely passed
+        zp = Zoneplate(
+            start=ZoneplatePoint(z=3110.7, energy=8313),
+            end=ZoneplatePoint(z=3120.6329, energy=8315)
+        )
+        self.assertApproximatelyEqual(zp.step, 9.9329 / 2)
+
+    def test_z_from_energy(self):
+        result = self.zp.z_position(energy=8315)
+        self.assertApproximatelyEqual(result, 3120.6329)
 
 
 class XrayEdgeTest(unittest.TestCase):
