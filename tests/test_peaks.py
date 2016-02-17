@@ -23,6 +23,12 @@ class GuessParameters(ScimapTestCase):
         self.assertEqual(guess[0].center, 2)  # Center
         self.assertApproximatelyEqual(guess[0].width, 0.85)  # Width
 
+    def test_uneven_peak(self):
+        peak = Peak(num_peaks=1, method="Gaussian")
+        data = pd.Series([0, 3, 9, 8, 6])
+        guess = peak.guess_parameters(data=data)
+        self.assertApproximatelyEqual(guess[0].width, 0.85)
+
     def test_two_peaks(self):
         pass
 

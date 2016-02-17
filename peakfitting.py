@@ -65,9 +65,18 @@ def discrete_fwhm(data: Series):
     rightdata = rightdata[rightdata < maxheight / 2]
     leftdata = leftdata[leftdata < maxheight / 2]
     # Find the nearest datum to halfmax in each half
-    rightx = (np.abs(rightdata.index - maxidx)).min() + maxidx
-    leftx = maxidx - (np.abs(leftdata.index - maxidx)).min()
-    return abs(rightx - leftx)
+    # rightx = (np.abs(rightdata.index - maxidx)).min() + maxidx
+    # leftx = maxidx - (np.abs(leftdata.index - maxidx)).min()
+    rightx = (np.abs(rightdata.index - maxidx)).min()
+    leftx = -(np.abs(leftdata.index - maxidx)).min()
+    # Check for one-sided peaks (such as XAS edge)
+    if math.isnan(rightx):
+        fwhm = 2 * abs(leftx)
+    elif math.isnan(leftx):
+        fwhm = 2 * abs(rightx)
+    else:
+        fwhm = abs(rightx - leftx)
+    return fwhm
 
 
 class PeakFit():
@@ -385,6 +394,8 @@ class Peak():
             # Save optimized parameters for each fit
             for idx, fit in enumerate(self.fit_list):
                 fit.parameters = paramsList[idx]
+        # Save goodness-of-fit
+        self._goodness = self.goodness(data)
 
     def predict(self, xdata=None):
         """Get a dataframe of the predicted peak fits.
@@ -423,7 +434,7 @@ class Peak():
         residuals = observations - predicted
         return residuals
 
-    def goodness(self, observations):
+    def goodness(self, observations=None):
         """Calculate the goodness of fit. Returns the sum of squared residuals
         divided by degrees of freedom. Lower numbers describe better
         fit.
@@ -431,12 +442,16 @@ class Peak():
         Arguments
         ---------
         observations (pandas series): The original data against which
-            to compare the fit.
+            to compare the fit. If None (default), use the data from
+            the most recent call to `fit()`.
         """
-        # Determine total residual
-        sum_of_squares = (self.residuals(observations)**2).sum()
-        # Divide by degrees of freedom
-        goodness = math.sqrt(sum_of_squares) / (len(observations) - 1)
+        if observations is None:
+            goodness = self._goodness
+        else:
+            # Determine total residual
+            sum_of_squares = (self.residuals(observations)**2).sum()
+            # Divide by degrees of freedom
+            goodness = math.sqrt(sum_of_squares) / (len(observations) - 1)
         return goodness
 
     def center(self):
