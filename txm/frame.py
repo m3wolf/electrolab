@@ -291,7 +291,7 @@ class TXMFrame():
         self.shift_data(x_offset=-left, y_offset=-top,
                         dataset=self.particle_labels())
         # Shrink images to bounding box size
-        new_shape = shape(vertical=(bottom - top), horizontal=(right - left))
+        new_shape = shape(rows=(bottom - top), columns=(right - left))
         self.image_data.resize(new_shape)
         labels.resize(new_shape)
         # Reassign the active particle index (assume largest particle)

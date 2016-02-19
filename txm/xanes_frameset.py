@@ -593,7 +593,10 @@ class XanesFrameset():
             top, bottom = expand_dims(top, bottom, target=horizontal)
         elif vertical > horizontal:
             left, right = expand_dims(left, right, target=vertical)
-        assert abs(horizontal) == abs(vertical)
+        # Sanity checks to make sure the new window is square
+        vertical = bottom - top
+        horizontal = right - left
+        assert abs(horizontal) == abs(vertical), "{}h ≠ {}v".format(horizontal, vertical)
         # Roll each image to have the particle top left
         for frame in prog(self, 'Cropping frames'):
             frame.crop(top=top, left=left, bottom=bottom, right=right)

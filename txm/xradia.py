@@ -11,6 +11,22 @@ import pytz
 import exceptions
 
 
+def decode_aps_params(filename):
+    """Accept the filename of an XRM file and return sample parameters as
+    a dictionary."""
+    regex = re.compile(
+        '(?P<pos>[a-zA-Z0-9_]+)_xanes(?P<sam>[a-zA-Z0-9_]+)_(?P<E_int>[0-9]+)_(?P<E_dec>[0-9])eV.xrm'
+    )
+    match = regex.search(filename).groupdict()
+    energy = float("{}.{}".format(match['E_int'], match['E_dec']))
+    result = {
+        'sample_name': match['sam'],
+        'position_name': match['pos'],
+        'is_background': match['pos'] == 'ref',
+        'energy': energy,
+    }
+    return result
+
 def decode_ssrl_params(filename):
     """Accept the filename of an XRM file and return sample parameters as
     a dictionary."""
@@ -50,10 +66,20 @@ def decode_ssrl_params(filename):
 
 
 class XRMFile():
-    """Single X-ray micrscopy frame created using XRadia XRM format."""
-    aps_regex = re.compile("(\d{8})_([a-zA-Z0-9_]+)_([a-zA-Z0-9]+)_(\d{4}).xrm")
+    """Single X-ray micrscopy frame created using XRadia XRM format.
 
-    def __init__(self, filename, flavor):
+    Arguments
+    ---------
+    - filename : The path to the .xrm file
+
+    - flavor : The variety of data represented in the xrm file. Valid
+      choices are ['ssrl', 'aps', 'aps-old1']. These choices should
+      line up with whatever is generated using the scripts in
+      beamlines moudles.
+    """
+    aps_old1_regex = re.compile("(\d{8})_([a-zA-Z0-9_]+)_([a-zA-Z0-9]+)_(\d{4}).xrm")
+
+    def __init__(self, filename, flavor: str):
         self.filename = filename
         self.flavor = flavor
         self.ole_file = OleFileIO.OleFileIO(self.filename)
@@ -82,8 +108,10 @@ class XRMFile():
     def parameters_from_filename(self):
         """Determine various metadata from the frames filename (sample name etc)."""
         if self.flavor == 'aps':
+            params = decode_aps_params(self.filename)
+        elif self.flavor == 'aps-old1':
             # APS beamline 8-BM-B
-            result = self.aps_regex.search(self.filename)
+            result = self.aps_old1_regex.search(self.filename)
             params = {
                 'date_string': result.group(1),
                 'sample_name': result.group(2),

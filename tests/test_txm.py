@@ -39,7 +39,7 @@ from txm.frame import (
     rebin_image, apply_reference, position)
 from txm.edges import Edge, k_edges
 from txm.importers import import_txm_framesets
-from txm.xradia import decode_ssrl_params, XRMFile
+from txm.xradia import XRMFile, decode_ssrl_params, decode_aps_params
 from txm.beamlines import sector8_xanes_script, Zoneplate, ZoneplatePoint, Detector
 from txm import xanes_frameset
 from txm import plotter
@@ -369,6 +369,18 @@ class TXMFrameTest(HDFTestCase):
         )
         # Check that the averaging is correct
         self.assertTrue(np.array_equal(avg_frame.image_data, expected_array))
+
+    def test_params_from_aps(self):
+        """Check that the new naming scheme is decoded properly."""
+        ref_filename = "ref_xanesocv_8250_0eV.xrm"
+        result = decode_aps_params(ref_filename)
+        expected = {
+            'sample_name': 'ocv',
+            'position_name': 'ref',
+            'is_background': True,
+            'energy': 8250.0,
+        }
+        self.assertEqual(result, expected)
 
     def test_params_from_ssrl(self):
         # First a reference frame
