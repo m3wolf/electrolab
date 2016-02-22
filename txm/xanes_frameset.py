@@ -2,7 +2,7 @@ import functools
 import warnings
 
 import pandas as pd
-from matplotlib import cm
+from matplotlib import cm, pyplot
 from matplotlib.colors import Normalize
 from mapping.colormaps import cmaps
 import h5py
@@ -364,19 +364,23 @@ class XanesFrameset():
             frame.sample_position = position(0, 0, frame.sample_position.z)
 
     def correct_drift(self, new_name="aligned_frames", method="ransac",
-                      loc=xycoord(x=20, y=20), reference_frame=0):
+                      loc=xycoord(x=20, y=20), reference_frame=0,
+                      plot_fit=False):
         """Apply a linear correction for a misalignment of zoneplate in APS
         8BM-B beamline as of Nov 2015.
 
         Arguments
         ---
 
-        method (default: "ransac": Which type of regression to use:
+        method (default: "ransac"): Which type of regression to use:
             "ransac", "linear"
 
         loc (default 20, 20): Which particle to use to track drift
 
         reference_frame: index of the frame that stands still
+
+        plot_fit (default False): If truthy, plot the resulting fit
+            line of frame drift.
 
         """
         # Create new data groups to hold shifted image data
@@ -412,13 +416,17 @@ class XanesFrameset():
         error_v = regression_v.score(x, centroids.vertical)
         error_h = regression_h.score(x, centroids.horizontal)
 
-        def shift_func(payload):
-            delta_E = payload['energy'] - E_0
-            correction = xycoord(x=(slope_h * delta_E), y=(slope_v * delta_E))
-            return correction
+        # Plot results of regression
+        if plot_fit:
+            pyplot.plot(x, centroids.vertical, marker="o", linestyle="None")
+            pyplot.plot(x, centroids.horizontal, marker="o", linestyle="None")
+            pyplot.plot(x, regression_v.predict(x))
+            pyplot.plot(x, regression_h.predict(x))
+            pyplot.legend(["Vertical", "Horizontal"])
 
+        # Display status
         if method == "ransac":
-            description = "Correcting drift (R²: {}v, {}h, {}, {} inliers)".format(
+            description = "Correcting drift (R²: {}v, {}h, #inliers: {}v, {}h)".format(
                 round(error_v, 3), round(error_h, 3),
                 inliers_v, inliers_h
             )
@@ -426,6 +434,12 @@ class XanesFrameset():
             description = "Correcting drift (R²: {}v, {}h)".format(
                 round(error_v, 3), round(error_h, 3)
             )
+
+        # Move frames
+        def shift_func(payload):
+            delta_E = payload['energy'] - E_0
+            correction = xycoord(x=(slope_h * delta_E), y=(slope_v * delta_E))
+            return correction
         self.apply_translation(shift_func, new_name=new_name, description=description)
         # Set active particles
         for frame in self:
