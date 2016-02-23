@@ -3,6 +3,7 @@ from collections import namedtuple
 import struct
 import os
 import re
+import warnings
 
 from PIL import OleFileIO
 import numpy as np
@@ -165,10 +166,13 @@ class XRMFile():
         # Determine most likely timezone based on synchrotron location
         if self.flavor == 'ssrl':
             timezone = pytz.timezone('US/Pacific')
-        elif self.flavor == 'aps':
+        elif self.flavor in ['aps', 'aps-old1']:
             timezone = pytz.timezone('US/Central')
         else:
-            # Assume UTC?
+            # Unknown flavor. Raising here instead of constructor
+            # means your forgot to put in the proper timezone.
+            msg = "Unknown timezone for flavor '{flavor}'. Assuming UTC"
+            warnings.warn(msg.format(flavor=self.flavor))
             timezone = pytz.utc
         # Convert string into datetime object
         fmt = "%m/%d/%y %H:%M:%S"

@@ -423,7 +423,7 @@ class TXMFrameTest(HDFTestCase):
 
         # Test APS frame
         sample_filename = "20151111_UIC_XANES00_sam01_8313.xrm"
-        xrm = XRMFile(os.path.join(apsdir, sample_filename), flavor="aps")
+        xrm = XRMFile(os.path.join(apsdir, sample_filename), flavor="aps-old1")
         # Check start time
         start = dt.datetime(2015, 11, 11, 15, 42, 38, tzinfo=pytz.timezone('US/Central'))
         self.assertEqual(xrm.starttime(), start)
