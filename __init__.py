@@ -17,23 +17,29 @@
 # You should have received a copy of the GNU General Public License
 # along with Foobar.  If not, see <http://www.gnu.org/licenses/>.
 
-# Make sure this directory is in python path for imports
+# flake8: noqa
+
 import sys
 import os
+
+# Make sure this directory is in python path for imports
 sys.path.append(os.path.dirname(__file__))
 
 import default_units
 from electrochem.electrochem_units import *
 
-from xrd.peak import XRDPeak
+from peakfitting import Peak
+# from xrd.peak import XRDPeak
 # from xrdpeak import PeakFit
 
 from plots import (new_axes, big_axes, dual_axes, plot_scans, xrd_axes,
-                   plot_txm_intermediates)
+                   plot_txm_intermediates, new_image_axes)
 
 import filters
 
-from utilities import xycoord
+from utilities import xycoord, Pixel, shape
+
+from peakfitting import Peak
 
 from refinement import fullprof
 
@@ -41,6 +47,7 @@ from xrd.unitcell import CubicUnitCell, HexagonalUnitCell, TetragonalUnitCell
 from xrd import standards, lmo
 from xrd.lmo import LMOPlateauMap
 from xrd.reflection import Reflection
+from xrd.peak import XRDPeak
 from xrd.scan import XRDScan, align_scans
 from xrd.map import XRDMap
 
@@ -56,8 +63,9 @@ from electrochem.plots import plot_rate_capacities
 
 # X-ray microscopy
 from txm.xradia import XRMFile
+from txm.beamlines import Zoneplate, Detector, sector8_xanes_script, ZoneplatePoint
 from txm.importers import import_txm_framesets
 from txm.xanes_frameset import XanesFrameset
-from txm.frame import TXMFrame, calculate_particle_labels, rebin_image
+from txm.frame import TXMFrame, calculate_particle_labels, rebin_image, position
 from txm.edges import k_edges
 from txm.plotter import FramesetMoviePlotter

@@ -1,37 +1,134 @@
 import functools
-import os
-from collections import defaultdict
-import re
-import math
-import multiprocessing
-import queue
 import warnings
 
 import pandas as pd
-from matplotlib import pyplot, cm
-from matplotlib.colors import Normalize, BoundaryNorm
+from matplotlib import cm, pyplot
+from matplotlib.colors import Normalize
 from mapping.colormaps import cmaps
 import h5py
 import numpy as np
-from skimage import morphology, filters, feature, transform, restoration, exposure
+from skimage import morphology, filters, feature, transform
 from sklearn import linear_model
 
 from utilities import prog, xycoord, Pixel
+from peakfitting import Peak
 from .frame import (
-    TXMFrame, average_frames, calculate_particle_labels, pixel_to_xy,
-    apply_reference, position, Pixel)
+    TXMFrame, calculate_particle_labels, pixel_to_xy,
+    apply_reference, position)
 from .plotter import FramesetPlotter, FramesetMoviePlotter
-from plots import new_axes, new_image_axes, DegreeFormatter, ElectronVoltFormatter
+from plots import new_axes, new_image_axes
 import exceptions
 from hdf import HDFAttribute
 import smp
 
 
-def build_dataframe(frames):
-    index = [frame.energy for frame in frames]
-    images = [pd.DataFrame(frame.image_data) for frame in frames]
-    series = pd.Series(images, index=index)
+def build_series(frames):
+    energies = [frame.energy for frame in frames]
+    images = [frame.image_data.value for frame in frames]
+    series = pd.Series(images, index=energies)
     return series
+
+
+def fit_whiteline(data, width=4):
+    """Fits the whiteline peak with a Gaussian curve.
+
+    The "whiteline" for an absorption K-edge is the energy at which
+    the specimin has its highest absorbance. This function will return
+    a namedtuple of arrays with the same shape as each entry in the data
+    series. Each tuple will describe a different fitted parameter.
+
+    Arguments
+    ---------
+    data - The X-ray absorbance data. Should be similar to a pandas
+    Series. Assumes that the index is energy. This can be a Series of
+    numpy arrays, which allows calculation of image frames, etc.
+    Returns a tuple of (peak, goodness) where peak is a fitted peak
+    object and goodness is a measure of the goodness of fit.
+
+    width (int) - How many points on either side of the maximum to
+    fit.
+    """
+    # import pdb; pdb.set_trace()
+    # Filter out data based on peak width
+    # if 2 * width + 1 < len(data):
+    #     max_idx = data.index.get_loc(data.argmax())
+    #     left = max_idx - width
+    #     right = max_idx + width + 1
+    #     subset = data.iloc[left:right]
+    # else:
+    #     subset = data
+    max_idx = data.index.get_loc(data.argmax())
+    left = max_idx - width
+    if left < 0:
+        left = 0
+    right = max_idx + width + 1
+    if right > len(data):
+        right = len(data)
+    subset = data.iloc[left:right]
+    # Correct for background
+    vertical_offset = subset.min()
+    normalized = subset - vertical_offset
+    # Perform fitting
+    peak = Peak(method="gaussian")
+    peak.vertical_offset = vertical_offset
+    peak.fit(data=normalized)
+    # Save residuals
+    goodness = peak.goodness(subset)
+    return (peak, goodness)
+
+
+def calculate_whiteline(data):
+    """Calculates the whiteline position of the absorption edge data
+    contained in `data`.
+
+    The "whiteline" for an absorption K-edge is the energy at which
+    the specimin has its highest absorbance. This function will return
+    an array with the same shape as each entry in the data series,
+    that gives the energy of the highest absorbance.
+
+    Arguments
+    ---------
+    data - The X-ray absorbance data. Should be similar to a pandas
+    Series. Assumes that the index is energy. This can be a Series of
+    numpy arrays, which allows calculation of image frames, etc.
+    """
+    # First disassemble the data series
+    # energies = data.index
+    # imagestack = np.array(list(data.values))
+    # # Now calculate the indices of the whiteline
+    # whiteline_indices = np.argmax(imagestack, axis=0)
+    # # Convert indices to energy
+    # map_energy = np.vectorize(lambda idx: energies[idx],
+    #                           otypes=[np.float])
+    # whiteline_energies = map_energy(whiteline_indices)
+
+    # Prepare data for manipulation
+    energies = data.index.astype(np.float64)
+    absorbances = np.array(list(data.values))
+    absorbances = absorbances.astype(np.float64)
+    orig_shape = absorbances.shape[1:]
+    ndim = absorbances.ndim
+    # Convert to an array of spectra by moving the 1st axes (energy)
+    # to be on bottom
+    for dim in range(0, ndim-1):
+        absorbances = absorbances.swapaxes(dim, dim+1)
+    # Flatten into a 1-D array of spectra
+    num_spectra = int(np.prod(orig_shape))
+    spectrum_length = absorbances.shape[-1]
+    absorbances = absorbances.reshape((num_spectra, spectrum_length))
+    # Calculate whitelines and goodnesses(?)
+    whitelines = []
+    goodnesses = []
+    for spectrum in prog(absorbances, "Calculating whiteline"):
+        spectrum = pd.Series(spectrum, index=energies)
+        peak, goodness = fit_whiteline(spectrum)
+        whitelines.append(peak.center())
+        goodnesses.append(goodness)
+    # Convert results back to their original shape
+    whitelines = np.array(whitelines).reshape(orig_shape)
+    goodnesses = np.array(goodnesses).reshape(orig_shape)
+    return whitelines, goodnesses
+
 
 class XanesFrameset():
     _attrs = {}
@@ -42,7 +139,10 @@ class XanesFrameset():
                                        group_func='active_group')
     latest_labels = HDFAttribute('latest_labels', default='particle_labels')
     map_name = HDFAttribute('map_name', group_func='active_group')
+    map_goodness_name = HDFAttribute('map_goodness_name',
+                                     group_func='active_group')
     cmap = 'plasma'
+
     def __init__(self, filename, groupname, edge=None):
         self.hdf_filename = filename
         self.parent_groupname = groupname
@@ -50,7 +150,7 @@ class XanesFrameset():
         # Check to make sure a valid group is given
         if filename:
             with self.hdf_file() as hdf_file:
-                if not groupname in hdf_file.keys():
+                if groupname not in hdf_file.keys():
                     if not prog.quiet:
                         msg = "Created new frameset group: {}"
                         print(msg.format(groupname))
@@ -59,7 +159,6 @@ class XanesFrameset():
 
     def __iter__(self):
         """Get each frame from the HDF5 file"""
-        hdf_file = self.hdf_file()
         for dataset_name in self.active_group().keys():
             yield TXMFrame.load_from_dataset(self.active_group()[dataset_name])
 
@@ -67,7 +166,6 @@ class XanesFrameset():
         return len(self.active_group().keys())
 
     def __getitem__(self, index):
-        hdf_file = self.hdf_file()
         # First just use the index directly
         try:
             frame = TXMFrame.load_from_dataset(self.active_group()[index])
@@ -207,8 +305,10 @@ class XanesFrameset():
         make the magnification similar to that of the first frame.
         """
         # Regression parameters
-        slope=-0.00010558834052580277; intercept=1.871559636328671
+        slope = -0.00010558834052580277
+        intercept = 1.871559636328671
         # Prepare multiprocessing objects
+
         def worker(payload):
             key, energy, data = payload
             # Determine degree of magnification required
@@ -216,8 +316,8 @@ class XanesFrameset():
             original_shape = xycoord(x=data.shape[1], y=data.shape[0])
             # Expand the image by magnification degree and re-center
             translation = xycoord(
-                x=original_shape.x/2*(1-magnification),
-                y=original_shape.y/2*(1-magnification),
+                x=original_shape.x / 2 * (1 - magnification),
+                y=original_shape.y / 2 * (1 - magnification),
             )
             transformation = transform.SimilarityTransform(
                 scale=magnification,
@@ -259,6 +359,7 @@ class XanesFrameset():
         self.fork_group(new_name)
         self.fork_labels(new_name + "_labels")
         # Multiprocessing setup
+
         def worker(payload):
             # key, data, labels = payload
             key = payload['key']
@@ -280,6 +381,7 @@ class XanesFrameset():
                 'labels': new_labels
             }
             return ret
+
         def process_result(payload):
             # key, data, labels = payload
             frame = self[payload['key']]
@@ -288,9 +390,6 @@ class XanesFrameset():
         queue = smp.Queue(worker=worker, result_callback=process_result,
                           totalsize=len(self), description=description)
         for frame in self:
-            # Prepare data arrays
-            data = frame.image_data.value
-            labels = frame.particle_labels().value
             # Launch transformation for this frame
             payload = {
                 'key': frame.key(),
@@ -305,19 +404,23 @@ class XanesFrameset():
             frame.sample_position = position(0, 0, frame.sample_position.z)
 
     def correct_drift(self, new_name="aligned_frames", method="ransac",
-                      loc=xycoord(x=20, y=20), reference_frame=0):
+                      loc=xycoord(x=20, y=20), reference_frame=0,
+                      plot_fit=False):
         """Apply a linear correction for a misalignment of zoneplate in APS
         8BM-B beamline as of Nov 2015.
 
         Arguments
         ---
 
-        method (default: "ransac": Which type of regression to use:
+        method (default: "ransac"): Which type of regression to use:
             "ransac", "linear"
 
         loc (default 20, 20): Which particle to use to track drift
 
         reference_frame: index of the frame that stands still
+
+        plot_fit (default False): If truthy, plot the resulting fit
+            line of frame drift.
 
         """
         # Create new data groups to hold shifted image data
@@ -348,32 +451,22 @@ class XanesFrameset():
             regression_h = regression_h.estimator_
         slope_v = regression_v.coef_[0]
         slope_h = regression_h.coef_[0]
-        icpt_v = regression_v.intercept_
-        icpt_h = regression_h.intercept_
-        # print(slope_v, icpt_v, slope_h, icpt_h)
+        # icpt_v = regression_v.intercept_
+        # icpt_h = regression_h.intercept_
         error_v = regression_v.score(x, centroids.vertical)
         error_h = regression_h.score(x, centroids.horizontal)
-        # print('slopes', slope_v, slope_h)
-        def shift_func(payload):
-            delta_E = payload['energy'] - E_0
-            correction = xycoord(
-                x = slope_h * delta_E,
-                y = slope_v * delta_E
-            )
-            return correction
-        # for frame in self:
-        #     delta_E = frame.energy - E_0
-        #     correction = Pixel(
-        #         vertical = - slope_v * delta_E,
-        #         horizontal = - slope_h * delta_E
-        #     )
-        #     print(correction)
-        #     transformation = transform.SimilarityTransform(translation=correction)
-        #     new_data = transform.warp(frame.image_data, transformation,
-        #                               order=3, mode="wrap")
-        #     frame.image_data.write_direct(new_data)
+
+        # Plot results of regression
+        if plot_fit:
+            pyplot.plot(x, centroids.vertical, marker="o", linestyle="None")
+            pyplot.plot(x, centroids.horizontal, marker="o", linestyle="None")
+            pyplot.plot(x, regression_v.predict(x))
+            pyplot.plot(x, regression_h.predict(x))
+            pyplot.legend(["Vertical", "Horizontal"])
+
+        # Display status
         if method == "ransac":
-            description = "Correcting drift (R²: {}v, {}h, {}, {} inliers)".format(
+            description = "Correcting drift (R²: {}v, {}h, #inliers: {}v, {}h)".format(
                 round(error_v, 3), round(error_h, 3),
                 inliers_v, inliers_h
             )
@@ -381,6 +474,12 @@ class XanesFrameset():
             description = "Correcting drift (R²: {}v, {}h)".format(
                 round(error_v, 3), round(error_h, 3)
             )
+
+        # Move frames
+        def shift_func(payload):
+            delta_E = payload['energy'] - E_0
+            correction = xycoord(x=(slope_h * delta_E), y=(slope_v * delta_E))
+            return correction
         self.apply_translation(shift_func, new_name=new_name, description=description)
         # Set active particles
         for frame in self:
@@ -397,6 +496,7 @@ class XanesFrameset():
             reference_frame = np.argmax(spectrum.values)
         reference_image = self[reference_frame].image_data.value
         # Multiprocessing setup
+
         def worker(payload):
             key, data, labels = payload
             # Determine what the new translation should be
@@ -414,11 +514,13 @@ class XanesFrameset():
             new_labels = transform.warp(labels, transformation, order=0, mode="constant")
             new_labels = new_labels.astype(original_dtype)
             return (key, new_data, new_labels)
+
         def process_result(payload):
             key, data, labels = payload
             frame = self[key]
             frame.image_data.write_direct(data)
             frame.particle_labels().write_direct(labels)
+
         description = "Aligning to frame [{}]".format(reference_frame)
         queue = smp.Queue(worker=worker, result_callback=process_result,
                           totalsize=len(self), description=description)
@@ -448,13 +550,9 @@ class XanesFrameset():
         self.fork_labels(new_name + "_labels")
         # Determine which particle to use
         particle = self[reference_frame].activate_closest_particle(loc=loc)
-        bbox = particle.bbox()
-        # reference_img = particle.masked_frame_image()
-        # particle_img = np.ma.array(particle.image(), mask=particle.mask())
         particle_img = np.copy(particle.image())
         # Set all values outside the particle itself to 0
         particle_img[np.logical_not(particle.mask())] = 0
-        # particle_img = np.ma.array(particle_img, mask=np.logical_not(particle.mask()))
         reference_key = self[reference_frame].key()
         reference_img = self[reference_frame].image_data.value
         reference_match = feature.match_template(reference_img, particle_img, pad_input=True)
@@ -462,6 +560,7 @@ class XanesFrameset():
                                             reference_match.shape)
         reference_center = Pixel(vertical=reference_center[0],
                                  horizontal=reference_center[1])
+
         # Multiprocessing setup
         def worker(payload):
             key, data, labels = payload
@@ -490,12 +589,14 @@ class XanesFrameset():
                 new_labels = new_labels.astype(original_dtype)
                 ret = (key, new_data, new_labels)
             return ret
+
         def process_result(payload):
             key, data, labels = payload
             frame = self[key]
             frame.image_data.write_direct(data)
             frame.particle_labels().write_direct(labels)
             frame.activate_closest_particle(loc=loc)
+
         description = "Aligning to frame [{}]".format(reference_frame)
         queue = smp.Queue(worker=worker, result_callback=process_result,
                           totalsize=len(self), description=description)
@@ -520,7 +621,7 @@ class XanesFrameset():
         # Activate particle if necessary
         if loc is not None:
             for frame in prog(self, 'Idetifying closest particle'):
-                particle = frame.activate_closest_particle(loc=loc)
+                frame.activate_closest_particle(loc=loc)
         # Make sure an active particle is assigned to all frames
         for frame in self:
             if frame.active_particle_idx is None:
@@ -533,17 +634,23 @@ class XanesFrameset():
         top = min([box.top for box in boxes])
         bottom = max([box.bottom for box in boxes])
         right = max([box.right for box in boxes])
+
         # Make sure the expanded box is square
         def expand_dims(lower, upper, target):
-            center = (lower+upper)/2
-            new_lower = center - target/2
-            new_upper = center + target/2
+            center = (lower + upper) / 2
+            new_lower = center - target / 2
+            new_upper = center + target / 2
             return (new_lower, new_upper)
-        if right-left > bottom-top:
-            top, bottom = expand_dims(top, bottom, target=right-left)
-        elif  bottom-top > right-left:
-            left, right = expand_dims(left, right, target=bottom-top)
-        assert abs(left-right) == abs(bottom-top)
+        vertical = bottom - top
+        horizontal = right - left
+        if horizontal > vertical:
+            top, bottom = expand_dims(top, bottom, target=horizontal)
+        elif vertical > horizontal:
+            left, right = expand_dims(left, right, target=vertical)
+        # Sanity checks to make sure the new window is square
+        vertical = bottom - top
+        horizontal = right - left
+        assert abs(horizontal) == abs(vertical), "{}h ≠ {}v".format(horizontal, vertical)
         # Roll each image to have the particle top left
         for frame in prog(self, 'Cropping frames'):
             frame.crop(top=top, left=left, bottom=bottom, right=right)
@@ -556,18 +663,24 @@ class XanesFrameset():
         self.fork_group('aligned_frames')
         self.fork_labels('aligned_labels')
         # Determine average positions
-        total_x = 0; total_y = 0; n=0
+        total_x = 0
+        total_y = 0
+        n = 0
         for frame in prog(self, 'Computing true center'):
-            n+=1
+            n += 1
             total_x += frame.sample_position.x
             total_y += frame.sample_position.y
         global_x = total_x / n
         global_y = total_y / n
         for frame in prog(self, 'Aligning frames'):
-            um_per_pixel_x = 40/frame.image_data.shape[1]
-            um_per_pixel_y = 40/frame.image_data.shape[0]
-            offset_x = int(round((global_x - frame.sample_position.x)/um_per_pixel_x))
-            offset_y = int(round((global_y - frame.sample_position.y)/um_per_pixel_y))
+            um_per_pixel_x = 40 / frame.image_data.shape[1]
+            um_per_pixel_y = 40 / frame.image_data.shape[0]
+            offset_x = int(round(
+                (global_x - frame.sample_position.x) / um_per_pixel_x
+            ))
+            offset_y = int(round(
+                (global_y - frame.sample_position.y) / um_per_pixel_y
+            ))
             frame.shift_data(x_offset=offset_x, y_offset=offset_y)
             # Store updated position info
             new_position = (
@@ -584,6 +697,7 @@ class XanesFrameset():
         self.active_labels_groupname = labels_groupname
         # Create a new group
         labels_group = self.hdf_group().create_group(labels_groupname)
+
         # Callables for determining particle labels
         def worker(payload):
             key, data = payload
@@ -591,11 +705,13 @@ class XanesFrameset():
                 warnings.simplefilter("ignore")
                 new_data = calculate_particle_labels(data)
             return (key, new_data)
+
         def process_result(payload):
             # Save the calculated data
             key, data = payload
             labels = self.hdf_group()[labels_groupname]
-            dataset = labels.create_dataset(key, data=data, compression='gzip')
+            labels.create_dataset(key, data=data, compression='gzip')
+
         # Prepare multirprocessing objects
         frame_queue = smp.Queue(worker=worker,
                                 totalsize=len(self),
@@ -657,16 +773,30 @@ class XanesFrameset():
         return artist
 
     def mean_image(self):
-
-        """Determine an overall image by taken the mean intensity of each
+        """Determine an overall image by taking the mean intensity of each
         pixel across all frames."""
         frames = np.array([f.image_data for f in self])
         avg_frame = np.mean(frames, axis=0)
         return avg_frame
 
     @functools.lru_cache()
-    def xanes_spectrum(self, pixel=None):
-        """Collapse the dataset down to a two-d spectrum."""
+    def xanes_spectrum(self, pixel=None, edge_jump_filter=False):
+        """Collapse the dataset down to a two-dimensional spectrum. Returns a
+        pandas series containing the resulting spectrum. If a frame
+        has the attribute `active_particle_index` set to a truthy
+        value, only pixels inside the detected particle area are
+        counted for the spectrum (provided pixel or edge_jump_filter
+        are not passed).
+
+        Arguments
+        ---------
+        pixel: A 2-tuple that causes the returned series to represent
+            the spectrum for only 1 pixel in the frameset.
+
+        edge_jump_filter (bool): If true, only pixels that pass the
+            edge jump filter are used to calculate the spectrum.
+
+        """
         energies = []
         intensities = []
         for frame in self:
@@ -682,22 +812,27 @@ class XanesFrameset():
                 # No particle
                 particle = None
             # Create mask that's the same size as the image
-            if particle:
+            # import pdb; pdb.set_trace()
+            if pixel is not None:
+                # print(pixel)
+                intensity = data[pixel.vertical][pixel.horizontal]
+            elif edge_jump_filter:
+                masked_data = np.ma.array(data, mask=self.edge_jump_mask())
+                # Sum absorbances for datasets
+                intensity = np.sum(masked_data) / np.prod(masked_data.shape)
+            elif particle:
                 bbox = particle.bbox()
                 mask = np.zeros_like(data)
                 mask[bbox.top:bbox.bottom, bbox.left:bbox.right] = particle.mask()
                 mask = np.logical_not(mask)
                 masked_data = np.copy(data)
                 masked_data[mask] = 0
+                # Sum absorbances for datasets
+                intensity = np.sum(masked_data) / np.prod(masked_data.shape)
             else:
                 masked_data = data
-            if pixel is None:
                 # Sum absorbances for datasets
-                intensity = np.sum(masked_data)/np.prod(masked_data.shape)
-            else:
-                # Calculate intensity just for one (unmasked) pixel
-                intensity = data[pixel.vertical][pixel.horizontal]
-                # intensity = data[pixel.vertical][pixel.horizontal]
+                intensity = np.sum(data) / np.prod(data.shape)
             # Add to cumulative arrays
             intensities.append(intensity)
             energies.append(frame.energy)
@@ -705,11 +840,11 @@ class XanesFrameset():
         series = pd.Series(intensities, index=energies)
         return series
 
-    def plot_xanes_spectrum(self, ax=None, pixel=None, norm_range=None):
+    def plot_xanes_spectrum(self, ax=None, pixel=None, norm_range=None, show_fit=False, edge_jump_filter=True):
         if norm_range is None:
             norm_range = (self.edge.map_range[0], self.edge.map_range[1])
             norm = Normalize(*norm_range)
-        spectrum = self.xanes_spectrum(pixel=pixel)
+        spectrum = self.xanes_spectrum(pixel=pixel, edge_jump_filter=edge_jump_filter)
         if ax is None:
             ax = new_axes()
         # Color code the markers by energy
@@ -718,22 +853,35 @@ class XanesFrameset():
             cmap = cm.get_cmap(self.cmap)
             colors.append(cmap(norm(energy)))
         ax.plot(spectrum, linestyle=":")
-        xlim = ax.get_xlim(); ylim = ax.get_ylim()
+        xlim = ax.get_xlim()
+        ylim = ax.get_ylim()
         scatter = ax.scatter(spectrum.index, spectrum.values, c=colors, s=25)
         # Restore axes limits, they get messed up by scatter()
-        ax.set_xlim(*xlim); ax.set_ylim(*ylim)
+        ax.set_xlim(*xlim)
+        ax.set_ylim(*ylim)
         ax.set_xlabel('Energy /eV')
         ax.set_ylabel('Absorbance')
+        # Plot best fit for this edge
+        if show_fit:
+            fit = self.fit_whiteline()
+            fit.plot_fit(ax=ax)
         if pixel is not None:
             xy = pixel_to_xy(pixel, extent=self.extent(), shape=self.map_shape())
             title = 'XANES Spectrum at ({x}, {y}) = {val}'
             title = title.format(x=round(xy.x, 2),
                                  y=round(xy.y, 2),
-                                 val=self.masked_map()[pixel.vertical][pixel.horizontal])
+                                 val=self.masked_map(goodness_filter=False)[pixel.vertical][pixel.horizontal])
             ax.set_title(title)
         # Plot lines at edge of normalization range
         ax.axvline(x=norm_range[0], linestyle='-', color="0.55", alpha=0.4)
         ax.axvline(x=norm_range[1], linestyle='-', color="0.55", alpha=0.4)
+        return scatter
+
+    def plot_xanes_edge(self, *args, **kwargs):
+        """Call self.plot_xanes_spectrum() but zoomed in on the edge."""
+        scatter = self.plot_xanes_spectrum(*args, **kwargs)
+        ax = scatter.axes
+        ax.set_xlim(self.edge.pre_edge[-1], self.edge.post_edge[0])
         return scatter
 
     def plot_edge_jump(self, ax=None, alpha=1):
@@ -771,6 +919,34 @@ class XanesFrameset():
         # Apply normalizer? (maybe later)
         return filtered_img
 
+    def edge_jump_mask(self):
+        """Calculate the edge jump image for this frameset, apply some image
+        processing to fill out the space, and convert it into a binary
+        mask."""
+        edge_jump = self.edge_jump_filter()
+        threshold = filters.threshold_otsu(edge_jump)
+        mask = edge_jump > 0.5 * threshold
+        mask = morphology.dilation(mask)
+        mask = np.logical_not(mask)
+        return mask
+
+    def goodness_filter(self):
+        """Calculate an image based on the goodness of fit. `calculate_map`
+        must have been called previously."""
+        return self.hdf_file()[self.map_goodness_name]
+
+    def goodness_mask(self):
+        """Calculate an image based on the goodness of fit. `calculate_map`
+        must have been called previously. Goodness filter is converted
+        to a binary map using(Otsu) threshold filtering.
+        """
+        goodness = self.goodness_filter()
+        threshold = filters.threshold_otsu(goodness)
+        mask = edge_jump > 0.5 * threshold
+        mask = morphology.dilation(mask)
+        mask = np.logical_not(mask)
+        return mask
+
     def calculate_map(self, new_name=None):
         """Generate a map based on pixel-wise Xanes spectra. Default is to
         compute X-ray whiteline position."""
@@ -778,8 +954,9 @@ class XanesFrameset():
         if new_name is None:
             new_name = "{parent}/{group}_map".format(parent=self.parent_groupname,
                                                      group=self.active_groupname)
+        goodness_name = new_name + "_goodness"
         # Get map data
-        map_data = self.whiteline_map()
+        map_data, goodness = self.whiteline_map()
         # Create dataset
         try:
             del self.hdf_file()[new_name]
@@ -787,25 +964,24 @@ class XanesFrameset():
             pass
         self.hdf_file().create_dataset(new_name, data=map_data)
         self.map_name = new_name
+        self.hdf_file().create_dataset(goodness_name, data=goodness)
+        self.map_goodness_name = goodness_name
         return self.hdf_file()[new_name]
 
-    def masked_map(self, edge_jump_filter=True):
+    def masked_map(self, goodness_filter=True):
         """Generate a map based on pixel-wise Xanes spectra and apply an
         edge-jump filter mask. Default is to compute X-ray whiteline
         position.
         """
+        # import pdb; pdb.set_trace()
         # Check for cached map of the whiteline position for each pixel
         if not self.map_name:
             map_data = self.calculate_map()
         else:
             map_data = self.hdf_file()[self.map_name]
-        if edge_jump_filter:
+        if goodness_filter:
             # Apply edge jump mask
-            edge_jump = self.edge_jump_filter()
-            threshold = filters.threshold_otsu(edge_jump)
-            mask = edge_jump > 0.5 * threshold
-            mask = morphology.dilation(mask)
-            mask = np.logical_not(mask)
+            mask = self.edge_jump_mask()
         else:
             # No-op filter
             mask = np.zeros_like(map_data)
@@ -820,12 +996,12 @@ class XanesFrameset():
         return self[0].extent()
 
     def plot_map(self, plotter=None, ax=None, norm_range=None, alpha=1,
-                 edge_jump_filter=False, return_type="axes", *args, **kwargs):
+                 goodness_filter=False, return_type="axes", *args, **kwargs):
         """Use a default frameset plotter to draw a map of the chemical data."""
         if plotter is None:
             plotter = FramesetPlotter(frameset=self, map_ax=ax)
         plotter.draw_map(norm_range=norm_range, alpha=alpha,
-                         edge_jump_filter=edge_jump_filter,
+                         goodness_filter=goodness_filter,
                          *args, **kwargs)
         return plotter
 
@@ -838,8 +1014,12 @@ class XanesFrameset():
         else:
             norm = Normalize(norm_range[0], norm_range[1])
         masked_map = self.masked_map()
+        # n, bins, patches = ax.hist(masked_map[~masked_map.mask],
+        #                            bins=self.edge.all_energies())
         n, bins, patches = ax.hist(masked_map[~masked_map.mask],
-                                   bins=self.edge.all_energies())
+                                   bins=np.linspace(start=norm.vmin,
+                                                    stop=norm.vmax,
+                                                    num=100))
         # Set colors on histogram
         for patch in patches:
             x_position = patch.get_x()
@@ -871,16 +1051,33 @@ class XanesFrameset():
 
     def whiteline_map(self):
         """Calculate a map where each pixel is the energy of the whiteline."""
-        print('Calculating whiteline map...', end='')
-        # Determine indices of max frame per pixel
-        imagestack = np.array([frame.image_data for frame in self])
-        indices = np.argmax(imagestack, axis=0)
-        # Map indices to energies
-        map_energy = np.vectorize(lambda idx: self[idx].energy,
-                                  otypes=[np.float])
-        energies = map_energy(indices)
-        print('done')
-        return energies
+        if not prog.quiet:
+            print('Calculating whiteline map...', end='')
+        imagestack = build_series(self)
+        # Restrict to spectrum to only those values on the edge itself
+        imagestack = imagestack.ix[self.edge.map_range[0]:
+                                   self.edge.map_range[1]]
+        whiteline, goodness = calculate_whiteline(imagestack)
+        if not prog.quiet:
+            print('done')
+        return whiteline, goodness
+
+    def whiteline_energy(self):
+        """Calculate the energy corresponding to the whiteline (maximum
+        absorbance) for the whole frame. This first applies an
+        edge-jump filter.
+        """
+        spectrum = self.xanes_spectrum(edge_jump_filter=True)
+        whiteline = calculate_whiteline(spectrum)
+        return whiteline
+
+    def fit_whiteline(self, width=4):
+        """Calculate the energy corresponding to the whiteline (maximum
+        absorbance) for the whole frame using gaussian peak fitting.
+        """
+        spectrum = self.xanes_spectrum(edge_jump_filter=True)
+        peak, goodness = fit_whiteline(spectrum, width=width)
+        return peak
 
     def hdf_file(self):
         if self.hdf_filename is not None:
@@ -932,8 +1129,7 @@ class XanesFrameset():
             energy=frame.approximate_energy,
         )
         # Name found, so create the actual dataset
-        new_dataset = frame.create_dataset(setname=setname,
-                                           hdf_group=frames_group)
+        frame.create_dataset(setname=setname, hdf_group=frames_group)
         return setname
 
     def background_normalizer(self):
@@ -963,8 +1159,8 @@ class XanesFrameset():
             median = np.median(data)
             sdev = np.std(data)
             d = np.abs(data - median)
-            s = d/sdev if sdev else 0.
-            data[s>=sigma] = median
+            s = d / sdev if sdev else 0.
+            data[s >= sigma] = median
             # Check if this frame has the minimum intensity
             local_min = np.min(data)
             if local_min < global_min:

@@ -1,16 +1,15 @@
 import os
 
 import gi
-gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk, Gdk, GObject
-# from matplotlib.backends.backend_gtk3agg import FigureCanvasGTK3Agg as FigureCanvas
-# from matplotlib import figure, pyplot, animation, gridspec
-import numpy as np
 
 from utilities import xycoord
 from .frame import Pixel, xy_to_pixel, pixel_to_xy
 from .plotter import GtkFramesetPlotter
-import plots
+
+
+gi.require_version('Gtk', '3.0')
+
 
 class GtkTxmViewer():
     play_mode = False
@@ -18,7 +17,7 @@ class GtkTxmViewer():
     active_pixel = None
     active_xy = None
     _current_idx = 0
-    animation_delay = 1000/15
+    animation_delay = 1000 / 15
     show_map = True
     show_map_background = True
     apply_edge_jump = False
@@ -31,7 +30,8 @@ class GtkTxmViewer():
         self.frameset = frameset
         self.builder = Gtk.Builder()
         # Load the GUI from a glade file
-        gladefile = os.path.join(os.path.dirname(__file__), "xanes_viewer.glade")
+        gladefile = os.path.join(os.path.dirname(__file__),
+                                 "xanes_viewer.glade")
         self.builder.add_from_file(gladefile)
         self.window = self.builder.get_object('XanesViewerWindow')
         self.image_sw = self.builder.get_object('ImageWindow')
@@ -45,22 +45,25 @@ class GtkTxmViewer():
         switch = self.builder.get_object('BackgroundSwitch')
         switch.set_active(self.show_map_background)
         # Set some initial values
-        slider = self.builder.get_object('FrameSlider')
         self.current_adj = self.builder.get_object('CurrentFrame')
-        self.current_adj.set_property('upper', len(self.frameset)-1)
+        self.current_adj.set_property('upper', len(self.frameset) - 1)
         # Put the non-glade things in the window
         self.plotter.plot_xanes_spectrum()
         # Populate the combobox with list of available HDF groups
         self.group_combo = self.builder.get_object('ActiveGroupCombo')
         self.group_list = Gtk.ListStore(str, str)
         for group in self.frameset.hdf_group().keys():
-            uppercase = " ".join([word.capitalize() for word in group.split('_')])
+            uppercase = " ".join(
+                [word.capitalize() for word in group.split('_')]
+            )
             tree_iter = self.group_list.append([uppercase, group])
             # Save active group for later initialization
             if group == self.frameset.active_groupname:
                 self.active_group = tree_iter
         # Add background frames as an option
-        bg_iter = self.group_list.append(['Background Frames', 'background_frames'])
+        bg_iter = self.group_list.append(
+            ['Background Frames', 'background_frames']
+        )
         if self.frameset.is_background():
             self.active_group = bg_iter
         self.group_combo.set_model(self.group_list)
@@ -178,7 +181,7 @@ class GtkTxmViewer():
 
     def draw_map_plots(self):
         self.plotter.draw_map(show_map=self.show_map,
-                              edge_jump_filter=self.apply_edge_jump,
+                              goodness_filter=self.apply_edge_jump,
                               show_background=self.show_map_background)
         # Show crosshairs to indicate active pixel
         if self.show_map_background:
@@ -322,7 +325,6 @@ class GtkTxmViewer():
         modal = self.builder.get_object("WaitingWindow")
         modal.show_all()
         ctr = 1
-        total = len(objs)
         for obj in objs:
             ctr += 1
             yield obj
@@ -343,6 +345,7 @@ class GtkTxmViewer():
 
 class FrameChangeSource():
     callbacks = []
+
     def __init__(self, viewer):
         self.viewer = viewer
 

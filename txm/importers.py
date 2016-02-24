@@ -11,6 +11,7 @@ from .frame import TXMFrame, average_frames
 from utilities import prog
 import exceptions
 
+
 def import_txm_framesets(directory, hdf_filename=None, flavor='ssrl'):
     """Import all files in the given directory and process into framesets."""
     format_classes = {
@@ -66,6 +67,7 @@ def import_txm_framesets(directory, hdf_filename=None, flavor='ssrl'):
         # Average multiple frames together if necessary
         files_to_average = find_average_scans(current_file, file_list, flavor=flavor)
         # Convert to Frame() objects
+
         def convert_to_frame(file_list):
             frames_to_average = []
             for filepath in file_list:
@@ -91,7 +93,7 @@ def import_txm_framesets(directory, hdf_filename=None, flavor='ssrl'):
                                             averaged_frame.position_name)
             elif flavor == 'ssrl':
                 identifier = averaged_frame.sample_name
-            if not identifier in sample_framesets.keys():
+            if identifier not in sample_framesets.keys():
                 # First time seeing this frameset location
                 new_frameset = XanesFrameset(filename=hdf_filename,
                                              groupname=identifier)
@@ -99,18 +101,17 @@ def import_txm_framesets(directory, hdf_filename=None, flavor='ssrl'):
                 sample_framesets[identifier] = new_frameset
             # Add this frame to the appropriate group
             sample_framesets[identifier].add_frame(averaged_frame)
-                # Remove from queue
         for filepath in files_to_average:
             file_list.remove(filepath)
         # Display current progress
         if not prog.quiet:
             status = format_meter(n=total_files - len(file_list),
                                   total=total_files,
-                                  elapsed=time()-start_time,
+                                  elapsed=time() - start_time,
                                   prefix="Importing raw frames: ")
             print(status, end='\r')
     if not prog.quiet:
-        print() # Blank line to avoid over-writing status message
+        print()  # Blank line to avoid over-writing status message
     # print(' frames: {curr}/{total} [done]'.format(curr=total_files,
     #                                                        total=total_files))
     frameset_list = list(sample_framesets.values())
@@ -144,7 +145,11 @@ def find_average_scans(filename, file_list, flavor='ssrl'):
     dirname = os.path.dirname(filename)
     if flavor == 'ssrl':
         avg_regex = re.compile(r"(\d+)of(\d+)")
-        serial_string = "_\d{6}_ref_"
+        # Since this regex will be passed to sub later,
+        # we must use it as a template first
+        serial_template = "_{fmt}{length}_ref_"
+        serial_string = serial_template.format(fmt="\d", length="{6}")
+        assert serial_string == "_\d{6}_ref_"
         serial_regex = re.compile(serial_string)
         # Look for average scans
         re_result = avg_regex.search(basename)
@@ -152,12 +157,15 @@ def find_average_scans(filename, file_list, flavor='ssrl'):
             # Use regular expressions to determine the other files
             total = int(re_result.group(2))
             current_files = []
-            for current in range(1, total+1):
+            for current in range(1, total + 1):
                 new_regex = r"0*{current}of0*{total}".format(
                     current=current, total=total)
                 filename_restring = avg_regex.sub(new_regex, basename)
                 # Replace serial number if necessary (reference frames only)
-                filename_restring = serial_regex.sub(serial_string, filename_restring)
+                filename_restring = serial_regex.sub(serial_template,
+                                                     filename_restring)
+                filename_restring = filename_restring.format(fmt="\d",
+                                                             length="{6}")
                 # Find the matching filenames in the list
                 filepath_regex = re.compile(os.path.join(dirname, filename_restring))
                 for filepath in file_list:

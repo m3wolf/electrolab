@@ -3,7 +3,6 @@
 import math
 import os
 
-from matplotlib.colors import Normalize
 import pandas
 import jinja2
 
@@ -13,6 +12,7 @@ from plots import new_axes
 from xrd.locus import XRDLocus
 from refinement.native import NativeRefinement
 from utilities import prog
+
 
 class XRDMap(Map):
     """A map using X-ray diffraction to determine cell values. Runs on
@@ -28,15 +28,15 @@ class XRDMap(Map):
     cell_parameter_normalizer = None
     phase_ratio_normalizer = None
     fwhm_normalizer = None
-    THETA1_MIN=0 # Source limits based on geometry
-    THETA1_MAX=50
-    THETA2_MIN=0 # Detector limits based on geometry
-    THETA2_MAX=55
+    THETA1_MIN = 0  # Source limits based on geometry
+    THETA1_MAX = 50
+    THETA2_MIN = 0  # Detector limits based on geometry
+    THETA2_MAX = 55
     camera_zoom = 6
     two_theta_range = (10, 80)
-    frame_step = 20 # How much to move detector by in degrees
-    frame_width = 20 # 2-theta coverage of detector face
-    scan_time = 300 # In seconds
+    frame_step = 20  # How much to move detector by in degrees
+    frame_width = 20  # 2-theta coverage of detector face
+    scan_time = 300  # In seconds
     phases = []
     background_phases = []
 
@@ -45,8 +45,8 @@ class XRDMap(Map):
                  frame_size=1024, phases=[], background_phases=[],
                  refinement=NativeRefinement, **kwargs):
         self.collimator = collimator
-        self.detector_distance=detector_distance
-        self.frame_size=frame_size
+        self.detector_distance = detector_distance
+        self.frame_size = frame_size
         # Checking for non-default lists allows for better subclassing
         if len(phases) > 0:
             self.phases = phases
@@ -55,7 +55,8 @@ class XRDMap(Map):
         if scan_time is not None:
             self.scan_time = scan_time
         self.refinement = refinement
-        if two_theta_range is not None: self.two_theta_range = two_theta_range
+        if two_theta_range is not None:
+            self.two_theta_range = two_theta_range
         # Unless otherwise specified, the collimator sets the resolution
         kwargs['resolution'] = kwargs.get('resolution', collimator)
         # Return parent class init
@@ -64,12 +65,12 @@ class XRDMap(Map):
     def context(self):
         """Convert the object to a dictionary for the templating engine."""
         # Estimate the total time
-        totalSecs = len(self.loci)*self.scan_time*self.get_number_of_frames()
-        days = math.floor(totalSecs/60/60/24)
+        totalSecs = len(self.loci) * self.scan_time * self.get_number_of_frames()
+        days = math.floor(totalSecs / 60 / 60 / 24)
         remainder = totalSecs - days * 60 * 60 * 24
-        hours = math.floor(remainder/60/60)
+        hours = math.floor(remainder / 60 / 60)
         remainder = remainder - hours * 60 * 60
-        mins = math.floor(remainder/60)
+        mins = math.floor(remainder / 60)
         total_time = "{secs}s ({days}d {hours}h {mins}m)".format(secs=totalSecs,
                                                                  days=days,
                                                                  hours=hours,
@@ -77,7 +78,7 @@ class XRDMap(Map):
         # List of frames to integrate
         frames = []
         for frame_num in range(0, self.get_number_of_frames()):
-            start = self.two_theta_range[0] + frame_num*self.frame_step
+            start = self.two_theta_range[0] + frame_num * self.frame_step
             end = start + self.frame_step
             frame = {
                 'start': start,
@@ -187,7 +188,7 @@ class XRDMap(Map):
                 locusCount = locusCount + 1
                 bulk_diffractogram = bulk_diffractogram.add(corrected_diffractogram, fill_value=0)
         # Divide by the total number of scans included
-        bulk_diffractogram = bulk_diffractogram/locusCount
+        bulk_diffractogram = bulk_diffractogram / locusCount
         return bulk_diffractogram
 
     def plot_diffractogram(self, ax=None):
@@ -215,7 +216,7 @@ class XRDMap(Map):
         for locus in prog(self.loci, desc='Calculating metrics'):
             phase_scale = locus.phases[phase_idx].scale_factor
             total_scale = sum([phase.scale_factor for phase in locus.phases])
-            locus.metric = phase_scale/total_scale
+            locus.metric = phase_scale / total_scale
 
     def plot_phase_ratio(self, phase_idx=0, *args, **kwargs):
         """Plot a map of the ratio of the given phase index to all the phases"""
@@ -249,7 +250,6 @@ class XRDMap(Map):
 
     def set_metric_fwhm(self, phase_idx=0):
         for locus in prog(self.loci, desc='Calculating peak widths'):
-            phase = locus.phases[phase_idx]
             locus.metric = locus.refinement.fwhm()
 
     def plot_fwhm(self, phase_idx=0, *args, **kwargs):
@@ -270,9 +270,10 @@ class XRDMap(Map):
     def dots_per_mm(self):
         """Determine the width of the scan images based on sample's camera
         zoom (dpm taken from camera calibration using quadratic
-        regression on Bruker D8 Discover)
+        regression on Bruker D8 Discover Series II)
         """
-        regression = lambda x: 3.640*x**2 + 13.869*x + 31.499
+        def regression(x):
+            return 3.640 * x**2 + 13.869 * x + 31.499
         dots_per_mm = regression(self.camera_zoom)
         return dots_per_mm
 

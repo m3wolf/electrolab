@@ -1,28 +1,45 @@
 # -*- coding: utf-8 -*-
-"""Code to read in data files from Bio-Logic instruments. Class for
-reading MPR files taken from
-https://github.com/chatcannon/galvani/blob/master/galvani/BioLogic.py"""
-
-__all__ = ['MPTfileCSV', 'MPTfile', 'MPTFile']
+#
+# Copyright © 2016 Mark Wolf
+#
+# This file is part of scimap.
+#
+# Scimap is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# Scimap is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with Scimap.  If not, see <http://www.gnu.org/licenses/>.
 
 import sys
 import re
-import csv
 from os import SEEK_SET
 import time
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from collections import OrderedDict
 
 import units
 import pandas as pd
 import numpy as np
 
+"""Code to read in data files from Bio-Logic instruments. Class for
+reading MPR files taken from
+https://github.com/chatcannon/galvani/blob/master/galvani/BioLogic.py"""
+
 if sys.version_info.major <= 2:
     str3 = str
     from string import maketrans
 else:
-    str3 = lambda b: str(b, encoding='ascii')
+    def str3(b):
+        str(b, encoding='ascii')
     maketrans = bytes.maketrans
+
 
 def fieldname_to_dtype(fieldname):
     """Converts a column header from the MPT file into a tuple of
@@ -81,6 +98,7 @@ def process_mpt_headers(headers):
             metadata['start_time'] = start
     return metadata
 
+
 class MPTFile():
     """Simple function to open MPT files as csv.DictReader objects
 
@@ -88,6 +106,7 @@ class MPTFile():
     csv.DictReader object and a list of comments
     """
     encoding = "latin-1"
+
     def __init__(self, filename):
         self.filename = filename
 
@@ -98,15 +117,18 @@ class MPTFile():
                 'BT-Lab ASCII FILE',
             ]
             if magic.rstrip() not in valid_magics:
-                raise ValueError("Bad first line for EC-Lab file: '%s'" % magic)
+                msg = "Bad first line for EC-Lab file: '{}'"
+                raise ValueError(msg.format(magic))
 
-            nb_headers_match = re.match('Nb header lines : (\d+)\s*$', next(mpt_file))
+            nb_headers_match = re.match('Nb header lines : (\d+)\s*$',
+                                        next(mpt_file))
             nb_headers = int(nb_headers_match.group(1))
             if nb_headers < 3:
                 raise ValueError("Too few header lines: %d" % nb_headers)
 
-            ## The 'magic number' line, the 'Nb headers' line and the column headers
-            ## make three lines. Every additional line is a comment line.
+            # The 'magic number' line, the 'Nb headers' line and the
+            # column headers make three lines. Every additional line
+            # is a comment line.
             header = [next(mpt_file) for i in range(nb_headers - 3)]
 
         self.metadata = process_mpt_headers(header)
@@ -119,7 +141,8 @@ class MPTFile():
         # Determine start of data
         with open(filename, encoding=self.encoding) as dataFile:
             # The second line states how long the header is
-            header_match = re.match("Nb header lines : (\d+)", dataFile.readlines()[1])
+            header_match = re.match("Nb header lines : (\d+)",
+                                    dataFile.readlines()[1])
             headerLength = int(header_match.groups()[0]) - 1
             # headerLength = int(dataFile.readlines()[1][18:20]) - 1
         # Skip all the initial metadata
@@ -217,17 +240,20 @@ def VMPdata_dtype_from_colIDs(colIDs):
 
 
 def read_VMP_modules(fileobj, read_module_data=True):
-    """Reads in module headers in the VMPmodule_hdr format. Yields a dict with
-    the headers and offset for each module.
+    """Reads in module headers in the VMPmodule_hdr format. Yields a dict
+    with the headers and offset for each module.
 
-    N.B. the offset yielded is the offset to the start of the data i.e. after
-    the end of the header. The data runs from (offset) to (offset+length)"""
+    N.B. the offset yielded is the offset to the start of the data
+    i.e. after the end of the header. The data runs from (offset) to
+    (offset+length)
+    """
     while True:
         module_magic = fileobj.read(len(b'MODULE'))
         if len(module_magic) == 0:  # end of file
             raise StopIteration
         elif module_magic != b'MODULE':
-            raise ValueError("Found %r, expecting start of new VMP MODULE" % module_magic)
+            msg = "Found {}, expecting start of new VMP MODULE"
+            raise ValueError(msg.format(module_magic))
 
         hdr_bytes = fileobj.read(VMPmodule_hdr.itemsize)
         if len(hdr_bytes) < VMPmodule_hdr.itemsize:
@@ -259,11 +285,14 @@ class MPRFile():
 
     Attributes
     ==========
-    modules - A list of dicts containing basic information about the 'modules'
-              of which the file is composed.
-    data - numpy record array of type VMPdata_dtype containing the main data
-           array of the file.
+    modules - A list of dicts containing basic information about the
+              'modules' of which the file is composed.
+
+    data - numpy record array of type VMPdata_dtype containing the
+           main data array of the file.
+
     startdate - The date when the experiment started
+
     enddate - The date when the experiment finished
     """
 
@@ -273,7 +302,7 @@ class MPRFile():
         else:
             mpr_file = file_or_path
 
-        mpr_magic = b'BIO-LOGIC MODULAR FILE\x1a                         \x00\x00\x00\x00'
+        mpr_magic = b'BIO-LOGIC MODULAR FILE\x1a                         \x00\x00\x00\x00'  # noqa
         magic = mpr_file.read(len(mpr_magic))
         if magic != mpr_magic:
             raise ValueError('Invalid magic for .mpr file: %s' % magic)
@@ -286,7 +315,8 @@ class MPRFile():
         self.modules = modules
         settings_mod, = (m for m in modules if m['shortname'] == b'VMP Set   ')
         data_module, = (m for m in modules if m['shortname'] == b'VMP data  ')
-        maybe_log_module = [m for m in modules if m['shortname'] == b'VMP LOG   ']
+        maybe_log_module = [m for m in modules
+                            if m['shortname'] == b'VMP LOG   ']
 
         with open('setting_data', 'wb') as f:
             f.write(maybe_log_module[0]['data'])
@@ -302,7 +332,7 @@ class MPRFile():
         elif data_module['version'] == 2:
             column_types = np.fromstring(data_module['data'][5:], dtype='<u2',
                                          count=n_columns)
-            ## There is 405 bytes of data before the main array starts
+            # There is 405 bytes of data before the main array starts
             remaining_headers = data_module['data'][5 + 2 * n_columns:405]
             main_data = data_module['data'][405:]
         else:
@@ -314,16 +344,17 @@ class MPRFile():
         else:
             assert(not any(remaining_headers))
 
-        self.dtype, self.flags_dict, self.flags2_dict = VMPdata_dtype_from_colIDs(column_types)
+        results = VMPdata_dtype_from_colIDs(column_types)
+        self.dtype, self.flags_dict, self.flags2_dict = results
         data = np.fromstring(main_data, dtype=self.dtype)
         assert(data.shape[0] == n_data_points)
 
         # Convert data to a pandas dataframe
         columns = self.dtype.names
-        self.dataframe = pd.DataFrame(data)
+        self.dataframe = pd.DataFrame(data, columns=columns)
 
-        ## No idea what these 'column types' mean or even if they are actually
-        ## column types at all
+        # No idea what these 'column types' mean or even if they are actually
+        # column types at all
         self.version = int(data_module['version'])
         self.cols = column_types
         self.npts = n_data_points

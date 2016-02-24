@@ -1,33 +1,27 @@
 from collections import namedtuple, OrderedDict
-import datetime as dt
 import os
 import math
 import warnings
 
 import dateutil.parser
 import numpy as np
-from matplotlib import pyplot
 from scipy import ndimage
-from skimage import img_as_float
-from skimage.morphology import (closing, remove_small_objects, square, disk, star,
+from skimage.morphology import (disk, closing, remove_small_objects,
                                 watershed, dilation)
 from skimage.exposure import rescale_intensity
 from skimage.measure import regionprops, label
-from skimage import filters
-from skimage.filters import threshold_otsu, threshold_adaptive, rank, threshold_li
+from skimage.filters import threshold_adaptive, rank
 from skimage.feature import peak_local_max
-from matplotlib.colors import Normalize
 
 import exceptions
 import plots
 from hdf import HDFAttribute
-from utilities import xycoord, Pixel
+from utilities import xycoord, Pixel, shape
 from .particle import Particle
 
 position = namedtuple('position', ('x', 'y', 'z'))
 Extent = namedtuple('extent', ('left', 'right', 'bottom', 'top'))
-# Moved to utilitiexs module
-# Pixel = namedtuple('pixel', ('vertical', 'horizontal'))
+
 
 def rebin_image(data, shape):
     """Resample image into new shape, but only if the new dimensions are
@@ -51,12 +45,13 @@ def rebin_image(data, shape):
             raise ValueError(msg)
     # Determine new dimensions
     sh = (shape[0],
-          data.shape[0]//shape[0],
+          data.shape[0] // shape[0],
           shape[1],
-          data.shape[1]//shape[1])
+          data.shape[1] // shape[1])
     # new_data = data.reshape(sh).mean(-1).mean(1)
     new_data = data.reshape(sh).sum(-1).sum(1)
     return new_data
+
 
 def apply_reference(data, reference_data):
     """Apply a reference correction to a raw image. This turns intensity
@@ -68,8 +63,8 @@ def apply_reference(data, reference_data):
     ----------
     data (numpy array): The sample image to be corrected.
 
-    reference_data (numpy array): The reference data that will be corrected against.
-
+    reference_data (numpy array): The reference data that will be
+        corrected against.
     """
     # Rebin datasets in case they don't match
     min_shape = [
@@ -78,18 +73,20 @@ def apply_reference(data, reference_data):
     ]
     reference_data = rebin_image(reference_data, shape=min_shape)
     data = rebin_image(data, shape=min_shape)
-    new_data = np.log10(reference_data/data)
+    new_data = np.log10(reference_data / data)
     return new_data
+
 
 def xy_to_pixel(xy, extent, shape):
     """Take an xy location on an image and convert it to a pixel location
     suitable for numpy indexing."""
-    ratio_x = (xy.x-extent.left)/(extent.right-extent.left)
+    ratio_x = (xy.x - extent.left) / (extent.right - extent.left)
     pixel_h = int(round(ratio_x * shape[1]))
-    ratio_y = (xy.y-extent.bottom)/(extent.top-extent.bottom)
+    ratio_y = (xy.y - extent.bottom) / (extent.top - extent.bottom)
     # (1 - ratio) for y because images are top indexed
     pixel_v = int(round((1 - ratio_y) * shape[0]))
     return Pixel(vertical=pixel_v, horizontal=pixel_h)
+
 
 def pixel_to_xy(pixel, extent, shape):
     """Take an xy location on an image and convert it to a pixel location
@@ -99,11 +96,12 @@ def pixel_to_xy(pixel, extent, shape):
     # ratio_y = (xy.y-extent.bottom)/(extent.top-extent.bottom)
     # # (1 - ratio) for y because images are top indexed
     # pixel_v = int(round((1 - ratio_y) * shape[0]))
-    ratio_h = (pixel.horizontal/shape[1])
-    x = extent.left + ratio_h * (extent.right-extent.left)
-    ratio_v = (pixel.vertical/shape[0])
+    ratio_h = (pixel.horizontal / shape[1])
+    x = extent.left + ratio_h * (extent.right - extent.left)
+    ratio_v = (pixel.vertical / shape[0])
     y = extent.top - ratio_v * (extent.top - extent.bottom)
     return xycoord(x=x, y=y)
+
 
 def average_frames(*frames):
     """Accept several frames and return the first frame with new image
@@ -113,8 +111,7 @@ def average_frames(*frames):
     for frame in frames:
         new_image += frame.image_data
     # Divide to get average
-    count = len(frames)
-    new_image = new_image/len(frames)
+    new_image = new_image / len(frames)
     # Return average data as a txm frame
     new_frame = frames[0]
     new_frame.image_data = new_image
@@ -124,7 +121,7 @@ def average_frames(*frames):
 class TXMFrame():
     """A single microscopy image at a certain energy."""
 
-    image_data = np.zeros(shape=(1024,1024))
+    image_data = np.zeros(shape=(1024, 1024))
     _attrs = {}
     energy = HDFAttribute('energy', default=0.0)
     approximate_energy = HDFAttribute('approximate_energy', default=0.0)
@@ -132,9 +129,11 @@ class TXMFrame():
     _sample_position = HDFAttribute('sample_position',
                                     default=position(0, 0, 0),
                                     wrapper=lambda coords: position(*coords))
-    approximate_position = HDFAttribute('approximate_position',
-                                        default=position(0, 0, 0),
-                                        wrapper=lambda coords: position(*coords))
+    approximate_position = HDFAttribute(
+        'approximate_position',
+        default=position(0, 0, 0),
+        wrapper=lambda coords: position(*coords)
+    )
     _starttime = HDFAttribute('starttime')
     _endtime = HDFAttribute('endtime')
     is_background = HDFAttribute('is_background', default=False)
@@ -182,7 +181,7 @@ class TXMFrame():
 
     @starttime.setter
     def starttime(self, newdt):
-        self._starttime =  newdt.isoformat()
+        self._starttime = newdt.isoformat()
 
     @property
     def endtime(self):
@@ -190,11 +189,11 @@ class TXMFrame():
 
     @endtime.setter
     def endtime(self, newdt):
-        self._endtime =  newdt.isoformat()
+        self._endtime = newdt.isoformat()
 
     def transmission_data(self, background_group):
         bg_data = self.background_dataset(group=background_group)
-        return bg_data/np.exp(self.image_data)
+        return bg_data / np.exp(self.image_data)
 
     def background_dataset(self, group):
         return group[self.key()]
@@ -218,20 +217,21 @@ class TXMFrame():
         top = center.y + y_pixels * um_per_pixel.y / 2
         return Extent(left=left, right=right, bottom=bottom, top=top)
 
-    def plot_histogram(self, ax=None, *args, **kwargs):
+    def plot_histogram(self, ax=None, bins=100, *args, **kwargs):
         if ax is None:
             ax = plots.new_axes()
         ax.set_xlabel('Absorbance (AU)')
         ax.set_ylabel('Occurences')
         data = np.nan_to_num(self.image_data.value)
-        artist = ax.hist(data.flat, bins=100, *args, **kwargs)
+        artist = ax.hist(data.flatten(), bins=bins, *args, **kwargs)
         return artist
 
-    def plot_image(self, data=None, ax=None, show_particles=True, *args, **kwargs):
+    def plot_image(self, data=None, ax=None,
+                   show_particles=True, *args, **kwargs):
         """Plot a frame's data image. Use frame.image_data if no data are
         given."""
         if ax is None:
-            ax=plots.new_image_axes()
+            ax = plots.new_image_axes()
         if data is None:
             data = self.image_data
         extent = self.extent(shape=data.shape)
@@ -263,8 +263,9 @@ class TXMFrame():
             artists.append(ax.imshow(masked_data, *args, alpha=opacity,
                                      cmap="Dark2", extent=extent, **kwargs))
             # Plot text for label index
-            xs = [particle.sample_position().x for particle in self.particles()]
-            ys = [particle.sample_position().y for particle in self.particles()]
+            particles = self.particles()
+            xs = [particle.sample_position().x for particle in particles]
+            ys = [particle.sample_position().y for particle in particles]
             for idx, x in enumerate(xs):
                 y = ys[idx]
                 txt = ax.text(x, y, str(idx),
@@ -279,8 +280,8 @@ class TXMFrame():
         d = np.abs(self.image_data - np.median(self.image_data))
         sdev = np.std(self.image_data)
         # mdev = np.median(d)
-        s = d/sdev if sdev else 0.
-        self.image_data[s>=sigma] = 0
+        s = d / sdev if sdev else 0.
+        self.image_data[s >= sigma] = 0
 
     def crop(self, top, left, bottom, right):
         """Reduce the image size to given box (in pixels)."""
@@ -290,16 +291,17 @@ class TXMFrame():
         self.shift_data(x_offset=-left, y_offset=-top,
                         dataset=self.particle_labels())
         # Shrink images to bounding box size
-        self.image_data.resize((bottom-top, right-left))
-        labels.resize((bottom-top, right-left))
+        new_shape = shape(rows=(bottom - top), columns=(right - left))
+        self.image_data.resize(new_shape)
+        labels.resize(new_shape)
         # Reassign the active particle index (assume largest particle)
         areas = [particle.area() for particle in self.particles()]
         new_idx = areas.index(max(areas))
         self.active_particle_idx = new_idx
 
     def shift_data(self, x_offset, y_offset, dataset=None):
-        """Move the image within the view field by the given offsets in pixels.
-        New values are rolled around to the other side.
+        """Move the image within the view field by the given offsets in
+        pixels.  New values are rolled around to the other side.
 
         Arguments
         ---------
@@ -308,9 +310,8 @@ class TXMFrame():
         y_offset : int
             Distance to move in pixels in y-diraction
         dataset : Dataset
-            Optional dataset to manipulate . If None, self.image_data will
-            be used (default None)
-
+            Optional dataset to manipulate . If None, self.image_data
+            will be used (default None)
         """
         if dataset is None:
             dataset = self.image_data
@@ -350,7 +351,7 @@ class TXMFrame():
             raise ValueError("Must pass one of `shape` or `factor`")
         elif shape is None:
             # Determine new shape from factor if not provided.
-            new_shape = tuple(int(dim/factor) for dim in original_shape)
+            new_shape = tuple(int(dim / factor) for dim in original_shape)
         else:
             new_shape = shape
         # Calculate new, rebinned image data
@@ -373,8 +374,8 @@ class TXMFrame():
     def um_per_pixel(self):
         """Use image size and nominal image field-of view of 40µm x 40µm to
         compute spatial resolution."""
-        um_per_pixel_x = 40/self.image_data.shape[1]
-        um_per_pixel_y = 40/self.image_data.shape[0]
+        um_per_pixel_x = 40 / self.image_data.shape[1]
+        um_per_pixel_y = 40 / self.image_data.shape[0]
         return xycoord(x=um_per_pixel_x,
                        y=um_per_pixel_y)
 
@@ -411,7 +412,7 @@ class TXMFrame():
     def activate_closest_particle(self, loc):
         """Get a particle that's closest to frame location and save for future
         reference."""
-        if loc: # Some calling routines may pass `None`
+        if loc:  # Some calling routines may pass `None`
             self.active_particle_idx = self.closest_particle_idx(loc)
             return self.particles()[self.active_particle_idx]
         else:
@@ -424,7 +425,9 @@ class TXMFrame():
         current_idx = None
         for idx, particle in enumerate(particles):
             center = particle.sample_position()
-            distance = math.sqrt((loc[0]-center[0])**2 + (loc[1]-center[1])**2)
+            distance = math.sqrt(
+                (loc[0] - center[0])**2 + (loc[1] - center[1])**2
+            )
             if distance < current_min:
                 # New closest match
                 current_min = distance
@@ -438,6 +441,7 @@ class TXMFrame():
         for prop in props:
             particles.append(Particle(regionprops=prop, frame=self))
         return particles
+
 
 def calculate_particle_labels(data, return_intermediates=False,
                               min_distance=0.016):
@@ -466,13 +470,13 @@ def calculate_particle_labels(data, return_intermediates=False,
         original = data
         in_range = (data.min(), data.max())
         equalized = rescale_intensity(original,
-                                     in_range=in_range,
-                                     out_range=(0, 1))
+                                      in_range=in_range,
+                                      out_range=(0, 1))
         # Identify foreground vs background with adaptive Otsu filter
-        average_shape = sum(equalized.shape)/len(equalized.shape)
-        threshold = filters.threshold_otsu(equalized)
-        multiplier = 1
-        block_size = average_shape / 2.72 # Determined emperically
+        average_shape = sum(equalized.shape) / len(equalized.shape)
+        # threshold = filters.threshold_otsu(equalized)
+        # multiplier = 1
+        block_size = average_shape / 2.72  # Determined emperically
         mask = threshold_adaptive(equalized, block_size=block_size, offset=0)
         mask_copy = np.copy(mask)
         # Determine minimum size for discarding small objects
@@ -485,9 +489,11 @@ def calculate_particle_labels(data, return_intermediates=False,
         # Compute each pixel's distance from the edge of a blob
         distances = ndimage.distance_transform_edt(dilated)
         in_range = (distances.min(), distances.max())
-        distances = rescale_intensity(distances, in_range=in_range, out_range=(0, 1))
+        distances = rescale_intensity(distances,
+                                      in_range=in_range,
+                                      out_range=(0, 1))
         # Blur the distances to help avoid split particles
-        mean_distances = rank.mean(distances, disk(average_shape/64))
+        mean_distances = rank.mean(distances, disk(average_shape / 64))
         # Use the local distance maxima as peak centers and compute labels
         local_maxima = peak_local_max(
             mean_distances,

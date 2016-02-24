@@ -10,6 +10,7 @@ from .unitcell import CubicUnitCell, TetragonalUnitCell
 from .reflection import Reflection
 from refinement.fullprof import FullProfPhase, ProfileMatch
 
+
 class CubicLMO(Phase):
     name = 'cubic LiMn2O4'
     unit_cell = CubicUnitCell(a=8)
@@ -57,6 +58,7 @@ class TetragonalLMO(Phase):
         Reflection('000', (39.5, 40.5)),
     ]
 
+
 class HighVPhase(FullProfPhase, CubicLMO):
     unit_cell = CubicUnitCell(a=8.053382)
     diagnostic_hkl = '333'
@@ -74,6 +76,7 @@ class HighVPhase(FullProfPhase, CubicLMO):
     x = 0.013
     isotropic_temp = -2.1903
     scale_factor = 0.05
+
 
 class MidVPhase(FullProfPhase, CubicLMO):
     unit_cell = CubicUnitCell(a=8.12888)
@@ -93,21 +96,30 @@ class MidVPhase(FullProfPhase, CubicLMO):
     x = 0.013
     isotropic_temp = -3.7293
 
+
 # Prepare materials with new reflections
 class MidV440Phase(MidVPhase):
     diagnostic_hkl = '440'
+
+
 class HighV440Phase(HighVPhase):
     diagnostic_hkl = '440'
+
+
 class MidV531Phase(MidVPhase):
     diagnostic_hkl = '531'
+
+
 class HighV531Phase(HighVPhase):
     diagnostic_hkl = '531'
+
 
 class LMORefinement(ProfileMatch):
     bg_coeffs = [0.409, 14.808, -14.732, -10.292, 34.249, -28.046]
     zero = -0.001360
     displacement = 0.000330
     transparency = -0.008100
+
 
 # Define a new class for mapping the two-phase plateau
 class LMOPlateauMap(XRDMap):

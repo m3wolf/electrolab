@@ -15,7 +15,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with Foobar.  If not, see <http://www.gnu.org/licenses/>.
+# along with Scimap.  If not, see <http://www.gnu.org/licenses/>.
 
 """A collection of classes and functions that arent' specific to any
 one type of measurement. Also, it defines some namedtuples for
@@ -24,13 +24,13 @@ describing coordinates.
 
 from collections import namedtuple
 import sys
-import os
 
-from tqdm import tqdm_gui, tqdm
+from tqdm import tqdm
 
 xycoord = namedtuple('xycoord', ('x', 'y'))
 Pixel = namedtuple('Pixel', ('vertical', 'horizontal'))
 shape = namedtuple('shape', ('rows', 'columns'))
+
 
 class Prog:
     """A progress bar for displaying how many iterations have been
@@ -42,6 +42,7 @@ class Prog:
     __global_state = {
         'quiet': False
     }
+
     def __init__(self):
         self.__dict__ = self.__global_state
 

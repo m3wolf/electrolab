@@ -2,16 +2,17 @@
 
 import math
 
+
 class Cube():
     """Cubic coordinates of a hexagon"""
     @staticmethod
     def from_xy(xy, unit_size):
         x, y = (xy[0], xy[1])
-        j = (y/math.sqrt(3)-x)/unit_size
-        i = 2*y/math.sqrt(3)/unit_size - j
+        j = (y / math.sqrt(3) - x) / unit_size
+        i = 2 * y / math.sqrt(3) / unit_size - j
         i = round(i)
         j = round(j)
-        return Cube(i, j, -(i+j))
+        return Cube(i, j, -(i + j))
 
     def __init__(self, i, j, k, *args, **kwargs):
         self.i = i

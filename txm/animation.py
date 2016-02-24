@@ -1,5 +1,6 @@
 from matplotlib import animation
 
+
 class FrameAnimation(animation.ArtistAnimation):
     def __init__(self, fig, artists, *args, **kwargs):
         self.fig = fig

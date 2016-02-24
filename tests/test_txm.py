@@ -1,4 +1,23 @@
 # -*- coding: utf-8 -*-
+#
+# Copyright © 2016 Mark Wolf
+#
+# This file is part of scimap.
+#
+# Scimap is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# Scimap is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with Scimap.  If not, see <http://www.gnu.org/licenses/>.
+
+# flake8: noqa
 
 import datetime as dt
 import unittest
@@ -7,18 +26,21 @@ import math
 import os
 
 import numpy as np
-import h5py
+import pandas as pd
 from matplotlib.colors import Normalize
 import pytz
 
+from tests.cases import HDFTestCase, ScimapTestCase
 from utilities import xycoord, prog
-from txm.xanes_frameset import XanesFrameset
+from peakfitting import Peak
+from txm.xanes_frameset import XanesFrameset, calculate_whiteline, fit_whiteline
 from txm.frame import (
     average_frames, TXMFrame, xy_to_pixel, pixel_to_xy, Extent, Pixel,
-    rebin_image, apply_reference)
+    rebin_image, apply_reference, position)
 from txm.edges import Edge, k_edges
 from txm.importers import import_txm_framesets
-from txm.xradia import decode_ssrl_params, XRMFile
+from txm.xradia import XRMFile, decode_ssrl_params, decode_aps_params
+from txm.beamlines import sector8_xanes_script, Zoneplate, ZoneplatePoint, Detector
 from txm import xanes_frameset
 from txm import plotter
 
@@ -26,19 +48,169 @@ testdir = os.path.join(os.path.dirname(__file__), 'testdata')
 ssrldir = os.path.join(testdir, 'ssrl-txm-data')
 apsdir = os.path.join(testdir, 'aps-txm-data')
 
-class HDFTestCase(unittest.TestCase):
-    """A test case that sets up and tears down an HDF file."""
-    def setUp(self):
-        curdir = os.path.dirname(os.path.realpath(__file__))
-        self.hdf_filename = os.path.join(curdir, 'txm-frame-test.hdf')
-        if os.path.exists(self.hdf_filename):
-            os.remove(self.hdf_filename)
-        self.hdf_file = h5py.File(self.hdf_filename, 'w-')
 
-    def tearDown(self):
-        self.hdf_file.close()
-        if os.path.exists(self.hdf_filename):
-            os.remove(self.hdf_filename)
+class ApsScriptTest(unittest.TestCase):
+    """Verify that a script is created for running an operando
+    TXM experiment at APS beamline 8-BM-B."""
+
+    def setUp(self):
+        self.output_path = os.path.join(testdir, 'aps_script.txt')
+        # Check to make sure the file doesn't already exists
+        if os.path.exists(self.output_path):
+            os.remove(self.output_path)
+        assert not os.path.exists(self.output_path)
+        # Values taken from APS beamtime on 2015-11-11
+        self.zp = Zoneplate(
+            start=ZoneplatePoint(z=3110.7, energy=8313),
+            step=9.9329 / 2 # Original script assumed 2eV steps
+        )
+        self.det = Detector(
+            start=ZoneplatePoint(z=389.8, energy=8313),
+            step=0.387465 / 2 # Original script assumed 2eV steps
+        )
+
+    def tear_down(self):
+        pass
+    # os.remove(self.output_path)
+
+    def test_file_created(self):
+        with open(self.output_path, 'w') as f:
+            sector8_xanes_script(dest=f, edge=k_edges["Ni"],
+                                 zoneplate=self.zp, detector=self.det,
+                                 names=["test_sample"], sample_positions=[])
+        # Check that a file was created
+        self.assertTrue(
+            os.path.exists(self.output_path)
+        )
+
+    def test_binning(self):
+        with open(self.output_path, 'w') as f:
+            sector8_xanes_script(dest=f, edge=k_edges["Ni"],
+                                 binning=2, zoneplate=self.zp,
+                                 detector=self.det, names=[],
+                                 sample_positions=[])
+        with open(self.output_path, 'r') as f:
+            firstline = f.readline().strip()
+        self.assertEqual(firstline, "setbinning 2")
+
+    def test_exposure(self):
+        with open(self.output_path, 'w') as f:
+            sector8_xanes_script(dest=f, edge=k_edges["Ni"],
+                                 exposure=44, zoneplate=self.zp,
+                                 detector=self.det, names=["test_sample"],
+                                 sample_positions=[])
+        with open(self.output_path, 'r') as f:
+            f.readline()
+            secondline = f.readline().strip()
+        self.assertEqual(secondline, "setexp 44")
+
+    def test_energy_approach(self):
+        """This instrument can behave poorly unless the target energy is
+        approached from underneath (apparently)."""
+        with open(self.output_path, 'w') as f:
+            sector8_xanes_script(dest=f, edge=k_edges['Ni'],
+                                 zoneplate=self.zp, detector=self.det,
+                                 names=[], sample_positions=[])
+        with open(self.output_path, 'r') as f:
+            lines = f.readlines()
+        # Check that the first zone plate is properly set
+
+    def test_first_frame(self):
+        with open(self.output_path, 'w') as f:
+            sector8_xanes_script(
+                dest=f,
+                edge=k_edges['Ni'],
+                sample_positions=[position(x=1653, y=-1727, z=0)],
+                zoneplate=self.zp,
+                detector=self.det,
+                names=["test_sample"],
+            )
+        with open(self.output_path, 'r') as f:
+            lines = f.readlines()
+        # Check that x, y are set
+        self.assertEqual(lines[2].strip(), "moveto x 1653.00")
+        self.assertEqual(lines[3].strip(), "moveto y -1727.00")
+        self.assertEqual(lines[4].strip(), "moveto z 0.00")
+        # Check that the energy approach lines are in tact
+        self.assertEqual(lines[5].strip(), "moveto energy 8150.00")
+        self.assertEqual(lines[54].strip(), "moveto energy 8248.00")
+        # Check that energy is set
+        self.assertEqual(lines[55].strip(), "moveto energy 8250.00")
+        # Check that zone-plate and detector are set
+        self.assertEqual(lines[56].strip(), "moveto zpz 2797.81")
+        self.assertEqual(lines[57].strip(), "moveto detz 377.59")
+        # Check that collect command is sent
+        self.assertEqual(
+            lines[58].strip(),
+            "collect test_sample_xanes0_8250_0eV.xrm"
+        )
+
+    def test_second_location(self):
+        with open(self.output_path, 'w') as f:
+            sector8_xanes_script(
+                dest=f,
+                edge=k_edges['Ni'],
+                sample_positions=[position(x=1653, y=-1727, z=0),
+                                  position(x=1706.20, y=-1927.20, z=0)],
+                zoneplate=self.zp,
+                detector=self.det,
+                names=["test_sample", "test_reference"],
+            )
+        with open(self.output_path, 'r') as f:
+            lines = f.readlines()
+        self.assertEqual(lines[247], "moveto x 1706.20\n")
+        self.assertEqual(lines[248], "moveto y -1927.20\n")
+        self.assertEqual(lines[250].strip(), "moveto energy 8150.00")
+
+    def test_multiple_iterations(self):
+        with open(self.output_path, 'w') as f:
+            sector8_xanes_script(
+                dest=f,
+                edge=k_edges['Ni'],
+                sample_positions=[position(x=1653, y=-1727, z=0),
+                                  position(x=1706.20, y=-1927.20, z=0)],
+                zoneplate=self.zp,
+                detector=self.det,
+                iterations=["ocv"] + ["{:02d}".format(soc) for soc in range(1, 10)],
+                names=["test_sample", "test_reference"],
+            )
+        with open(self.output_path, 'r') as f:
+            lines = f.readlines()
+        self.assertEqual(
+            lines[58].strip(),
+            "collect test_sample_xanesocv_8250_0eV.xrm"
+        )
+        self.assertEqual(
+            lines[1090].strip(),
+            "collect test_sample_xanes02_8342_0eV.xrm"
+        )
+
+
+class ZoneplateTest(ScimapTestCase):
+    def setUp(self):
+        # Values taken from APS beamtime on 2015-11-11
+        self.zp = Zoneplate(
+            start=ZoneplatePoint(z=3110.7, energy=8313),
+            step=9.9329 / 2 # Original script assumed 2eV steps
+        )
+
+    def test_constructor(self):
+        with self.assertRaises(ValueError):
+            # Either `step` or `end` must be passed
+            Zoneplate(start=None)
+        with self.assertRaises(ValueError):
+            # Passing both step and end is confusing
+            Zoneplate(start=None, step=1, end=1)
+        # Check that step is set if not expicitely passed
+        zp = Zoneplate(
+            start=ZoneplatePoint(z=3110.7, energy=8313),
+            end=ZoneplatePoint(z=3120.6329, energy=8315)
+        )
+        self.assertApproximatelyEqual(zp.step, 9.9329 / 2)
+
+    def test_z_from_energy(self):
+        result = self.zp.z_position(energy=8315)
+        self.assertApproximatelyEqual(result, 3120.6329)
 
 
 class XrayEdgeTest(unittest.TestCase):
@@ -64,34 +236,95 @@ class XrayEdgeTest(unittest.TestCase):
         )
 
 
-class TXMMapTest(HDFTestCase):
-    def setUp(self):
-        ret = super().setUp()
-        # Create an HDF Frameset for testing
-        self.fs = XanesFrameset(filename=self.hdf_filename,
-                                groupname='mapping-test')
-        for i in range(0, 3):
-            frame = TXMFrame()
-            frame.energy = i + 8000
-            ds = np.zeros(shape=(3, 3))
-            ds[:] = i + 1
-            frame.image_data = ds
-            self.fs.add_frame(frame)
-        self.fs[1].image_data.write_direct(np.array([
-            [0, 1, 4],
-            [1, 2.5, 1],
-            [4, 6, 0]
-        ]))
-        return ret
+# class TXMMapTest(HDFTestCase):
 
-    def test_max_energy(self):
-        expected = [
-            [8002, 8002, 8001],
-            [8002, 8002, 8002],
-            [8001, 8001, 8002]
+#     def setUp(self):
+#         ret = super().setUp()
+#         # Disable progress bars and notifications
+#         prog.quiet = True
+#         # Create an HDF Frameset for testing
+#         self.fs = XanesFrameset(filename=self.hdf_filename,
+#                                 groupname='mapping-test',
+#                                 edge=k_edges['Ni'])
+#         for i in range(0, 3):
+#             frame = TXMFrame()
+#             frame.energy = i + 8342
+#             print(frame.energy)
+#             frame.approximate_energy = frame.energy
+#             ds = np.zeros(shape=(3, 3))
+#             ds[:] = i + 1
+#             frame.image_data = ds
+#             self.fs.add_frame(frame)
+#         self.fs[1].image_data.write_direct(np.array([
+#             [0, 1, 4],
+#             [1, 2.5, 1],
+#             [4, 6, 0]
+#         ]))
+#         return ret
+
+#     def test_max_energy(self):
+#         expected = [
+#             [8344, 8344, 8343],
+#             [8344, 8344, 8344],
+#             [8343, 8343, 8344]
+#         ]
+#         result = self.fs.whiteline_map()
+#         print(result)
+#         self.assertTrue(np.array_equal(result, expected))
+
+
+class TXMMathTest(ScimapTestCase):
+    """Holds tests for functions that perform base-level calculations."""
+
+    def test_calculate_whiteline(self):
+        absorbances = [700, 705, 703]
+        energies = [50, 55, 60]
+        data = pd.Series(absorbances, index=energies)
+        out, goodness = calculate_whiteline(data)
+        self.assertApproximatelyEqual(out, 57.33)
+        # Test using multi-dimensional absorbances (eg. image frames)
+        absorbances = [np.array([700, 700]),
+                       np.array([705, 703]),
+                       np.array([703, 707])]
+        data = pd.Series(absorbances, index=energies)
+        out, goodness = calculate_whiteline(data)
+        self.assertApproximatelyEqual(out[0], 57.33)
+        self.assertApproximatelyEqual(out[1], 57.98)
+
+    def test_2d_whiteline(self):
+        # Test using two-dimensional absorbances (ie. image frames)
+        absorbances = [
+            np.array([[502, 600],
+                      [700, 800]]),
+            np.array([[501, 601],
+                      [702, 802]]),
+            np.array([[500, 603],
+                      [701, 801]]),
         ]
-        result = self.fs.whiteline_map()
-        self.assertTrue(np.array_equal(result, expected))
+        energies = [50, 55, 60]
+        data = pd.Series(absorbances, index=energies)
+        out, goodness = calculate_whiteline(data)
+        expected = [[50, 60],
+                    [55, 55]]
+        self.assertApproximatelyEqual(out[0][0], 52.25)
+        self.assertApproximatelyEqual(out[0][1], 58.16)
+        self.assertApproximatelyEqual(out[1][0], 57.27)
+        self.assertApproximatelyEqual(out[1][1], 57.27)
+
+    def test_fit_whiteline(self):
+        filename = 'tests/testdata/NCA-cell2-soc1-fov1-xanesspectrum.tsv'
+        data = pd.Series.from_csv(filename, sep="\t")
+        data = data[8325:8360]
+        peak, goodness = fit_whiteline(data, width=5)
+        self.assertTrue(8352 < peak.center() < 8353,
+                        "Center not within range {} eV".format(peak.center()))
+
+        # Check that the residual differences are not too high
+        # residuals = peak.residuals
+        self.assertTrue(
+            goodness < 0.01,
+            "residuals too high: {}".format(goodness)
+        )
 
 
 class TXMImporterTest(unittest.TestCase):
@@ -161,6 +394,18 @@ class TXMFrameTest(HDFTestCase):
         # Check that the averaging is correct
         self.assertTrue(np.array_equal(avg_frame.image_data, expected_array))
 
+    def test_params_from_aps(self):
+        """Check that the new naming scheme is decoded properly."""
+        ref_filename = "ref_xanesocv_8250_0eV.xrm"
+        result = decode_aps_params(ref_filename)
+        expected = {
+            'sample_name': 'ocv',
+            'position_name': 'ref',
+            'is_background': True,
+            'energy': 8250.0,
+        }
+        self.assertEqual(result, expected)
+
     def test_params_from_ssrl(self):
         # First a reference frame
         ref_filename = "rep01_000001_ref_201511202114_NCA_INSITU_OCV_FOV01_Ni_08250.0_eV_001of010.xrm"
@@ -189,26 +434,27 @@ class TXMFrameTest(HDFTestCase):
         sample_filename = "rep01_201502221044_NAT1050_Insitu03_p01_OCV_08250.0_eV_001of002.xrm"
         xrm = XRMFile(os.path.join(ssrldir, sample_filename), flavor="ssrl")
         # Check start time
-        start = dt.datetime(2015, 2, 22, 10, 47, 19, tzinfo=pytz.timezone('US/Pacific'))
+        start = dt.datetime(2015, 2, 22,
+                            10, 47, 19,
+                            tzinfo=pytz.timezone('US/Pacific'))
         self.assertEqual(xrm.starttime(), start)
         # Check end time (offset determined by exposure time)
-        end = dt.datetime(2015, 2, 22, 10, 47, 19, 500000, tzinfo=pytz.timezone('US/Pacific'))
+        end = dt.datetime(2015, 2, 22,
+                          10, 47, 19, 500000,
+                          tzinfo=pytz.timezone('US/Pacific'))
         self.assertEqual(xrm.endtime(), end)
+        xrm.close()
 
         # Test APS frame
         sample_filename = "20151111_UIC_XANES00_sam01_8313.xrm"
-        xrm = XRMFile(os.path.join(apsdir, sample_filename), flavor="aps")
+        xrm = XRMFile(os.path.join(apsdir, sample_filename), flavor="aps-old1")
         # Check start time
         start = dt.datetime(2015, 11, 11, 15, 42, 38, tzinfo=pytz.timezone('US/Central'))
         self.assertEqual(xrm.starttime(), start)
         # Check end time (offset determined by exposure time)
         end = dt.datetime(2015, 11, 11, 15, 43, 16, tzinfo=pytz.timezone('US/Central'))
         self.assertEqual(xrm.endtime(), end)
-
-    # def test_magnification_from_xrm(self):
-    #     sample_filename = "rep01_201502221044_NAT1050_Insitu03_p01_OCV_08250.0_eV_001of002.xrm"
-    #     xrm = XRMFile(os.path.join(ssrldir, sample_filename), flavor="ssrl")
-    #     self.assertEqual(xrm.magnification(), 1)
+        xrm.close()
 
     def test_xy_to_pixel(self):
         extent = Extent(
@@ -368,13 +614,13 @@ class MockFrameset(XanesFrameset):
             frame.image_data.value = d
             yield frame
 
-class TXMGtkViewerTest(unittest.TestCase):
-    @unittest.expectedFailure
-    def test_background_frame(self):
-        from txm import gtk_viewer
-        fs = MockFrameset()
-        viewer = gtk_viewer.GtkTxmViewer(frameset=fs,
-                                         plotter=plotter.DummyGtkPlotter(frameset=fs))
+# class TXMGtkViewerTest(unittest.TestCase):
+#     @unittest.expectedFailure
+#     def test_background_frame(self):
+#         from txm import gtk_viewer
+#         fs = MockFrameset()
+#         viewer = gtk_viewer.GtkTxmViewer(frameset=fs,
+#                                          plotter=plotter.DummyGtkPlotter(frameset=fs))
 
 if __name__ == '__main__':
     unittest.main()

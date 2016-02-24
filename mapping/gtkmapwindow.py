@@ -3,14 +3,15 @@
 import os
 
 import numpy
-import pandas
 import gi
-gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk, Gdk
 from matplotlib import figure
-from matplotlib.backends.backend_gtk3agg import FigureCanvasGTK3Agg as FigureCanvas
+from matplotlib.backends.backend_gtk3agg import FigureCanvasGTK3Agg as FigureCanvas  # noqa
 
 from mapping.coordinates import Cube
+
+gi.require_version('Gtk', '3.0')
+
 
 class GtkMapWindow(Gtk.Window):
     """
@@ -20,6 +21,7 @@ class GtkMapWindow(Gtk.Window):
     map_hexagon = None
     image_hexagon = None
     composite_hexagon = None
+
     def __init__(self, *args, parent_map, **kwargs):
         self.parent_map = parent_map
         self.currentLocus = self.parent_map.locus(Cube(0, 0, 0))
@@ -44,7 +46,7 @@ class GtkMapWindow(Gtk.Window):
         sw = Gtk.ScrolledWindow()
         # Prepare plotting area
         canvas = FigureCanvas(self.fig)
-        canvas.set_size_request(400,400)
+        canvas.set_size_request(400, 400)
         box.pack_start(sw, True, True, 0)
         sw.add(canvas)
         self.draw_plots()
@@ -86,7 +88,7 @@ class GtkMapWindow(Gtk.Window):
             activeLocus = None
         # Plot diffractogram (either bulk or local)
         self.locusAxes = self.fig.add_subplot(222)
-        self.locusAxes.cla() # Clear axes
+        self.locusAxes.cla()
         self.plot_locus_detail(locus=activeLocus)
         # Draw individual locus's image or histogram
         self.locusImageAxes.clear()
@@ -110,7 +112,6 @@ class GtkMapWindow(Gtk.Window):
         # Return some random data
         twoTheta = numpy.linspace(10, 80, num=700)
         counts = numpy.random.rand(len(twoTheta))
-        intensity = pandas.DataFrame(counts, index=twoTheta, columns=['counts'])
         self.locusAxes.plot(twoTheta, counts)
         return self.locusAxes
 
@@ -158,7 +159,7 @@ class GtkMapWindow(Gtk.Window):
 
     def update_details(self):
         """Set the sidebar text details."""
-        if self.local_mode == True:
+        if self.local_mode:
             self.dataSummary.update_data(self.currentLocus)
         else:
             self.dataSummary.set_default_data()
@@ -260,6 +261,7 @@ class ReliabilityBox(ValueBox):
 class DataSummaryBox(Gtk.Box):
     """Three-section box that shows a summary of data for a Locus."""
     padding = 10
+
     def __init__(self, *args, **kwargs):
         retVal = super(DataSummaryBox, self).__init__(*args, **kwargs)
         # Prepare Location box

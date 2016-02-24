@@ -4,7 +4,7 @@ from .phase import Phase
 from .unitcell import HexagonalUnitCell, CubicUnitCell
 from .reflection import Reflection
 
-# Corundum standard
+
 class Corundum(Phase):
     name = 'corundum'
     unit_cell = HexagonalUnitCell(a=4.75, c=12.982)

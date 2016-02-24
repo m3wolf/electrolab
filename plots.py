@@ -22,6 +22,7 @@
 from matplotlib import pyplot
 from matplotlib.ticker import ScalarFormatter
 
+
 class ElectronVoltFormatter(ScalarFormatter):
     """Matplotlib formatter for showing energies as electon-volts."""
     def __call__(self, *args, **kwargs):
@@ -46,6 +47,7 @@ def remove_extra_spines(ax):
     ax.xaxis.set_ticks_position('bottom')
     return ax
 
+
 def set_outside_ticks(ax):
     """Convert all the axes so that the ticks are on the outside and don't
     obscure data."""
@@ -53,11 +55,12 @@ def set_outside_ticks(ax):
     ax.get_xaxis().set_tick_params(which='both', direction='out')
     return ax
 
+
 def new_axes(height=5, width=None):
     """Create a new set of matplotlib axes for plotting. Height in inches."""
     # Adjust width to accomodate colorbar
     if width is None:
-        width = height/0.8
+        width = height / 0.8
     fig = pyplot.figure(figsize=(width, height))
     # Set background to be transparent
     fig.patch.set_alpha(0)
@@ -67,19 +70,23 @@ def new_axes(height=5, width=None):
     remove_extra_spines(ax)
     return ax
 
+
 def new_image_axes(height=5, width=5):
     """Square axes with ticks on the outside."""
     ax = new_axes(height, width)
     return set_outside_ticks(ax)
 
+
 def big_axes():
     """Return a new Axes object, but larger than the default."""
     return new_axes(height=9, width=16)
+
 
 def xrd_axes():
     """Return a new Axes object, with a size appropriate for display x-ray
     diffraction data."""
     return new_axes(width=8)
+
 
 def dual_axes(orientation='horizontal'):
     """Two new axes for mapping, side-by-side."""
@@ -95,6 +102,7 @@ def dual_axes(orientation='horizontal'):
     remove_extra_spines(ax1)
     remove_extra_spines(ax2)
     return (ax1, ax2)
+
 
 def plot_scans(scan_list, step_size=0, ax=None):
     """Plot a series of XRDScans as a waterfall. step_size controls the
@@ -120,6 +128,7 @@ def plot_scans(scan_list, step_size=0, ax=None):
     ax.set_xlabel(r'$2\theta$')
     ax.set_ylabel('counts')
     return ax
+
 
 def plot_txm_intermediates(images):
     """Accept a dictionary of images and plots them each on its own

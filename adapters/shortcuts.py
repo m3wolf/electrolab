@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 import os
 
-import adapters, exceptions
+import adapters
+import exceptions
 
 FILE_ADAPTERS = {
     '.plt': adapters.BrukerPltFile,
@@ -10,6 +11,7 @@ FILE_ADAPTERS = {
     '.brml': adapters.BrukerBrmlFile,
     '.gfrm': adapters.BrukerGfrmFile
 }
+
 
 def adapter_from_filename(filename):
     """
@@ -23,8 +25,8 @@ def adapter_from_filename(filename):
         Adapter = FILE_ADAPTERS[extension]
     except KeyError:
         # Unknown file format, raise exception
-        msg = 'Unknown file format {extension} ({filename}).'.format(extension=extension,
-                                                                   filename=filename)
+        msg = 'Unknown file format {extension} ({filename}).'
+        msg = msg.format(extension=extension, filename=filename)
         raise exceptions.FileFormatError(msg)
     else:
         adapter = Adapter(filename)

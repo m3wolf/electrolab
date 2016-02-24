@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 
-import pandas as pd
 
 class FullProfDataFile():
     def __init__(self, filename):
@@ -12,4 +11,8 @@ class FullProfDataFile():
         suitable for feeding into the FullProf refinement program.
         """
         df = scan.diffractogram
-        result = df.to_csv(self.filename, columns=['counts'], sep=' ', header=False)
+        result = df.to_csv(self.filename,
+                           columns=['counts'],
+                           sep=' ',
+                           header=False)
+        return result

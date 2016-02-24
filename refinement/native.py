@@ -8,9 +8,11 @@ import pandas
 
 import exceptions
 import plots
-from xrd.peak import remove_peak_from_df, XRDPeak
+from xrd.peak import XRDPeak
+from peakfitting import remove_peak_from_df
 from refinement.base import BaseRefinement
 from mapping.datadict import DataDict
+
 
 class NativeRefinement(BaseRefinement):
     data_dict = DataDict(['spline', 'is_refined'])
@@ -19,10 +21,9 @@ class NativeRefinement(BaseRefinement):
         diffs = []
         wavelength = self.scan.wavelength
         predicted_peaks = phase.predicted_peak_positions(wavelength=wavelength,
-                                                   unit_cell=unit_cell,
-                                                   scan=self.scan)
+                                                         unit_cell=unit_cell,
+                                                         scan=self.scan)
         # Only include those that are within the two_theta range
-        df = self.scan
         phase_idx = self.scan.phases.index(phase)
         actual_peaks = self._peak_list[phase_idx]
         # Make sure lists line up
@@ -34,12 +35,12 @@ class NativeRefinement(BaseRefinement):
         for idx, actual_peak in enumerate(actual_peaks):
             actual = actual_peak.center_kalpha
             predicted = predicted_peaks[idx].two_theta
-            diffs.append(actual-predicted)
+            diffs.append(actual - predicted)
         # Calculate mean-square-difference
         running_total = 0
         for diff in diffs:
             running_total += diff**2
-        rms_error = math.sqrt(running_total/len(diffs))
+        rms_error = math.sqrt(running_total / len(diffs))
         return rms_error
 
     def refine_unit_cells(self, quiet=True):
@@ -67,7 +68,8 @@ class NativeRefinement(BaseRefinement):
             if result.success:
                 # Optimiziation was successful, so set new parameters
                 optimized_parameters = result.x
-                phase.unit_cell.set_cell_parameters_from_list(optimized_parameters)
+                phase.unit_cell.set_cell_parameters_from_list(
+                    optimized_parameters)
                 residual_error = self.peak_rms_error(phase=phase)
                 return residual_error
             else:
@@ -97,7 +99,7 @@ class NativeRefinement(BaseRefinement):
         self.spline = UnivariateSpline(
             x=workingData.index,
             y=workingData.counts,
-            s=len(workingData.index)*25,
+            s=len(workingData.index) * 25,
             k=4
         )
         # Extrapolate the background for the whole pattern
@@ -199,16 +201,14 @@ class NativeRefinement(BaseRefinement):
             phase_peak_list = []
             for reflection in reflection_list:
                 if self.scan.contains_peak(reflection.two_theta_range):
-                    newPeak = XRDPeak(reflection=reflection)
-                    df = self.subtracted.loc[
-                        reflection.two_theta_range[0]:reflection.two_theta_range[1]
-                    ]
+                    left = reflection.two_theta_range[0]
+                    right = reflection.two_theta_range[1]
+                    df = self.subtracted.loc[left:right]
                     # Try each fit method until one works
                     for method in fitMethods:
+                        newPeak = XRDPeak(reflection=reflection, method=method)
                         try:
-                            newPeak.fit(two_theta=df.index,
-                                        intensity=df,
-                                        method=method)
+                            newPeak.fit(df)
                         except exceptions.PeakFitError:
                             # Try next fit
                             continue
@@ -228,7 +228,7 @@ class NativeRefinement(BaseRefinement):
         if spline is not None:
             # Create new axes if necessary
             if ax is None:
-                ax=plots.new_axes()
+                ax = plots.new_axes()
             # Plot background
             two_theta = self.scan.diffractogram.index
             background = self.spline(two_theta)
@@ -236,13 +236,15 @@ class NativeRefinement(BaseRefinement):
         # Highlight peaks
         self.highlight_peaks(ax=ax)
         # Plot peak fittings
-        dataframes = []
+        peaks = []
         for peak in self.peak_list:
-            dataframes.append(peak.dataframe(background=spline))
+            # dataframes.append(peak.dataframe(background=spline))
+            peaks.append(peak.predict())
             # peak.plot_overall_fit(ax=ax, background=spline)
-        if dataframes:
-            df = pandas.concat(dataframes)
-            df.plot(ax=ax)
+        if peaks:
+            predicted = pandas.concat(peaks)
+            predicted = predicted + self.spline(predicted.index)
+            predicted.plot(ax=ax)
         return ax
 
     def highlight_peaks(self, ax):
@@ -252,13 +254,15 @@ class NativeRefinement(BaseRefinement):
             'red',
             'orange'
         ]
+
         def draw_peaks(ax, phase, color):
             """Highlight the expected peak corresponding to this phase."""
             alpha = 0.15
             # Highlight each peak in this phase
             for reflection in phase.reflection_list:
                 two_theta = reflection.two_theta_range
-                ax.axvspan(two_theta[0], two_theta[1], color=color, alpha=alpha)
+                ax.axvspan(two_theta[0], two_theta[1],
+                           color=color, alpha=alpha)
         # Highlight phases
         for idx, phase in enumerate(self.scan.phases):
             draw_peaks(ax=ax, phase=phase, color=color_list[idx])

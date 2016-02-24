@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+
 class DataDict():
     """Provides a convenient way to get a dictionary of pre-computed values."""
     def __init__(self, attrs=[]):

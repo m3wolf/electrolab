@@ -6,15 +6,14 @@ import pickle
 
 from matplotlib import pyplot, cm, patches, colors
 import numpy
-import pandas
 import scipy
 
-import exceptions
 from mapping.coordinates import Cube
 from mapping.locus import Locus, DummyLocus
 from mapping.colormaps import cmaps
 from plots import new_axes, dual_axes
 from utilities import prog
+
 
 class Map():
     """A physical sample that gets mapped by some scientific process,
@@ -24,7 +23,7 @@ class Map():
     cmap_name = 'viridis'
     camera_zoom = 1
     loci = []
-    hexagon_patches = None # Replaced by cached versions
+    hexagon_patches = None  # Replaced by cached versions
     metric_normalizer = colors.Normalize(0, 1, clip=True)
     metric_name = 'Metric'
     reliability_normalizer = colors.Normalize(0, 1, clip=True)
@@ -71,11 +70,6 @@ class Map():
             # Try and determine filename from the sample name
             filebase = "map-{n:x}".format(n=idx)
             new_locus = self.new_locus(location=coords, filebase=filebase)
-            # new_scan = self.cell_class(location=coords, xrd_map=self,
-            #                            filebase=fileBase, phases=phases,
-            #                            background_phases=background_phases,
-            #                            two_theta_range=self.two_theta_range,
-            #                            refinement=self.refinement)
             self.loci.append(new_locus)
 
     def locus(self, cube_coords):
@@ -88,7 +82,7 @@ class Map():
         return result
 
     def locus_by_xy(self, xy):
-        """Find the nearest scan by set of xy coords."""
+        """Find the nearest locus by set of xy coords."""
         locus = self.locus(Cube.from_xy(xy, unit_size=self.unit_size))
         return locus
 
@@ -111,7 +105,7 @@ class Map():
             # Move to next row
             curr_coords += basis_set['NE']
             yield curr_coords
-            for i in range(0, row-1):
+            for i in range(0, row - 1):
                 curr_coords += basis_set['NW']
                 yield curr_coords
             # Go around the ring for each basis vector
@@ -127,22 +121,21 @@ class Map():
         )
 
     def xy_lim(self):
-        return self.diameter/2*1.5
+        return self.diameter / 2 * 1.5
 
     def write_script(self, *args, **kwargs):
         raise NotImplementedError
 
     def get_number_of_frames(self):
-        num_frames = math.ceil(
-            (self.two_theta_range[1]-self.two_theta_range[0])/self.frame_step
-        )
+        angle_range = self.two_theta_range[1] - self.two_theta_range[0]
+        num_frames = math.ceil(angle_range / self.frame_step)
         # Check for values outside instrument limits
         t2_start = self.get_theta2_start()
-        t2_end = t2_start + num_frames*self.frame_step
-        if t2_end - self.THETA1_MAX > self.THETA2_MAX:
-            msg = "2-theta range {given} is outside detector limits: {limits}".format(
-                given=self.two_theta_range,
-                limits=(self.THETA2_MIN, self.THETA2_MAX))
+        t2_end = t2_start + num_frames * self.frame_step
+        if (t2_end - self.THETA1_MAX) > self.THETA2_MAX:
+            msg = "2-theta range {given} is outside detector limits: {limits}"
+            msg = msg.format(given=self.two_theta_range,
+                             limits=(self.THETA2_MIN, self.THETA2_MAX))
             raise ValueError(msg)
         return num_frames
 
@@ -150,17 +143,16 @@ class Map():
         # Assuming that theta1 starts at highest possible range
         theta1 = self.get_theta1()
         theta2_bottom = self.two_theta_range[0] - theta1
-        # theta2_start = theta2_bottom - self.frame_width/8 + self.frame_width/2
-        theta2_start = theta2_bottom + self.frame_width/2
+        theta2_start = theta2_bottom + self.frame_width / 2
         return theta2_start
 
     def get_theta1(self):
         # Check for values outside preset limits
         theta1 = self.two_theta_range[0]
         if theta1 < self.THETA1_MIN:
-            msg = "2-theta range {given} is outside source limits: {limits}".format(
-                given=self.two_theta_range,
-                limits=(self.THETA1_MIN, self.THETA1_MAX))
+            msg = "2-theta range {given} is outside source limits: {limits}"
+            msg = msg.format(given=self.two_theta_range,
+                             limits=(self.THETA1_MIN, self.THETA1_MAX))
             raise ValueError(msg)
         elif theta1 > self.THETA1_MAX:
             # Cap the theta1 value at a safety limited maximum
@@ -243,7 +235,8 @@ class Map():
             self.loci.append(new_locus)
 
     def fullrange_normalizer(self):
-        """Determine an appropriate normalizer by looking at the range of metrics."""
+        """Determine an appropriate normalizer by looking at the range of
+        metrics."""
         metrics = [locus.metric for locus in self.loci]
         new_normalizer = colors.Normalize(min(metrics),
                                           max(metrics),
@@ -262,7 +255,7 @@ class Map():
 
     def plot_map_with_diffractogram(self, scan=None):
         mapAxes, diffractogramAxes = dual_axes()
-        self.plot_map(ax=mapAxes, highlightedScan = scan)
+        self.plot_map(ax=mapAxes, highlightedScan=scan)
         if scan is None:
             self.plot_diffractogram(ax=diffractogramAxes)
         else:
@@ -281,7 +274,7 @@ class Map():
         Generate a two-dimensional map of the electrode surface. Color is
         determined by each scans metric() method. If no axes are given
         via the `ax` argument, a new set will be used. Optionally, a
-        highlightedScan can be given which will show up as a different
+        `highlighted_locus` can be given which will show up as a different
         color.
         """
         cmap = self.get_cmap()
@@ -294,7 +287,6 @@ class Map():
         ax.set_ylim([-xy_lim, xy_lim])
         ax.set_xlabel('mm')
         ax.set_ylabel('mm')
-        num_scans = len(self.loci)
         for locus in prog(self.loci, desc='Mapping'):
             locus.plot_hexagon(ax=ax)
         # If there's space between beam locations, plot beam location
@@ -313,8 +305,8 @@ class Map():
         return ax
 
     def plot_map_gtk(self, WindowClass=None):
-        """
-        Create a gtk window with plots and images for interactive data analysis.
+        """Create a gtk window with plots and images for interactive data
+        analysis.
         """
         if WindowClass is None:
             from mapping.gtkmapwindow import GtkMapWindow
@@ -334,7 +326,7 @@ class Map():
         """
         circle = patches.Circle(
             (0, 0),
-            radius=self.diameter/2,
+            radius=self.diameter / 2,
             edgecolor=color,
             fill=False,
             linestyle='dashed'
@@ -346,7 +338,7 @@ class Map():
         """
         Determine the width of the scan images based on sample's camera zoom
         """
-        return 72*self.camera_zoom
+        return 72 * self.camera_zoom
 
     def composite_image(self, filename=None, recalculate=False):
         """
@@ -355,11 +347,12 @@ class Map():
         """
         # Check for a cached image to return
         compositeImage = getattr(self, '_numpy_image', None)
-         # Check for cached image or create one if not cache found
+        # Check for cached image or create one if not cache found
         if compositeImage is None and not recalculate:
             # Default filename
             if filename is None:
-                filename = "{sample_name}-composite.png".format(sample_name=self.sample_name)
+                filename = "{sample_name}-composite.png"
+                filename = filename.format(sample_name=self.sample_name)
             if os.path.exists(filename) and not recalculate:
                 # Load existing image and cache it
                 compositeImage = scipy.misc.imread(filename)
@@ -371,11 +364,13 @@ class Map():
                 # Create a new numpy array to hold the composited image
                 # (it is unsigned int 16 to not overflow when images are added)
                 dtype = numpy.uint16
-                compositeImage = numpy.ndarray((compositeHeight, compositeWidth, 3),
-                                               dtype=dtype)
-                # This array keeps track of how many images contribute to each pixel
-                counterArray = numpy.ndarray((compositeHeight, compositeWidth, 3),
-                                             dtype=dtype)
+                compositeImage = numpy.ndarray(
+                    (compositeHeight, compositeWidth, 3), dtype=dtype
+                )
+                # Array to keep track of how many images contribute to each px
+                counterArray = numpy.ndarray(
+                    (compositeHeight, compositeWidth, 3), dtype=dtype
+                )
                 # Set to white by default
                 compositeImage.fill(0)
                 # Step through each scan
@@ -464,7 +459,7 @@ class DummyMap(Map):
         # Just return the distance from bottom left to top right
         p = scan.cube_coords[0]
         rows = scan.xrd_map.rows
-        r = p/2/rows + 0.5
+        r = (p / 2 / rows) + 0.5
         return r
 
     def plot_map(self, *args, **kwargs):
@@ -473,19 +468,19 @@ class DummyMap(Map):
             locus.diffractogram_is_loaded = True
             p = locus.cube_coords[0]
             rows = locus.parent_map.rows
-            r = p/2/rows + 0.5
+            r = (p / 2 / rows) + 0.5
             locus.metric = r
         return super().plot_map(*args, **kwargs)
 
-    def create_scans(self):
-        """Populate the scans array with new scans in a hexagonal array."""
-        self.scans = []
+    def create_loci(self):
+        """Populate the loci array with new scans in a hexagonal array."""
+        self.loci = []
         for idx, coords in enumerate(self.path(self.rows)):
             # Try and determine filename from the sample name
             fileBase = "map-{n:x}".format(n=idx)
-            new_scan = DummyMapScan(location=coords, xrd_map=self,
-                                    filebase=fileBase)
-            self.scans.append(new_scan)
+            new_locus = DummyLocus(location=coords, xrd_map=self,
+                                   filebase=fileBase)
+            self.loci.append(new_locus)
 
 
 class PeakPositionMap(Map):
@@ -504,17 +499,18 @@ class PeakPositionMap(Map):
         metric = scan.peak_position(two_theta_range)
         return metric
 
+
 class PhaseRatioMap(Map):
+
     def mapscan_metric(self, scan):
-        """
-        Compare the ratio of two peaks, one for discharged and one for
+        """Compare the ratio of two peaks, one for discharged and one for
         charged material.
         """
         # Query refinement for the contributions from each phase
         contributions = [phase.scale_factor for phase in scan.phases]
         total = sum(contributions)
-        if total > 0: # Avoid div by zero
-            ratio = contributions[0]/sum(contributions)
+        if total > 0:  # Avoid div by zero
+            ratio = contributions[0] / sum(contributions)
         else:
             ratio = 0
         return ratio
@@ -544,10 +540,10 @@ class PhaseRatioMap(Map):
         angle1 = self._peak_position(scan=scan, phase=self.phase_list[0])
         area2 = self._phase_signal(scan=scan, phase=self.phase_list[1])
         angle2 = self._peak_position(scan=scan, phase=self.phase_list[1])
-        template = "Area 1 ({angle1:.02f}°): {area1:.03f}\nArea 2 ({angle2:.02f}°): {area2:.03f}\nSum: {total:.03f}"
+        template = "Area 1 ({angle1:.02f}°): {area1:.03f}\nArea 2 ({angle2:.02f}°): {area2:.03f}\nSum: {total:.03f}"  # noqa
         msg = template.format(area1=area1, angle1=angle1,
                               area2=area2, angle2=angle2,
-                              total=area1+area2)
+                              total=area1 + area2)
         return msg
 
 
@@ -557,9 +553,10 @@ class FwhmMap(Map):
         Return the full-width half-max of the diagnostic peak in the first
         phase.
         """
-        angle = sum(scan.phases[0].diagnostic_reflection.two_theta_range)/2
+        angle = sum(scan.phases[0].diagnostic_reflection.two_theta_range) / 2
         fwhm = scan.refinement.fwhm(angle)
         return fwhm
+
 
 class IORMap(Map):
     """One-off material for submitting an image of the Image of Research
@@ -569,6 +566,7 @@ class IORMap(Map):
     charged_peak = '331'
     discharged_peak = '400'
     reliability_peak = '400'
+
     def mapscan_metric(self, scan):
         area = self.peak_area(scan, self.peak_list[self.charged_peak])
         return area

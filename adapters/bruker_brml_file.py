@@ -5,6 +5,7 @@ import zipfile
 
 import pandas as pd
 
+
 class BrukerBrmlFile():
     def __init__(self, filename):
         with zipfile.ZipFile(filename) as zf:
