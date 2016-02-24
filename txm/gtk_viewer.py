@@ -181,7 +181,7 @@ class GtkTxmViewer():
 
     def draw_map_plots(self):
         self.plotter.draw_map(show_map=self.show_map,
-                              edge_jump_filter=self.apply_edge_jump,
+                              goodness_filter=self.apply_edge_jump,
                               show_background=self.show_map_background)
         # Show crosshairs to indicate active pixel
         if self.show_map_background:

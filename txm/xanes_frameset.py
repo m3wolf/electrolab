@@ -48,10 +48,22 @@ def fit_whiteline(data, width=4):
     width (int) - How many points on either side of the maximum to
     fit.
     """
+    # import pdb; pdb.set_trace()
     # Filter out data based on peak width
+    # if 2 * width + 1 < len(data):
+    #     max_idx = data.index.get_loc(data.argmax())
+    #     left = max_idx - width
+    #     right = max_idx + width + 1
+    #     subset = data.iloc[left:right]
+    # else:
+    #     subset = data
     max_idx = data.index.get_loc(data.argmax())
     left = max_idx - width
+    if left < 0:
+        left = 0
     right = max_idx + width + 1
+    if right > len(data):
+        right = len(data)
     subset = data.iloc[left:right]
     # Correct for background
     vertical_offset = subset.min()
@@ -81,15 +93,41 @@ def calculate_whiteline(data):
     numpy arrays, which allows calculation of image frames, etc.
     """
     # First disassemble the data series
-    energies = data.index
-    imagestack = np.array(list(data.values))
-    # Now calculate the indices of the whiteline
-    whiteline_indices = np.argmax(imagestack, axis=0)
-    # Convert indices to energy
-    map_energy = np.vectorize(lambda idx: energies[idx],
-                              otypes=[np.float])
-    whiteline_energies = map_energy(whiteline_indices)
-    return whiteline_energies
+    # energies = data.index
+    # imagestack = np.array(list(data.values))
+    # # Now calculate the indices of the whiteline
+    # whiteline_indices = np.argmax(imagestack, axis=0)
+    # # Convert indices to energy
+    # map_energy = np.vectorize(lambda idx: energies[idx],
+    #                           otypes=[np.float])
+    # whiteline_energies = map_energy(whiteline_indices)
+
+    # Prepare data for manipulation
+    energies = data.index.astype(np.float64)
+    absorbances = np.array(list(data.values))
+    absorbances = absorbances.astype(np.float64)
+    orig_shape = absorbances.shape[1:]
+    ndim = absorbances.ndim
+    # Convert to an array of spectra by moving the 1st axes (energy)
+    # to be on bottom
+    for dim in range(0, ndim-1):
+        absorbances = absorbances.swapaxes(dim, dim+1)
+    # Flatten into a 1-D array of spectra
+    num_spectra = int(np.prod(orig_shape))
+    spectrum_length = absorbances.shape[-1]
+    absorbances = absorbances.reshape((num_spectra, spectrum_length))
+    # Calculate whitelines and goodnesses(?)
+    whitelines = []
+    goodnesses = []
+    for spectrum in prog(absorbances, "Calculating whiteline"):
+        spectrum = pd.Series(spectrum, index=energies)
+        peak, goodness = fit_whiteline(spectrum)
+        whitelines.append(peak.center())
+        goodnesses.append(goodness)
+    # Convert results back to their original shape
+    whitelines = np.array(whitelines).reshape(orig_shape)
+    goodnesses = np.array(goodnesses).reshape(orig_shape)
+    return whitelines, goodnesses
 
 
 class XanesFrameset():
@@ -101,6 +139,8 @@ class XanesFrameset():
                                        group_func='active_group')
     latest_labels = HDFAttribute('latest_labels', default='particle_labels')
     map_name = HDFAttribute('map_name', group_func='active_group')
+    map_goodness_name = HDFAttribute('map_goodness_name',
+                                     group_func='active_group')
     cmap = 'plasma'
 
     def __init__(self, filename, groupname, edge=None):
@@ -876,6 +916,23 @@ class XanesFrameset():
         mask = np.logical_not(mask)
         return mask
 
+    def goodness_filter(self):
+        """Calculate an image based on the goodness of fit. `calculate_map`
+        must have been called previously."""
+        return self.hdf_file()[self.map_goodness_name]
+
+    def goodness_mask(self):
+        """Calculate an image based on the goodness of fit. `calculate_map`
+        must have been called previously. Goodness filter is converted
+        to a binary map using(Otsu) threshold filtering.
+        """
+        goodness = self.goodness_filter()
+        threshold = filters.threshold_otsu(goodness)
+        mask = edge_jump > 0.5 * threshold
+        mask = morphology.dilation(mask)
+        mask = np.logical_not(mask)
+        return mask
+
     def calculate_map(self, new_name=None):
         """Generate a map based on pixel-wise Xanes spectra. Default is to
         compute X-ray whiteline position."""
@@ -883,8 +940,9 @@ class XanesFrameset():
         if new_name is None:
             new_name = "{parent}/{group}_map".format(parent=self.parent_groupname,
                                                      group=self.active_groupname)
+        goodness_name = new_name + "_goodness"
         # Get map data
-        map_data = self.whiteline_map()
+        map_data, goodness = self.whiteline_map()
         # Create dataset
         try:
             del self.hdf_file()[new_name]
@@ -892,9 +950,11 @@ class XanesFrameset():
             pass
         self.hdf_file().create_dataset(new_name, data=map_data)
         self.map_name = new_name
+        self.hdf_file().create_dataset(goodness_name, data=goodness)
+        self.map_goodness_name = goodness_name
         return self.hdf_file()[new_name]
 
-    def masked_map(self, edge_jump_filter=True):
+    def masked_map(self, goodness_filter=True):
         """Generate a map based on pixel-wise Xanes spectra and apply an
         edge-jump filter mask. Default is to compute X-ray whiteline
         position.
@@ -904,7 +964,7 @@ class XanesFrameset():
             map_data = self.calculate_map()
         else:
             map_data = self.hdf_file()[self.map_name]
-        if edge_jump_filter:
+        if goodness_filter:
             # Apply edge jump mask
             mask = self.edge_jump_mask()
         else:
@@ -921,12 +981,12 @@ class XanesFrameset():
         return self[0].extent()
 
     def plot_map(self, plotter=None, ax=None, norm_range=None, alpha=1,
-                 edge_jump_filter=False, return_type="axes", *args, **kwargs):
+                 goodness_filter=False, return_type="axes", *args, **kwargs):
         """Use a default frameset plotter to draw a map of the chemical data."""
         if plotter is None:
             plotter = FramesetPlotter(frameset=self, map_ax=ax)
         plotter.draw_map(norm_range=norm_range, alpha=alpha,
-                         edge_jump_filter=edge_jump_filter,
+                         goodness_filter=goodness_filter,
                          *args, **kwargs)
         return plotter
 
@@ -939,8 +999,12 @@ class XanesFrameset():
         else:
             norm = Normalize(norm_range[0], norm_range[1])
         masked_map = self.masked_map()
+        # n, bins, patches = ax.hist(masked_map[~masked_map.mask],
+        #                            bins=self.edge.all_energies())
         n, bins, patches = ax.hist(masked_map[~masked_map.mask],
-                                   bins=self.edge.all_energies())
+                                   bins=np.linspace(start=norm.vmin,
+                                                    stop=norm.vmax,
+                                                    num=100))
         # Set colors on histogram
         for patch in patches:
             x_position = patch.get_x()
@@ -975,10 +1039,13 @@ class XanesFrameset():
         if not prog.quiet:
             print('Calculating whiteline map...', end='')
         imagestack = build_series(self)
-        whiteline = calculate_whiteline(imagestack)
+        # Restrict to spectrum to only those values on the edge itself
+        imagestack = imagestack.ix[self.edge.map_range[0]:
+                                   self.edge.map_range[1]]
+        whiteline, goodness = calculate_whiteline(imagestack)
         if not prog.quiet:
             print('done')
-        return whiteline
+        return whiteline, goodness
 
     def whiteline_energy(self):
         """Calculate the energy corresponding to the whiteline (maximum

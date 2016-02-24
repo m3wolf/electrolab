@@ -1,7 +1,7 @@
 import gc
 
 from matplotlib import figure, pyplot, cm, animation
-from matplotlib.colors import BoundaryNorm
+from matplotlib.colors import BoundaryNorm, Normalize
 # from matplotlib.backends.backend_gtk import FigureCanvasGTK
 import numpy as np
 # May not import if not installed
@@ -41,11 +41,14 @@ class FramesetPlotter():
     def map_normalizer(self, norm_range=None):
         cmap = cm.get_cmap(self.map_cmap)
         energies = self.frameset.edge.energies_in_range(norm_range=norm_range)
-        norm = BoundaryNorm(energies, cmap.N)
+        # norm = BoundaryNorm(energies, cmap.N)
+
+        # Converted to continuous normalizer once peak fitting was introduced
+        norm = Normalize(energies[0], energies[-1])
         return norm
 
     def draw_map(self, norm_range=None, alpha=1,
-                 edge_jump_filter=False, *args, **kwargs):
+                 goodness_filter=False, *args, **kwargs):
         """Draw a map on the map_ax. If no axes exist, a new Axes is created
         with a colorbar."""
         # Construct a discrete normalizer so the colorbar is also discrete
@@ -56,7 +59,7 @@ class FramesetPlotter():
             self.draw_colorbar()  # norm=norm, ticks=energies[0:-1])
         # Plot chemical map (on top of absorbance image, if present)
         extent = self.frameset.extent()
-        masked_map = self.frameset.masked_map(edge_jump_filter=edge_jump_filter)
+        masked_map = self.frameset.masked_map(goodness_filter=goodness_filter)
         artist = self.map_ax.imshow(masked_map,
                                     extent=extent,
                                     cmap=self.map_cmap,
@@ -170,7 +173,7 @@ class GtkFramesetPlotter(FramesetPlotter):
         self.map_canvas = FigureCanvasGTK3Agg(self._map_fig)
         self.map_canvas.set_size_request(400, 400)
 
-    def draw_map(self, show_map=True, edge_jump_filter=True,
+    def draw_map(self, show_map=True, goodness_filter=True,
                  show_background=False):
         # Clear old mapping data
         self.map_ax.clear()
@@ -187,7 +190,7 @@ class GtkFramesetPlotter(FramesetPlotter):
             map_alpha = 1
         if show_map:
             # Plot the overall map
-            map_artist = super().draw_map(edge_jump_filter=edge_jump_filter,
+            map_artist = super().draw_map(goodness_filter=goodness_filter,
                                           alpha=map_alpha)
             artists.append(map_artist)
         # Force redraw
