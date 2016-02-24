@@ -1,6 +1,7 @@
 import gc
 
 from matplotlib import figure, pyplot, cm, animation
+from matplotlib.gridspec import GridSpec
 from matplotlib.colors import BoundaryNorm, Normalize
 # from matplotlib.backends.backend_gtk import FigureCanvasGTK
 import numpy as np
@@ -200,24 +201,43 @@ class GtkFramesetPlotter(FramesetPlotter):
     def draw_map_xanes(self, active_pixel=None):
         self.map_xanes_ax.clear()
         self.frameset.plot_xanes_spectrum(ax=self.map_xanes_ax,
-                                          pixel=active_pixel)
+                                          pixel=active_pixel,
+                                          edge_jump_filter=True)
+        self.map_edge_ax.clear()
+        self.frameset.plot_xanes_edge(ax=self.map_edge_ax,
+                                      pixel=active_pixel,
+                                      edge_jump_filter=True,
+                                      show_fit=True)
         self.map_canvas.draw()
 
     def plot_xanes_spectrum(self):
         self.xanes_ax.clear()
-        super().plot_xanes_spectrum()
+        ret = super().plot_xanes_spectrum()
         self.xanes_ax.figure.canvas.draw()
+        # Plot zoomed in edge-view
+        self.edge_ax.clear()
+        self.frameset.plot_xanes_edge(ax=self.edge_ax, show_fit=True)
+        return ret
 
     def create_axes(self):
+        # Define a grid specification
+        gridspec = GridSpec(2, 2)
         # Create figure grid layout
-        self.image_ax = self.frame_figure.add_subplot(1, 2, 1)
+        image_spec = gridspec.new_subplotspec((0, 0), rowspan=2)
+        self.image_ax = self.frame_figure.add_subplot(image_spec)
         plots.set_outside_ticks(self.image_ax)
-        self.xanes_ax = self.frame_figure.add_subplot(1, 2, 2)
+        xanes_spec = gridspec.new_subplotspec((0, 1))
+        self.xanes_ax = self.frame_figure.add_subplot(xanes_spec)
+        edge_spec = gridspec.new_subplotspec((1, 1))
+        self.edge_ax = self.frame_figure.add_subplot(edge_spec)
+
         # Create mapping axes
-        self.map_ax = self.map_figure.add_subplot(1, 2, 1)
+        map_spec = gridspec.new_subplotspec((0, 0), rowspan=2)
+        self.map_ax = self.map_figure.add_subplot(map_spec)
         plots.set_outside_ticks(self.map_ax)
         self.draw_colorbar()
-        self.map_xanes_ax = self.map_figure.add_subplot(1, 2, 2)
+        self.map_xanes_ax = self.map_figure.add_subplot(2, 2, 2)
+        self.map_edge_ax = self.map_figure.add_subplot(2, 2, 4)
 
     def draw(self):
         self.frame_figure.canvas.draw()
@@ -249,8 +269,10 @@ class GtkFramesetPlotter(FramesetPlotter):
             frame_artist.set_visible(False)
             # Get Xanes highlight artists
             energy = frame.energy
-            intensity = self.frameset.xanes_spectrum()[energy]
+            intensity = self.frameset.xanes_spectrum(edge_jump_filter=True)[energy]
             xanes_artists = self.xanes_ax.plot([energy], [intensity], 'ro',
+                                               animated=True)
+            xanes_artists += self.edge_ax.plot([energy], [intensity], 'ro',
                                                animated=True)
             [a.set_visible(False) for a in xanes_artists]
             # xanes_artists.append(xanes_artist[0])

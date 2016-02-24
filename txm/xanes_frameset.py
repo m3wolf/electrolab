@@ -812,8 +812,14 @@ class XanesFrameset():
                 # No particle
                 particle = None
             # Create mask that's the same size as the image
-            if edge_jump_filter:
+            # import pdb; pdb.set_trace()
+            if pixel is not None:
+                # print(pixel)
+                intensity = data[pixel.vertical][pixel.horizontal]
+            elif edge_jump_filter:
                 masked_data = np.ma.array(data, mask=self.edge_jump_mask())
+                # Sum absorbances for datasets
+                intensity = np.sum(masked_data) / np.prod(masked_data.shape)
             elif particle:
                 bbox = particle.bbox()
                 mask = np.zeros_like(data)
@@ -821,15 +827,12 @@ class XanesFrameset():
                 mask = np.logical_not(mask)
                 masked_data = np.copy(data)
                 masked_data[mask] = 0
-            else:
-                masked_data = data
-            if pixel is None:
                 # Sum absorbances for datasets
                 intensity = np.sum(masked_data) / np.prod(masked_data.shape)
             else:
-                # Calculate intensity just for one (unmasked) pixel
-                intensity = data[pixel.vertical][pixel.horizontal]
-                # intensity = data[pixel.vertical][pixel.horizontal]
+                masked_data = data
+                # Sum absorbances for datasets
+                intensity = np.sum(data) / np.prod(data.shape)
             # Add to cumulative arrays
             intensities.append(intensity)
             energies.append(frame.energy)
@@ -837,11 +840,11 @@ class XanesFrameset():
         series = pd.Series(intensities, index=energies)
         return series
 
-    def plot_xanes_spectrum(self, ax=None, pixel=None, norm_range=None):
+    def plot_xanes_spectrum(self, ax=None, pixel=None, norm_range=None, show_fit=False, edge_jump_filter=True):
         if norm_range is None:
             norm_range = (self.edge.map_range[0], self.edge.map_range[1])
             norm = Normalize(*norm_range)
-        spectrum = self.xanes_spectrum(pixel=pixel)
+        spectrum = self.xanes_spectrum(pixel=pixel, edge_jump_filter=edge_jump_filter)
         if ax is None:
             ax = new_axes()
         # Color code the markers by energy
@@ -858,16 +861,27 @@ class XanesFrameset():
         ax.set_ylim(*ylim)
         ax.set_xlabel('Energy /eV')
         ax.set_ylabel('Absorbance')
+        # Plot best fit for this edge
+        if show_fit:
+            fit = self.fit_whiteline()
+            fit.plot_fit(ax=ax)
         if pixel is not None:
             xy = pixel_to_xy(pixel, extent=self.extent(), shape=self.map_shape())
             title = 'XANES Spectrum at ({x}, {y}) = {val}'
             title = title.format(x=round(xy.x, 2),
                                  y=round(xy.y, 2),
-                                 val=self.masked_map()[pixel.vertical][pixel.horizontal])
+                                 val=self.masked_map(goodness_filter=False)[pixel.vertical][pixel.horizontal])
             ax.set_title(title)
         # Plot lines at edge of normalization range
         ax.axvline(x=norm_range[0], linestyle='-', color="0.55", alpha=0.4)
         ax.axvline(x=norm_range[1], linestyle='-', color="0.55", alpha=0.4)
+        return scatter
+
+    def plot_xanes_edge(self, *args, **kwargs):
+        """Call self.plot_xanes_spectrum() but zoomed in on the edge."""
+        scatter = self.plot_xanes_spectrum(*args, **kwargs)
+        ax = scatter.axes
+        ax.set_xlim(self.edge.pre_edge[-1], self.edge.post_edge[0])
         return scatter
 
     def plot_edge_jump(self, ax=None, alpha=1):
@@ -959,6 +973,7 @@ class XanesFrameset():
         edge-jump filter mask. Default is to compute X-ray whiteline
         position.
         """
+        # import pdb; pdb.set_trace()
         # Check for cached map of the whiteline position for each pixel
         if not self.map_name:
             map_data = self.calculate_map()
