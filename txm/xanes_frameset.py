@@ -28,56 +28,7 @@ def build_series(frames):
     series = pd.Series(images, index=energies)
     return series
 
-
-def fit_whiteline(data, width=4):
-    """Fits the whiteline peak with a Gaussian curve.
-
-    The "whiteline" for an absorption K-edge is the energy at which
-    the specimin has its highest absorbance. This function will return
-    a namedtuple of arrays with the same shape as each entry in the data
-    series. Each tuple will describe a different fitted parameter.
-
-    Arguments
-    ---------
-    data - The X-ray absorbance data. Should be similar to a pandas
-    Series. Assumes that the index is energy. This can be a Series of
-    numpy arrays, which allows calculation of image frames, etc.
-    Returns a tuple of (peak, goodness) where peak is a fitted peak
-    object and goodness is a measure of the goodness of fit.
-
-    width (int) - How many points on either side of the maximum to
-    fit.
-    """
-    # import pdb; pdb.set_trace()
-    # Filter out data based on peak width
-    # if 2 * width + 1 < len(data):
-    #     max_idx = data.index.get_loc(data.argmax())
-    #     left = max_idx - width
-    #     right = max_idx + width + 1
-    #     subset = data.iloc[left:right]
-    # else:
-    #     subset = data
-    max_idx = data.index.get_loc(data.argmax())
-    left = max_idx - width
-    if left < 0:
-        left = 0
-    right = max_idx + width + 1
-    if right > len(data):
-        right = len(data)
-    subset = data.iloc[left:right]
-    # Correct for background
-    vertical_offset = subset.min()
-    normalized = subset - vertical_offset
-    # Perform fitting
-    peak = Peak(method="gaussian")
-    peak.vertical_offset = vertical_offset
-    peak.fit(data=normalized)
-    # Save residuals
-    goodness = peak.goodness(subset)
-    return (peak, goodness)
-
-
-def calculate_whiteline(data):
+def calculate_whiteline(data, edge):
     """Calculates the whiteline position of the absorption edge data
     contained in `data`.
 
@@ -121,7 +72,7 @@ def calculate_whiteline(data):
     goodnesses = []
     for spectrum in prog(absorbances, "Calculating whiteline"):
         spectrum = pd.Series(spectrum, index=energies)
-        peak, goodness = fit_whiteline(spectrum)
+        peak, goodness = edge.fit(spectrum)
         whitelines.append(peak.center())
         goodnesses.append(goodness)
     # Convert results back to their original shape
@@ -736,6 +687,23 @@ class XanesFrameset():
         for frame in prog(self, "Rebinning"):
             frame.rebin(shape=shape, factor=factor)
 
+    def normalize(self):
+        """Correct for background material not absorbing at this edge. Uses
+        method described in DOI 10.1038/ncomms7883: fit line against
+        material that fails edge_jump_filter and use this line to 
+       correct entire frame.
+        """
+        self.fork_group('normalized')
+        # Linear regression on "background" materials
+        spectrum = self.xanes_spectrum(edge_jump_filter="inverse")
+        regression = linear_model.LinearRegression()
+        x = np.array(spectrum.index).reshape(-1, 1)
+        regression.fit(x, spectrum.values)
+        # Subtract regression line from each frame
+        for frame in self:
+            offset = regression.predict(frame.energy)
+            frame.image_data.write_direct(frame.image_data - offset)
+
     def particle_area_spectrum(self, loc=xycoord(20, 20)):
         """Calculate a spectrum based on the area of the particle closest to
         the given location in the frame. This may be useful for assessing
@@ -780,7 +748,7 @@ class XanesFrameset():
         return avg_frame
 
     @functools.lru_cache()
-    def xanes_spectrum(self, pixel=None, edge_jump_filter=False):
+    def xanes_spectrum(self, pixel=None, edge_jump_filter=""):
         """Collapse the dataset down to a two-dimensional spectrum. Returns a
         pandas series containing the resulting spectrum. If a frame
         has the attribute `active_particle_index` set to a truthy
@@ -793,8 +761,10 @@ class XanesFrameset():
         pixel: A 2-tuple that causes the returned series to represent
             the spectrum for only 1 pixel in the frameset.
 
-        edge_jump_filter (bool): If true, only pixels that pass the
-            edge jump filter are used to calculate the spectrum.
+        edge_jump_filter (bool or str): If truthy, only pixels that
+            pass the edge jump filter are used to calculate the
+            spectrum. If "inverse" is given, then the edge jump filter
+            is inverted first.
 
         """
         energies = []
@@ -811,11 +781,13 @@ class XanesFrameset():
             else:
                 # No particle
                 particle = None
-            # Create mask that's the same size as the image
-            # import pdb; pdb.set_trace()
+            # Determine which subset of pixels to use
             if pixel is not None:
-                # print(pixel)
+                 # Specific pixel is requested
                 intensity = data[pixel.vertical][pixel.horizontal]
+            elif edge_jump_filter == "inverse":
+                masked_data = np.ma.array(data, mask=~self.edge_jump_mask())
+                intensity = np.sum(masked_data) / np.prod(masked_data.shape)
             elif edge_jump_filter:
                 masked_data = np.ma.array(data, mask=self.edge_jump_mask())
                 # Sum absorbances for datasets
@@ -863,8 +835,8 @@ class XanesFrameset():
         ax.set_ylabel('Absorbance')
         # Plot best fit for this edge
         if show_fit:
-            fit = self.fit_whiteline()
-            fit.plot_fit(ax=ax)
+            self.edge.fit(spectrum)
+            self.edge.plot(ax=ax)
         if pixel is not None:
             xy = pixel_to_xy(pixel, extent=self.extent(), shape=self.map_shape())
             title = 'XANES Spectrum at ({x}, {y}) = {val}'
@@ -919,13 +891,19 @@ class XanesFrameset():
         # Apply normalizer? (maybe later)
         return filtered_img
 
-    def edge_jump_mask(self):
+    def edge_jump_mask(self, sensitivity: float=0.5):
         """Calculate the edge jump image for this frameset, apply some image
         processing to fill out the space, and convert it into a binary
-        mask."""
+        mask.
+
+        Arguments
+        ---------
+        - sensitivity: A multiplier for the otsu value to determine
+          the actual threshold.
+        """
         edge_jump = self.edge_jump_filter()
         threshold = filters.threshold_otsu(edge_jump)
-        mask = edge_jump > 0.5 * threshold
+        mask = edge_jump > (sensitivity * threshold)
         mask = morphology.dilation(mask)
         mask = np.logical_not(mask)
         return mask
@@ -935,14 +913,19 @@ class XanesFrameset():
         must have been called previously."""
         return self.hdf_file()[self.map_goodness_name]
 
-    def goodness_mask(self):
+    def goodness_mask(self, sensitivity: float=0.5):
         """Calculate an image based on the goodness of fit. `calculate_map`
         must have been called previously. Goodness filter is converted
-        to a binary map using(Otsu) threshold filtering.
+        to a binary map using (Otsu) threshold filtering.
+
+        Arguments
+        ---------
+        - sensitivity: A multiplier for the otsu value to determine
+          the actual threshold.
         """
         goodness = self.goodness_filter()
         threshold = filters.threshold_otsu(goodness)
-        mask = edge_jump > 0.5 * threshold
+        mask = edge_jump > (sensitivity * threshold)
         mask = morphology.dilation(mask)
         mask = np.logical_not(mask)
         return mask

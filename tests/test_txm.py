@@ -33,11 +33,11 @@ import pytz
 from tests.cases import HDFTestCase, ScimapTestCase
 from utilities import xycoord, prog
 from peakfitting import Peak
-from txm.xanes_frameset import XanesFrameset, calculate_whiteline, fit_whiteline
+from txm.xanes_frameset import XanesFrameset, calculate_whiteline
 from txm.frame import (
     average_frames, TXMFrame, xy_to_pixel, pixel_to_xy, Extent, Pixel,
     rebin_image, apply_reference, position)
-from txm.edges import Edge, k_edges
+from xas.edges import KEdge, k_edges
 from txm.importers import import_txm_framesets
 from txm.xradia import XRMFile, decode_ssrl_params, decode_aps_params
 from txm.beamlines import sector8_xanes_script, Zoneplate, ZoneplatePoint, Detector
@@ -75,7 +75,7 @@ class ApsScriptTest(unittest.TestCase):
 
     def test_file_created(self):
         with open(self.output_path, 'w') as f:
-            sector8_xanes_script(dest=f, edge=k_edges["Ni"],
+            sector8_xanes_script(dest=f, edge=k_edges["Ni"](),
                                  zoneplate=self.zp, detector=self.det,
                                  names=["test_sample"], sample_positions=[])
         # Check that a file was created
@@ -85,7 +85,7 @@ class ApsScriptTest(unittest.TestCase):
 
     def test_binning(self):
         with open(self.output_path, 'w') as f:
-            sector8_xanes_script(dest=f, edge=k_edges["Ni"],
+            sector8_xanes_script(dest=f, edge=k_edges["Ni"](),
                                  binning=2, zoneplate=self.zp,
                                  detector=self.det, names=[],
                                  sample_positions=[])
@@ -95,7 +95,7 @@ class ApsScriptTest(unittest.TestCase):
 
     def test_exposure(self):
         with open(self.output_path, 'w') as f:
-            sector8_xanes_script(dest=f, edge=k_edges["Ni"],
+            sector8_xanes_script(dest=f, edge=k_edges["Ni"](),
                                  exposure=44, zoneplate=self.zp,
                                  detector=self.det, names=["test_sample"],
                                  sample_positions=[])
@@ -108,7 +108,7 @@ class ApsScriptTest(unittest.TestCase):
         """This instrument can behave poorly unless the target energy is
         approached from underneath (apparently)."""
         with open(self.output_path, 'w') as f:
-            sector8_xanes_script(dest=f, edge=k_edges['Ni'],
+            sector8_xanes_script(dest=f, edge=k_edges['Ni'](),
                                  zoneplate=self.zp, detector=self.det,
                                  names=[], sample_positions=[])
         with open(self.output_path, 'r') as f:
@@ -119,7 +119,7 @@ class ApsScriptTest(unittest.TestCase):
         with open(self.output_path, 'w') as f:
             sector8_xanes_script(
                 dest=f,
-                edge=k_edges['Ni'],
+                edge=k_edges['Ni'](),
                 sample_positions=[position(x=1653, y=-1727, z=0)],
                 zoneplate=self.zp,
                 detector=self.det,
@@ -149,7 +149,7 @@ class ApsScriptTest(unittest.TestCase):
         with open(self.output_path, 'w') as f:
             sector8_xanes_script(
                 dest=f,
-                edge=k_edges['Ni'],
+                edge=k_edges['Ni'](),
                 sample_positions=[position(x=1653, y=-1727, z=0),
                                   position(x=1706.20, y=-1927.20, z=0)],
                 zoneplate=self.zp,
@@ -166,7 +166,7 @@ class ApsScriptTest(unittest.TestCase):
         with open(self.output_path, 'w') as f:
             sector8_xanes_script(
                 dest=f,
-                edge=k_edges['Ni'],
+                edge=k_edges['Ni'](),
                 sample_positions=[position(x=1653, y=-1727, z=0),
                                   position(x=1706.20, y=-1927.20, z=0)],
                 zoneplate=self.zp,
@@ -215,14 +215,17 @@ class ZoneplateTest(ScimapTestCase):
 
 class XrayEdgeTest(unittest.TestCase):
     def setUp(self):
-        self.edge = Edge(
-            (8250, 8290, 20),
-            (8290, 8295, 1),
-            pre_edge=(8250, 8290),
-            post_edge=(8290, 8295),
-            map_range=(8291, 8293),
-            name="Test edge",
-        )
+        class DummyEdge(KEdge):
+            regions = [
+                (8250, 8290, 20),
+                (8290, 8295, 1),
+            ]
+            pre_edge = (8250, 8290)
+            post_edge = (8290, 8295)
+            map_range = (8291, 8293)
+
+        self.edge = DummyEdge()
+
     def test_energies(self):
         self.assertEqual(
             self.edge.all_energies(),
@@ -280,14 +283,14 @@ class TXMMathTest(ScimapTestCase):
         absorbances = [700, 705, 703]
         energies = [50, 55, 60]
         data = pd.Series(absorbances, index=energies)
-        out, goodness = calculate_whiteline(data)
+        out, goodness = calculate_whiteline(data, edge=k_edges['Ni']())
         self.assertApproximatelyEqual(out, 57.33)
         # Test using multi-dimensional absorbances (eg. image frames)
         absorbances = [np.array([700, 700]),
                        np.array([705, 703]),
                        np.array([703, 707])]
         data = pd.Series(absorbances, index=energies)
-        out, goodness = calculate_whiteline(data)
+        out, goodness = calculate_whiteline(data, edge=k_edges['Ni']())
         self.assertApproximatelyEqual(out[0], 57.33)
         self.assertApproximatelyEqual(out[1], 57.98)
 
@@ -303,7 +306,7 @@ class TXMMathTest(ScimapTestCase):
         ]
         energies = [50, 55, 60]
         data = pd.Series(absorbances, index=energies)
-        out, goodness = calculate_whiteline(data)
+        out, goodness = calculate_whiteline(data, edge=k_edges['Ni']())
         expected = [[50, 60],
                     [55, 55]]
         self.assertApproximatelyEqual(out[0][0], 52.25)
@@ -315,7 +318,8 @@ class TXMMathTest(ScimapTestCase):
         filename = 'tests/testdata/NCA-cell2-soc1-fov1-xanesspectrum.tsv'
         data = pd.Series.from_csv(filename, sep="\t")
         data = data[8325:8360]
-        peak, goodness = fit_whiteline(data, width=5)
+        edge = k_edges['Ni']()
+        peak, goodness = edge.fit(data, width=5)
         self.assertTrue(8352 < peak.center() < 8353,
                         "Center not within range {} eV".format(peak.center()))
 

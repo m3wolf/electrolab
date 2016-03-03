@@ -67,5 +67,5 @@ from txm.beamlines import Zoneplate, Detector, sector8_xanes_script, ZoneplatePo
 from txm.importers import import_txm_framesets
 from txm.xanes_frameset import XanesFrameset
 from txm.frame import TXMFrame, calculate_particle_labels, rebin_image, position
-from txm.edges import k_edges
+from xas.edges import k_edges
 from txm.plotter import FramesetMoviePlotter

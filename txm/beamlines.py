@@ -23,7 +23,7 @@ synchrotron beamlines."""
 from typing import List, Tuple, Iterable
 from collections import namedtuple
 
-from .edges import Edge
+from xas.edges import KEdge
 from .frame import position
 
 ZoneplatePoint = namedtuple('ZoneplatePoint', ('z', 'energy'))
@@ -75,7 +75,7 @@ class Detector(Zoneplate):
 
 
 def sector8_xanes_script(dest,
-                         edge: Edge,
+                         edge: KEdge,
                          zoneplate: Zoneplate,
                          detector: Detector,
                          sample_positions: List[position],
@@ -91,7 +91,7 @@ def sector8_xanes_script(dest,
     ---------
     - dest : file-like object that will hold the resulting script
 
-    - edge : Description of the absorption edge
+    - edge : Description of the absorption edge.
 
     - binning : how many CCD pixels to combine into one image pixel
       (eg. 2 means 2x2 CCD pixels become 1 image pixel.
