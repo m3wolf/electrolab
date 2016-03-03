@@ -83,6 +83,13 @@ class KEdge():
         goodness = peak.goodness(subset)
         return (peak, goodness)
 
+    def plot(self, ax=None):
+        """Plot this edge on an axes. If the edge has been fit to data, then
+        this fit will be plotted. Otherwise, just the ranges of the
+        edge will be shown.
+        """
+        print("TODO: Finish edge.plot method")
+
 
 class NickelKEdge(KEdge):
     regions = [

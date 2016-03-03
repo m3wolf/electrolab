@@ -110,7 +110,10 @@ class Queue():
         result_callback that was provided with the
         constructor. Returns the processed result.
         """
-        ret = self.result_callback(result)
+        if self.result_callback is not None:
+            ret = self.result_callback(result)
+        else:
+            ret = result
         self.results_left -= 1
         curr = self.totalsize - self.results_left
         # Prepare a status bar

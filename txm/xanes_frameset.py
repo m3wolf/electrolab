@@ -1,5 +1,25 @@
+# -*- coding: utf-8 -*-
+#
+# Copyright © 2016 Mark Wolf
+#
+# This file is part of scimap.
+#
+# Scimap is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# Scimap is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with Scimap. If not, see <http://www.gnu.org/licenses/>.
+
 import functools
 import warnings
+from typing import Callable, Union
 
 import pandas as pd
 from matplotlib import cm, pyplot
@@ -259,9 +279,10 @@ class XanesFrameset():
         slope = -0.00010558834052580277
         intercept = 1.871559636328671
         # Prepare multiprocessing objects
-
         def worker(payload):
-            key, energy, data = payload
+            key = payload['key']
+            energy = payload['energy']
+            data = payload['data']
             # Determine degree of magnification required
             magnification = energy * slope + intercept
             original_shape = xycoord(x=data.shape[1], y=data.shape[0])
@@ -275,26 +296,17 @@ class XanesFrameset():
                 translation=translation
             )
             # Apply the transformation
-            result = transform.warp(data, transformation, order=3)
-            return (key, energy, result)
-
-        def process_result(payload):
-            # Write the computed result back to disk
-            key, energy, data = payload
-            frame = self[key]
-            frame.image_data.write_direct(data)
-
-        queue = smp.Queue(worker=worker,
-                          totalsize=len(self),
-                          result_callback=process_result,
-                          description="Correcting magnification")
-        for frame in self:
-            data = frame.image_data.value
-            key = frame.image_data.name.split('/')[-1]
-            energy = frame.energy
-            # Add this frame to the queue for processing
-            queue.put((key, energy, data))
-        queue.join()
+            new_data = transform.warp(data, transformation, order=3)
+            result = {
+                'key': key,
+                'energy': energy,
+                'data': new_data
+            }
+            return result
+        # Launch multiprocessing queue
+        process_with_smp(frameset=self,
+                         worker=worker,
+                         description="Correcting magnification")
 
     def apply_translation(self, shift_func, new_name,
                           description="Applying translation"):
@@ -328,28 +340,16 @@ class XanesFrameset():
             new_labels = new_labels.astype(original_dtype)
             ret = {
                 'key': key,
+                'energy': payload['energy'],
                 'data': new_data,
                 'labels': new_labels
             }
             return ret
 
-        def process_result(payload):
-            # key, data, labels = payload
-            frame = self[payload['key']]
-            frame.image_data.write_direct(payload['data'])
-            frame.particle_labels().write_direct(payload['labels'])
-        queue = smp.Queue(worker=worker, result_callback=process_result,
-                          totalsize=len(self), description=description)
-        for frame in self:
-            # Launch transformation for this frame
-            payload = {
-                'key': frame.key(),
-                'energy': frame.energy,
-                'data': frame.image_data.value,
-                'labels': frame.particle_labels().value
-            }
-            queue.put(payload)
-        queue.join()
+        # Launch multiprocessing queue
+        process_with_smp(frameset=self,
+                         worker=worker,
+                         description=description)
         # Update new positions
         for frame in self:
             frame.sample_position = position(0, 0, frame.sample_position.z)
@@ -449,7 +449,9 @@ class XanesFrameset():
         # Multiprocessing setup
 
         def worker(payload):
-            key, data, labels = payload
+            key = payload['key']
+            data = payload['data']
+            labels = payload['labels']
             # Determine what the new translation should be
             results = feature.register_translation(reference_image, data,
                                                    upsample_factor=20)
@@ -464,25 +466,19 @@ class XanesFrameset():
             labels = labels.astype(np.float64)
             new_labels = transform.warp(labels, transformation, order=0, mode="constant")
             new_labels = new_labels.astype(original_dtype)
-            return (key, new_data, new_labels)
+            result = {
+                'key': key,
+                'energy': payload['energy'],
+                'data': new_data,
+                'labels': new_labels,
+            }
+            return result
 
-        def process_result(payload):
-            key, data, labels = payload
-            frame = self[key]
-            frame.image_data.write_direct(data)
-            frame.particle_labels().write_direct(labels)
-
+        # Launch the multiprocessing queue
         description = "Aligning to frame [{}]".format(reference_frame)
-        queue = smp.Queue(worker=worker, result_callback=process_result,
-                          totalsize=len(self), description=description)
-        for frame in self:
-            key = frame.key()
-            # Prepare data arrays
-            data = frame.image_data.value
-            labels = frame.particle_labels().value
-            # Launch transformation for this frame
-            queue.put((key, data, labels))
-        queue.join()
+        process_with_smp(frameset=self,
+                         worker=worker,
+                         description=description)
         # Update new positions
         for frame in self:
             frame.sample_position = position(0, 0, frame.sample_position.z)
@@ -514,7 +510,10 @@ class XanesFrameset():
 
         # Multiprocessing setup
         def worker(payload):
-            key, data, labels = payload
+            key = payload['key']
+            energy = payload['energy']
+            data = payload['data']
+            labels = payload['labels']
             # Determine where the reference particle is in this frame's image
             match = feature.match_template(data, particle_img, pad_input=True)
             center = np.unravel_index(match.argmax(), match.shape)
@@ -527,7 +526,12 @@ class XanesFrameset():
             if key == reference_key:
                 # Sanity check to ensure that reference frame does not shift
                 assert shift == [0, 0], "Reference frame is shifted by " + shift
-                ret = (key, data, labels)
+                ret = {
+                    'key': key,
+                    'energy': energy,
+                    'data': data,
+                    'labels': labels,
+                }
             else:
                 # Apply the translation with bicubic interpolation
                 transformation = transform.SimilarityTransform(translation=shift)
@@ -538,27 +542,26 @@ class XanesFrameset():
                 labels = labels.astype(np.float64)
                 new_labels = transform.warp(labels, transformation, order=0, mode="constant")
                 new_labels = new_labels.astype(original_dtype)
-                ret = (key, new_data, new_labels)
+                ret = {
+                    'key': key,
+                    'energy': energy,
+                    'data': new_data,
+                    'labels': new_labels
+                }
             return ret
 
         def process_result(payload):
-            key, data, labels = payload
-            frame = self[key]
-            frame.image_data.write_direct(data)
-            frame.particle_labels().write_direct(labels)
+            frame = self[payload['key']]
             frame.activate_closest_particle(loc=loc)
+            return payload
 
+        # Launch the multiprocessing queue
         description = "Aligning to frame [{}]".format(reference_frame)
-        queue = smp.Queue(worker=worker, result_callback=process_result,
-                          totalsize=len(self), description=description)
-        for frame in self:
-            key = frame.key()
-            # Prepare data arrays
-            data = frame.image_data.value
-            labels = frame.particle_labels().value
-            # Launch transformation for this frame
-            queue.put((key, data, labels))
-        queue.join()
+        process_with_smp(frameset=self,
+                         worker=worker,
+                         process_result=process_result,
+                         description=description)
+
         # Update new positions
         for frame in self:
             frame.sample_position = position(0, 0, frame.sample_position.z)
@@ -651,32 +654,34 @@ class XanesFrameset():
 
         # Callables for determining particle labels
         def worker(payload):
-            key, data = payload
+            data = payload['data']
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 new_data = calculate_particle_labels(data)
-            return (key, new_data)
+            payload['data'] = new_data
+            return payload
 
         def process_result(payload):
             # Save the calculated data
-            key, data = payload
+            key = payload['key']
+            data = payload['data']
             labels = self.hdf_group()[labels_groupname]
             labels.create_dataset(key, data=data, compression='gzip')
-
-        # Prepare multirprocessing objects
-        frame_queue = smp.Queue(worker=worker,
-                                totalsize=len(self),
-                                result_callback=process_result,
-                                description="Detecting particles")
-        for frame in self:
-            data = frame.image_data.value
-            key = frame.image_data.name.split('/')[-1]
-            # process_result(worker((key, data)))
-            frame_queue.put((key, data))
             # Write path to saved particle labels
+            frame = self[key]
             frame.particle_labels_path = labels_group.name + "/" + key
-        # Wait for all processing to finish
-        frame_queue.join()
+            # Return a shell of the original dictionary so smp handler
+            # does not over-right real image data with labels
+            ret = {
+                'key': key
+            }
+            return ret
+
+        # Launch multiprocessing queue
+        process_with_smp(frameset=self,
+                         worker=worker,
+                         process_result=process_result,
+                         description="Detecting particles")
 
     def rebin(self, shape=None, factor=None):
         """Resample all images into new shape. Arguments `shape` and `factor`
@@ -690,8 +695,8 @@ class XanesFrameset():
     def normalize(self):
         """Correct for background material not absorbing at this edge. Uses
         method described in DOI 10.1038/ncomms7883: fit line against
-        material that fails edge_jump_filter and use this line to 
-       correct entire frame.
+        material that fails edge_jump_filter and use this line to
+        correct entire frame.
         """
         self.fork_group('normalized')
         # Linear regression on "background" materials
@@ -700,9 +705,17 @@ class XanesFrameset():
         x = np.array(spectrum.index).reshape(-1, 1)
         regression.fit(x, spectrum.values)
         # Subtract regression line from each frame
-        for frame in self:
-            offset = regression.predict(frame.energy)
-            frame.image_data.write_direct(frame.image_data - offset)
+        def remove_offset(payload):
+            offset = regression.predict(payload['energy'])
+            original_data = payload['data']
+            payload['data'] = original_data - offset
+            # Remove labels since we don't need to save it
+            payload.pop('labels')
+            return payload
+
+        process_with_smp(frameset=self,
+                         worker=remove_offset,
+                         description="Normalizing background")
 
     def particle_area_spectrum(self, loc=xycoord(20, 20)):
         """Calculate a spectrum based on the area of the particle closest to
@@ -835,8 +848,9 @@ class XanesFrameset():
         ax.set_ylabel('Absorbance')
         # Plot best fit for this edge
         if show_fit:
-            self.edge.fit(spectrum)
-            self.edge.plot(ax=ax)
+            edge = self.edge()
+            edge.fit(spectrum)
+            edge.plot(ax=ax)
         if pixel is not None:
             xy = pixel_to_xy(pixel, extent=self.extent(), shape=self.map_shape())
             title = 'XANES Spectrum at ({x}, {y}) = {val}'
@@ -1158,3 +1172,66 @@ class XanesFrameset():
         from .gtk_viewer import GtkTxmViewer
         viewer = GtkTxmViewer(frameset=self)
         viewer.show()
+
+
+def process_with_smp(frameset: XanesFrameset,
+                     worker: Callable[[dict], dict],
+                     process_result: Callable[[dict], dict]=None,
+                     description: str="Processing frames"):
+    """Runs a computation on all frames in a frameset using parrallel
+    processing and saves the result.
+
+    Arguments
+    ---------
+    - frameset: Set of frames to be process.
+
+    - worker: function to do the actual calculation. Should accept a
+      dictionary payload which contains the frame's `key`, `energy`,
+      `data`, and `labels`. Should return a similar dictionary with
+      modified `data` and/or `labels`. If worker does not modify
+      `data` or `labels`, it should remove them from the return
+      dictionary to avoid unnecessary disk I/O.
+
+    - process_result: A callback to perform additional
+      post-processing. Should accept return a similar dictionary as
+      worker. If the returned dicionary does not contain `data` or
+      `labels` then the corresponding data will not be saved
+      automatically.
+
+    - description: A string describing the operation. Used in a status
+      bar.
+
+    """
+    # Prepare callbacks and queue
+    def result_callback(payload):
+        frame = frameset[payload['key']]
+        # Call user-provided result callback
+        if process_result is not None:
+            payload = process_result(payload)
+        # Save data and/or labels if necessary
+        if 'data' in payload.keys():
+            frame.image_data.write_direct(payload['data'])
+        if 'labels' in payload.keys():
+            frame.particle_labels().write_direct(payload['labels'])
+    queue = queue = smp.Queue(worker=worker,
+                              totalsize=len(frameset),
+                              result_callback=result_callback,
+                              description=description)
+
+    # Populate the queue
+    for frame in frameset:
+        payload = {
+            'data': frame.image_data.value,
+            'key': frame.image_data.name.split('/')[-1],
+            'energy': frame.energy,
+            # 'labels': frame.particle_labels().value,
+        }
+        try:
+            labels = frame.particle_labels().value
+        except exceptions.NoParticleError:
+            pass
+        else:
+            payload['labels'] = labels
+        queue.put(payload)
+    # Join the queue and wait for all processes to complete
+    queue.join()

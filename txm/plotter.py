@@ -1,3 +1,22 @@
+# -*- coding: utf-8 -*-
+#
+# Copyright © 2016 Mark Wolf
+#
+# This file is part of scimap.
+#
+# Scimap is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# Scimap is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with Scimap. If not, see <http://www.gnu.org/licenses/>.
+
 import gc
 
 from matplotlib import figure, pyplot, cm, animation
@@ -29,7 +48,8 @@ class FramesetPlotter():
     def draw_colorbar(self, norm_range=None):
         """Add colormap to the side of the axes."""
         norm = self.map_normalizer(norm_range=norm_range)
-        energies = self.frameset.edge.energies_in_range(norm_range=norm_range)
+        edge = self.frameset.edge()
+        energies = edge.energies_in_range(norm_range=norm_range)
         mappable = cm.ScalarMappable(norm=norm, cmap=self.map_cmap)
         mappable.set_array(np.arange(0, 3))
         self.cbar = pyplot.colorbar(mappable,
@@ -41,7 +61,8 @@ class FramesetPlotter():
 
     def map_normalizer(self, norm_range=None):
         cmap = cm.get_cmap(self.map_cmap)
-        energies = self.frameset.edge.energies_in_range(norm_range=norm_range)
+        edge = self.frameset.edge()
+        energies = edge.energies_in_range(norm_range=norm_range)
         # norm = BoundaryNorm(energies, cmap.N)
 
         # Converted to continuous normalizer once peak fitting was introduced
