@@ -238,9 +238,14 @@ class XrayEdgeTest(unittest.TestCase):
             [8291, 8292, 8293]
         )
 
+    def test_post_edge_xs(self):
+        x = np.array([1, 2, 3])
+        X = self.edge._post_edge_xs(x)
+        expected = np.array([[1, 1], [2, 4], [3, 9]])
+        self.assertTrue(np.array_equal(X, expected))
 
 # class TXMMapTest(HDFTestCase):
-
+# 
 #     def setUp(self):
 #         ret = super().setUp()
 #         # Disable progress bars and notifications

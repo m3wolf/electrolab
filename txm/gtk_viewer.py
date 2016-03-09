@@ -106,6 +106,7 @@ class GtkTxmViewer():
             'key-release-main': self.key_pressed_main,
             'key-release-map': self.navigate_map,
             'toggle-particles': self.toggle_particles,
+            'toggle-normalization': self.toggle_normalization,
             'update-window': self.update_window,
             'change-active-group': self.change_active_group,
             'launch-map-window': self.launch_map_window,
@@ -268,6 +269,12 @@ class GtkTxmViewer():
     def toggle_particles(self, widget):
         self.plotter.show_particles = not self.plotter.show_particles
         self.refresh_artists()
+        self.update_window()
+
+    def toggle_normalization(self, widget, event):
+        self.plotter.normalize_xanes = not self.plotter.normalize_xanes
+        # self.refresh_artists()
+        self.plotter.plot_xanes_spectrum()
         self.update_window()
 
     def play_frames(self, widget):

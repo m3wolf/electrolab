@@ -86,7 +86,7 @@
               </packing>
             </child>
             <child>
-              <object class="GtkLabel" id="label13">
+              <object class="GtkLabel" id="ShowMapLabel">
                 <property name="visible">True</property>
                 <property name="can_focus">False</property>
                 <property name="margin_left">15</property>
@@ -141,7 +141,7 @@
                 <property name="visible">True</property>
                 <property name="can_focus">False</property>
                 <property name="margin_left">15</property>
-                <property name="label" translatable="yes">Edge Jump:</property>
+                <property name="label" translatable="yes">Edge Jump: </property>
               </object>
               <packing>
                 <property name="expand">False</property>
@@ -162,7 +162,32 @@
               </packing>
             </child>
             <child>
-              <object class="GtkLabel" id="label8">
+              <object class="GtkLabel" id="MapNormalizeLabel">
+                <property name="visible">True</property>
+                <property name="can_focus">False</property>
+                <property name="margin_left">15</property>
+                <property name="label" translatable="yes">Normalize Xanes: </property>
+                <property name="ellipsize">end</property>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">10</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkSwitch" id="NormMapXanesSwitch">
+                <property name="visible">True</property>
+                <property name="can_focus">True</property>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">11</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkLabel" id="ActivePixelLabe">
                 <property name="visible">True</property>
                 <property name="can_focus">False</property>
                 <property name="margin_left">15</property>
@@ -171,7 +196,7 @@
               <packing>
                 <property name="expand">False</property>
                 <property name="fill">True</property>
-                <property name="position">10</property>
+                <property name="position">12</property>
               </packing>
             </child>
             <child>
@@ -183,7 +208,7 @@
               <packing>
                 <property name="expand">False</property>
                 <property name="fill">True</property>
-                <property name="position">11</property>
+                <property name="position">13</property>
               </packing>
             </child>
           </object>
@@ -973,6 +998,32 @@
                     <property name="expand">False</property>
                     <property name="fill">True</property>
                     <property name="position">2</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkLabel" id="NormalizeLabel">
+                    <property name="visible">True</property>
+                    <property name="can_focus">False</property>
+                    <property name="label" translatable="yes">Normalize Xanes: </property>
+                    <property name="ellipsize">end</property>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">3</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkSwitch" id="NormXanesSwitch">
+                    <property name="visible">True</property>
+                    <property name="can_focus">True</property>
+                    <property name="active">True</property>
+                    <signal name="state-set" handler="toggle-normalization" swapped="no"/>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">4</property>
                   </packing>
                 </child>
               </object>

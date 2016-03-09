@@ -93,8 +93,9 @@ class FramesetPlotter():
         self.map_ax.set_ylabel("µm")
         return artist
 
-    def plot_xanes_spectrum(self):
-        self.xanes_scatter = self.frameset.plot_xanes_spectrum(ax=self.xanes_ax)
+    def plot_xanes_spectrum(self, *args, **kwargs):
+        self.xanes_scatter = self.frameset.plot_xanes_spectrum(ax=self.xanes_ax,
+                                                               *args, **kwargs)
 
     def set_title(self, title):
         self.map_ax.set_title(title)
@@ -183,6 +184,8 @@ class GtkFramesetPlotter(FramesetPlotter):
     show_particles = False
     xanes_scatter = None
     map_crosshairs = None
+    normalize_xanes = True
+    normalize_map_xanes = True
 
     def __init__(self, frameset):
         super().__init__(frameset=frameset)
@@ -223,21 +226,28 @@ class GtkFramesetPlotter(FramesetPlotter):
         self.map_xanes_ax.clear()
         self.frameset.plot_xanes_spectrum(ax=self.map_xanes_ax,
                                           pixel=active_pixel,
-                                          edge_jump_filter=True)
+                                          edge_jump_filter=True,
+                                          normalize=self.normalize_xanes,
+                                          show_fit=show_fit)
         self.map_edge_ax.clear()
         self.frameset.plot_xanes_edge(ax=self.map_edge_ax,
                                       pixel=active_pixel,
                                       edge_jump_filter=True,
-                                      show_fit=True)
+                                      normalize=self.normalize_xanes,
+                                      show_fit=show_fit)
         self.map_canvas.draw()
 
     def plot_xanes_spectrum(self):
         self.xanes_ax.clear()
-        ret = super().plot_xanes_spectrum()
+        normalize = self.normalize_xanes
+        show_fit = not self.normalize_xanes
+        ret = super().plot_xanes_spectrum(normalize=normalize, show_fit=show_fit)
         self.xanes_ax.figure.canvas.draw()
         # Plot zoomed in edge-view
         self.edge_ax.clear()
-        self.frameset.plot_xanes_edge(ax=self.edge_ax, show_fit=True)
+        self.frameset.plot_xanes_edge(ax=self.edge_ax,
+                                      normalize=normalize, show_fit=show_fit)
+        self.edge_ax.figure.canvas.draw()
         return ret
 
     def create_axes(self):

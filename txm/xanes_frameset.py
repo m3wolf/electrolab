@@ -692,11 +692,16 @@ class XanesFrameset():
         for frame in prog(self, "Rebinning"):
             frame.rebin(shape=shape, factor=factor)
 
-    def normalize(self):
+    def normalize(self, plot_fit=False):
         """Correct for background material not absorbing at this edge. Uses
         method described in DOI 10.1038/ncomms7883: fit line against
         material that fails edge_jump_filter and use this line to
         correct entire frame.
+
+        Arguments
+        ---------
+        - plot_fit: If True, will plot the background spectrum and the
+        best-fit line.
         """
         self.fork_group('normalized')
         # Linear regression on "background" materials
@@ -704,6 +709,7 @@ class XanesFrameset():
         regression = linear_model.LinearRegression()
         x = np.array(spectrum.index).reshape(-1, 1)
         regression.fit(x, spectrum.values)
+        goodness_of_fit = regression.score(x, spectrum.values)
         # Subtract regression line from each frame
         def remove_offset(payload):
             offset = regression.predict(payload['energy'])
@@ -713,9 +719,16 @@ class XanesFrameset():
             payload.pop('labels')
             return payload
 
+        description = "Normalizing background (R²={:.3f})"
+        description = description.format(goodness_of_fit)
         process_with_smp(frameset=self,
                          worker=remove_offset,
-                         description="Normalizing background")
+                         description=description)
+        # Plot the background fit used to normalize
+        if plot_fit:
+            ax = new_axes()
+            ax.plot(x, spectrum.values, marker="o", linestyle="None")
+            ax.plot(x, regression.predict(x))
 
     def particle_area_spectrum(self, loc=xycoord(20, 20)):
         """Calculate a spectrum based on the area of the particle closest to
@@ -777,11 +790,17 @@ class XanesFrameset():
         edge_jump_filter (bool or str): If truthy, only pixels that
             pass the edge jump filter are used to calculate the
             spectrum. If "inverse" is given, then the edge jump filter
-            is inverted first.
-
+            is logically not-ted and calculated with a more
+            conservative threshold.
         """
         energies = []
         intensities = []
+        # Calculate masks if necessary
+        if edge_jump_filter == "inverse":
+            mask = ~self.edge_jump_mask(sensitivity=0.1)
+        elif edge_jump_filter:
+            mask = self.edge_jump_mask()
+        # Determine the contribution from each energy frame
         for frame in self:
             data = frame.image_data.value
             # Find the active particle (if any)
@@ -798,13 +817,10 @@ class XanesFrameset():
             if pixel is not None:
                  # Specific pixel is requested
                 intensity = data[pixel.vertical][pixel.horizontal]
-            elif edge_jump_filter == "inverse":
-                masked_data = np.ma.array(data, mask=~self.edge_jump_mask())
-                intensity = np.sum(masked_data) / np.prod(masked_data.shape)
             elif edge_jump_filter:
-                masked_data = np.ma.array(data, mask=self.edge_jump_mask())
-                # Sum absorbances for datasets
-                intensity = np.sum(masked_data) / np.prod(masked_data.shape)
+                masked_data = np.ma.array(data, mask=mask)
+                # Average absorbances for datasets
+                intensity = np.sum(masked_data) / np.sum(masked_data.mask)
             elif particle:
                 bbox = particle.bbox()
                 mask = np.zeros_like(data)
@@ -813,7 +829,7 @@ class XanesFrameset():
                 masked_data = np.copy(data)
                 masked_data[mask] = 0
                 # Sum absorbances for datasets
-                intensity = np.sum(masked_data) / np.prod(masked_data.shape)
+                intensity = np.sum(masked_data) / np.sum(masked_data.mask)
             else:
                 masked_data = data
                 # Sum absorbances for datasets
@@ -825,10 +841,29 @@ class XanesFrameset():
         series = pd.Series(intensities, index=energies)
         return series
 
-    def plot_xanes_spectrum(self, ax=None, pixel=None, norm_range=None, show_fit=False, edge_jump_filter=True):
+    def plot_xanes_spectrum(self, ax=None, pixel=None,
+                            norm_range=None, normalize=False,
+                            show_fit=False, edge_jump_filter=True):
+        """Calculate and plot the xanes spectrum for this field-of-view.
+
+        Arguments
+        ---------
+        ax - matplotlib axes object on which to draw
+
+        pixel - Coordinates of a specific pixel on the image to plot.
+
+        normalize - If truthy, will set the pre-edge at zero and the
+          post-edge at 1.
+
+        show_fit - If truthy, will use the edge object to fit the data
+          and plot the resulting fit line.
+
+        edge_jump_filter - If truthy, will only include those values
+          that show a strong absorbtion jump across this edge.
+        """
         if norm_range is None:
             norm_range = (self.edge.map_range[0], self.edge.map_range[1])
-            norm = Normalize(*norm_range)
+        norm = Normalize(*norm_range)
         spectrum = self.xanes_spectrum(pixel=pixel, edge_jump_filter=edge_jump_filter)
         if ax is None:
             ax = new_axes()
@@ -837,7 +872,18 @@ class XanesFrameset():
         for energy in spectrum.index:
             cmap = cm.get_cmap(self.cmap)
             colors.append(cmap(norm(energy)))
+        if normalize or show_fit:
+            # Prepare an edge for fitting
+            edge = self.edge()
+            edge.post_edge_order = 1
+            edge.fit(spectrum)
+        if normalize:
+            # Adjust the limits of the spectrum to be between 0 and 1
+            spectrum = edge.normalize(spectrum)
         ax.plot(spectrum, linestyle=":")
+        if show_fit:
+            # Plot the predicted values from edge fitting
+            edge.plot(ax=ax)
         xlim = ax.get_xlim()
         ylim = ax.get_ylim()
         scatter = ax.scatter(spectrum.index, spectrum.values, c=colors, s=25)
@@ -846,17 +892,14 @@ class XanesFrameset():
         ax.set_ylim(*ylim)
         ax.set_xlabel('Energy /eV')
         ax.set_ylabel('Absorbance')
-        # Plot best fit for this edge
-        if show_fit:
-            edge = self.edge()
-            edge.fit(spectrum)
-            edge.plot(ax=ax)
         if pixel is not None:
             xy = pixel_to_xy(pixel, extent=self.extent(), shape=self.map_shape())
             title = 'XANES Spectrum at ({x}, {y}) = {val}'
+            masked_map = self.masked_map(goodness_filter=False)
+            val = masked_map[pixel.vertical][pixel.horizontal]
             title = title.format(x=round(xy.x, 2),
                                  y=round(xy.y, 2),
-                                 val=self.masked_map(goodness_filter=False)[pixel.vertical][pixel.horizontal])
+                                 val=val)
             ax.set_title(title)
         # Plot lines at edge of normalization range
         ax.axvline(x=norm_range[0], linestyle='-', color="0.55", alpha=0.4)
@@ -867,7 +910,10 @@ class XanesFrameset():
         """Call self.plot_xanes_spectrum() but zoomed in on the edge."""
         scatter = self.plot_xanes_spectrum(*args, **kwargs)
         ax = scatter.axes
-        ax.set_xlim(self.edge.pre_edge[-1], self.edge.post_edge[0])
+        # Determine plotting limits
+        start = self.edge.map_range[0] - 5
+        stop = self.edge.map_range[1] + 5
+        ax.set_xlim(start, stop)
         return scatter
 
     def plot_edge_jump(self, ax=None, alpha=1):

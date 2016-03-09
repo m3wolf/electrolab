@@ -254,7 +254,8 @@ class TXMFrame():
         if data is None:
             data = self.image_data
         extent = self.extent(shape=data.shape)
-        im_ax = ax.imshow(data, *args, cmap='gray', extent=extent, **kwargs)
+        im_ax = ax.imshow(data, *args, cmap='gray', extent=extent,
+                          **kwargs)
         # Plot particles
         if show_particles:
             self.plot_particle_labels(ax=im_ax.axes, extent=extent)
@@ -279,8 +280,9 @@ class TXMFrame():
             # Mask out anything not labeled (ie. set to zero)
             mask = np.logical_not(data.value.astype(np.bool))
             masked_data = np.ma.array(data, mask=mask)
-            artists.append(ax.imshow(masked_data, *args, alpha=opacity,
-                                     cmap="Dark2", extent=extent, **kwargs))
+            artists.append(ax.imshow(masked_data, *args,
+                                     alpha=opacity, cmap="Dark2",
+                                     extent=extent, **kwargs))
             # Plot text for label index
             particles = self.particles()
             xs = [particle.sample_position().x for particle in particles]
