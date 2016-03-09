@@ -84,7 +84,7 @@ class GalvanostatRun():
         mass_g = default_units.mass(self.mass).num
         self._df.loc[:, 'capacity'] = self._df.loc[:, '(Q-Qo)/mA.h'] / mass_g
         # Process other metadata
-        self.start_time = run.metadata['start_time']
+        self.start_time = run.metadata.get('start_time', None)
         # Split the data into cycles, except the initial resting phase
         cycles = list(self._df.groupby('cycle number'))
         # Create Cycle objects for each cycle
