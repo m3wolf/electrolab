@@ -18,9 +18,11 @@
 # along with Scimap. If not, see <http://www.gnu.org/licenses/>.
 
 import os
+import threading
+import time
 
 import gi
-from gi.repository import Gtk, Gdk, GObject
+from gi.repository import Gtk, Gdk, GObject, GLib
 
 from utilities import xycoord
 from .frame import Pixel, xy_to_pixel, pixel_to_xy
@@ -28,6 +30,51 @@ from .plotter import GtkFramesetPlotter
 
 
 gi.require_version('Gtk', '3.0')
+
+
+WATCH_CURSOR = Gdk.Cursor(Gdk.CursorType.WATCH)
+ARROW_CURSOR = Gdk.Cursor(Gdk.CursorType.ARROW)
+
+class WatchCursor():
+    """Factory returns a function that Perform some slow action `target`
+    with a watch cursor over the given `windows`. When writing the
+    `target` function, make sure to use GLib.idle_add for anything
+    that modifies the UI.
+    """
+    WATCH_CURSOR = WATCH_CURSOR
+    ARROW_CUROSR = ARROW_CURSOR
+    def __init__(self, target, windows, threading=True):
+        self.target = target
+        self.windows = windows
+        self.threading = threading
+
+    @staticmethod
+    def disable_watch(windows):
+        for window in windows:
+            real_window = window.get_window()
+            if real_window:
+                real_window.set_cursor(ARROW_CURSOR)
+                window.set_sensitive(True)
+
+    def __call__(self, *args, **kwargs):
+        # Start watch cursor
+        for window in self.windows:
+            real_window = window.get_window()
+            if real_window and self.threading:
+                real_window.set_cursor(WATCH_CURSOR)
+                window.set_sensitive(False)
+        def dostuff(*args, **kwargs):
+            self.target(*args, **kwargs)
+            # Remove watch cursor
+            GLib.idle_add(self.disable_watch, self.windows)
+        # Start target process
+        if self.threading:
+            thread = threading.Thread(target=dostuff,
+                                      args=args, kwargs=kwargs)
+            thread.daemon = True
+            thread.start()
+        else:
+            self.target(*args, **kwargs)
 
 
 class GtkTxmViewer():
@@ -86,21 +133,19 @@ class GtkTxmViewer():
         if self.frameset.is_background():
             self.active_group = bg_iter
         self.group_combo.set_model(self.group_list)
-        # Disable the "show map" button if map is not calculated
-        if not self.frameset.map_name:
-            btn = self.builder.get_object("ShowMapButton")
-            btn.set_sensitive(False)
         # Set initial active group name
         self.group_combo.set_active_iter(self.active_group)
         self.active_groupname = self.frameset.active_groupname
         # Set event handlers
+        both_windows = [self.window, self.map_window]
         handlers = {
             'gtk-quit': Gtk.main_quit,
             'previous-frame': self.previous_frame,
             'create-artists': self.refresh_artists,
             'max-frame': self.max_frame,
             'next-frame': self.next_frame,
-            'play-frames': self.play_frames,
+            'play-frames': WatchCursor(self.play_frames,
+                                       windows=[self.window]),
             'last-frame': self.last_frame,
             'first-frame': self.first_frame,
             'key-release-main': self.key_pressed_main,
@@ -108,8 +153,10 @@ class GtkTxmViewer():
             'toggle-particles': self.toggle_particles,
             'toggle-normalization': self.toggle_normalization,
             'update-window': self.update_window,
-            'change-active-group': self.change_active_group,
-            'launch-map-window': self.launch_map_window,
+            'change-active-group': WatchCursor(self.change_active_group,
+                                               windows=[self.window]),
+            'launch-map-window': WatchCursor(self.launch_map_window,
+                                             windows=[self.window]),
             'hide-map-window': self.hide_map_window,
             'toggle-map': self.toggle_map_visible,
             'toggle-map-background': self.toggle_map_background,
@@ -118,8 +165,9 @@ class GtkTxmViewer():
         self.builder.connect_signals(handlers)
         self.window.connect('delete-event', self.quit)
         # Connect handlers for clicking on a pixel
+        click_pixel = self.click_map_pixel
         self.plotter.map_figure.canvas.mpl_connect('button_press_event',
-                                                   self.click_map_pixel)
+                                                   click_pixel)
         # Connect handler for mousing over the frame image
         self.plotter.frame_figure.canvas.mpl_connect('motion_notify_event',
                                                      self.update_current_location)
@@ -135,9 +183,13 @@ class GtkTxmViewer():
         self.update_map_window()
 
     def toggle_edge_jump(self, widget, object=None):
-        self.apply_edge_jump = widget.get_active()
-        self.draw_map_plots()
-        self.update_map_window()
+        self.plotter.apply_edge_jump = widget.get_active()
+        if self.frameset.map_name:
+            # Only replot the map if necessary
+            self.draw_map_plots()
+            self.update_map_window()
+        self.refresh_artists()
+        self.update_window()
 
     def toggle_map_background(self, widget, object=None):
         self.show_map_background = widget.get_active()
@@ -157,23 +209,27 @@ class GtkTxmViewer():
         return True
 
     def launch_map_window(self, widget):
-        self.draw_map_plots()
-        self.map_window.show_all()
+        GLib.idle_add(self.draw_map_plots)
+        GLib.idle_add(self.map_window.show_all)
 
     def click_map_pixel(self, event):
-        if event.inaxes == self.plotter.map_ax:
+        if event.inaxes in [self.plotter.map_ax, self.plotter.image_ax]:
             # Convert xy position to pixel values
             xy = xycoord(x=event.xdata, y=event.ydata)
             self.active_pixel = xy_to_pixel(xy,
                                             extent=self.frameset.extent(),
                                             shape=self.frameset.map_shape())
+            self.plotter.active_pixel = self.active_pixel
             # Make sure active_xy is in the center of the pixel
             self.active_xy = pixel_to_xy(self.active_pixel,
                                          extent=self.frameset.extent(),
                                          shape=self.frameset.map_shape())
+            self.plotter.active_xy = self.active_xy
         else:
             self.active_pixel = None
             self.active_xy = None
+            self.plotter.active_pixel = None
+            self.plotter.active_xy = None
         self.draw_map_plots()
         self.update_map_window()
 
@@ -182,6 +238,8 @@ class GtkTxmViewer():
         y_label = self.builder.get_object('YCursorLabel')
         v_label = self.builder.get_object('VCursorLabel')
         h_label = self.builder.get_object('HCursorLabel')
+        I_label = self.builder.get_object('ICursorLabel')
+        frame = self.current_frame()
         if event.inaxes == self.plotter.image_ax:
             # Convert xy position to pixel values
             xy = xycoord(x=round(event.xdata, 1), y=round(event.ydata, 1))
@@ -191,6 +249,8 @@ class GtkTxmViewer():
             y_label.set_text(str(xy.y))
             v_label.set_text(str(pixel.vertical))
             h_label.set_text(str(pixel.horizontal))
+            value = frame.image_data[pixel.vertical-1][pixel.horizontal-1]
+            I_label.set_text(str(round(value, 4)))
         else:
             # Set all the cursor labels to blank values
             s = "--"
@@ -201,7 +261,6 @@ class GtkTxmViewer():
 
     def draw_map_plots(self):
         self.plotter.draw_map(show_map=self.show_map,
-                              goodness_filter=self.apply_edge_jump,
                               show_background=self.show_map_background)
         # Show crosshairs to indicate active pixel
         if self.show_map_background:
@@ -209,7 +268,7 @@ class GtkTxmViewer():
         else:
             color = 'black'
         self.plotter.draw_crosshairs(active_xy=self.active_xy, color=color)
-        self.plotter.draw_map_xanes(active_pixel=self.active_pixel)
+        self.plotter.draw_map_xanes()
 
     def update_map_window(self):
         # Show position of active pixel
@@ -243,13 +302,17 @@ class GtkTxmViewer():
 
     def change_active_group(self, widget, object=None):
         """Update to a new frameset HDF group after user has changed combobox."""
+        def disable_map_button():
+            # Disable map button until the data are loaded (reset in self.update_window)
+            self.builder.get_object("ShowMapButton").set_sensitive(False)
+        GLib.idle_add(disable_map_button)
+        # Load new group
         new_group = self.group_list[widget.get_active_iter()][1]
         self.active_groupname = new_group
         self.frameset.switch_group(new_group)
-        self.plotter.draw()
-        self.plotter.connect_animation(event_source=self.event_source)
-        self.update_window()
-        self.refresh_artists()
+        # Update UI elements
+        GLib.idle_add(self.update_window)
+        GLib.idle_add(self.refresh_artists)
 
     @property
     def current_idx(self):
@@ -272,15 +335,14 @@ class GtkTxmViewer():
         self.update_window()
 
     def toggle_normalization(self, widget, event):
-        self.plotter.normalize_xanes = not self.plotter.normalize_xanes
-        # self.refresh_artists()
-        self.plotter.plot_xanes_spectrum()
+        self.plotter.normalize_xanes = widget.get_active()
+        self.refresh_artists()
         self.update_window()
 
     def play_frames(self, widget):
         self.play_mode = widget.get_property('active')
         if self.play_mode:
-            GObject.timeout_add(self.animation_delay, self.next_frame, None)
+            GLib.timeout_add(self.animation_delay, self.next_frame, None)
 
     def first_frame(self, widget):
         self.current_idx = 0
@@ -343,6 +405,12 @@ class GtkTxmViewer():
             round(self.frameset.image_normalizer().vmax, 2)
         )
         norm_label.set_text(norm_text)
+        # Check if the "show map" button should be active
+        map_btn = self.builder.get_object("ShowMapButton")
+        if self.frameset.map_name:
+            map_btn.set_sensitive(True)
+        else:
+            map_btn.set_sensitive(False)
 
     def progress_modal(self, objs, operation='Working'):
         """
@@ -359,6 +427,9 @@ class GtkTxmViewer():
     def show(self):
         self.window.show_all()
         self.plotter.connect_animation(event_source=self.event_source)
+        # Initialize threading support
+        GObject.threads_init()
+
         Gtk.main()
         Gtk.main_quit()
 

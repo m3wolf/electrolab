@@ -30,6 +30,7 @@ try:
 except TypeError:
     pass
 
+import exceptions
 import plots
 from .animation import FrameAnimation
 
@@ -63,10 +64,12 @@ class FramesetPlotter():
         cmap = cm.get_cmap(self.map_cmap)
         edge = self.frameset.edge()
         energies = edge.energies_in_range(norm_range=norm_range)
-        # norm = BoundaryNorm(energies, cmap.N)
-
-        # Converted to continuous normalizer once peak fitting was introduced
-        norm = Normalize(energies[0], energies[-1])
+        if self.frameset.map_method == "whiteline_direct":
+            # Discrete normalization range
+            norm = BoundaryNorm(energies, cmap.N)
+        else:
+            # Continuous normalization range
+            norm = Normalize(energies[0], energies[-1])
         return norm
 
     def draw_map(self, norm_range=None, alpha=1,
@@ -85,11 +88,12 @@ class FramesetPlotter():
         artist = self.map_ax.imshow(masked_map,
                                     extent=extent,
                                     cmap=self.map_cmap,
+                                    origin="lower",
                                     norm=norm,
                                     alpha=alpha,
                                     *args, **kwargs)
         # Decorate axes labels, etc
-        self.map_ax.set_xlabel("TODO: Adjust extent when zooming and cropping! (µm)")
+        self.map_ax.set_xlabel("µm")
         self.map_ax.set_ylabel("µm")
         return artist
 
@@ -100,7 +104,7 @@ class FramesetPlotter():
     def set_title(self, title):
         self.map_ax.set_title(title)
 
-    def draw_crosshairs(self, active_xy=None, color="black"):
+    def draw_crosshairs(self, active_xy=None, color="black", ax=None):
         # Remove old cross-hairs
         if self.map_crosshairs:
             for line in self.map_crosshairs:
@@ -114,6 +118,7 @@ class FramesetPlotter():
                                         color=color, linestyle="--")
             self.map_crosshairs = (xline, yline)
         self.map_ax.figure.canvas.draw()
+        self.image_ax.figure.canvas.draw()
 
 
 class FramesetMoviePlotter(FramesetPlotter):
@@ -184,6 +189,10 @@ class GtkFramesetPlotter(FramesetPlotter):
     show_particles = False
     xanes_scatter = None
     map_crosshairs = None
+    image_crosshairs = None
+    apply_edge_jump = False
+    active_xy = None
+    active_pixel = None
     normalize_xanes = True
     normalize_map_xanes = True
 
@@ -198,7 +207,7 @@ class GtkFramesetPlotter(FramesetPlotter):
         self.map_canvas = FigureCanvasGTK3Agg(self._map_fig)
         self.map_canvas.set_size_request(400, 400)
 
-    def draw_map(self, show_map=True, goodness_filter=True,
+    def draw_map(self, show_map=True,
                  show_background=False):
         # Clear old mapping data
         self.map_ax.clear()
@@ -215,7 +224,7 @@ class GtkFramesetPlotter(FramesetPlotter):
             map_alpha = 1
         if show_map:
             # Plot the overall map
-            map_artist = super().draw_map(goodness_filter=goodness_filter,
+            map_artist = super().draw_map(goodness_filter=self.apply_edge_jump,
                                           alpha=map_alpha)
             artists.append(map_artist)
         # Force redraw
@@ -224,15 +233,21 @@ class GtkFramesetPlotter(FramesetPlotter):
 
     def draw_map_xanes(self, active_pixel=None):
         self.map_xanes_ax.clear()
+        show_fit = False
+        # Decide whether to apply edge jump filter
+        if self.active_pixel:
+            edge_jump = False
+        else:
+            edge_jump = self.apply_edge_jump
         self.frameset.plot_xanes_spectrum(ax=self.map_xanes_ax,
-                                          pixel=active_pixel,
-                                          edge_jump_filter=True,
+                                          pixel=self.active_pixel,
+                                          edge_jump_filter=edge_jump,
                                           normalize=self.normalize_xanes,
                                           show_fit=show_fit)
         self.map_edge_ax.clear()
         self.frameset.plot_xanes_edge(ax=self.map_edge_ax,
-                                      pixel=active_pixel,
-                                      edge_jump_filter=True,
+                                      pixel=self.active_pixel,
+                                      edge_jump_filter=edge_jump,
                                       normalize=self.normalize_xanes,
                                       show_fit=show_fit)
         self.map_canvas.draw()
@@ -241,12 +256,18 @@ class GtkFramesetPlotter(FramesetPlotter):
         self.xanes_ax.clear()
         normalize = self.normalize_xanes
         show_fit = not self.normalize_xanes
-        ret = super().plot_xanes_spectrum(normalize=normalize, show_fit=show_fit)
+        ret = super().plot_xanes_spectrum(normalize=normalize,
+                                          pixel=self.active_pixel,
+                                          show_fit=show_fit,
+                                          edge_jump_filter=self.apply_edge_jump)
         self.xanes_ax.figure.canvas.draw()
         # Plot zoomed in edge-view
         self.edge_ax.clear()
         self.frameset.plot_xanes_edge(ax=self.edge_ax,
-                                      normalize=normalize, show_fit=show_fit)
+                                      normalize=normalize,
+                                      pixel=self.active_pixel,
+                                      show_fit=show_fit,
+                                      edge_jump_filter=self.apply_edge_jump)
         self.edge_ax.figure.canvas.draw()
         return ret
 
@@ -290,6 +311,18 @@ class GtkFramesetPlotter(FramesetPlotter):
         self.plot_xanes_spectrum()
         # Get image artists
         self.image_ax.clear()
+        # Prepare appropriate xanes spectrum
+        spectrum = self.frameset.xanes_spectrum(edge_jump_filter=self.apply_edge_jump,
+                                                pixel=self.active_pixel)
+        if self.normalize_xanes:
+            edge = self.frameset.edge()
+            edge.post_edge_order = 1
+            try:
+                edge.fit(spectrum)
+                spectrum = edge.normalize(spectrum)
+            except exceptions.RefinementError:
+                pass
+        # Prepare individual frame artists
         for frame in self.frameset:
             frame_artist = frame.plot_image(
                 ax=self.image_ax,
@@ -300,7 +333,7 @@ class GtkFramesetPlotter(FramesetPlotter):
             frame_artist.set_visible(False)
             # Get Xanes highlight artists
             energy = frame.energy
-            intensity = self.frameset.xanes_spectrum(edge_jump_filter=True)[energy]
+            intensity = spectrum[energy]
             xanes_artists = self.xanes_ax.plot([energy], [intensity], 'ro',
                                                animated=True)
             xanes_artists += self.edge_ax.plot([energy], [intensity], 'ro',
@@ -317,8 +350,22 @@ class GtkFramesetPlotter(FramesetPlotter):
                 [a.set_visible(False) for a in particle_artists]
             else:
                 particle_artists = []
-            all_artists.append((frame_artist, *xanes_artists, *particle_artists))
-            self.frame_animation.artists = all_artists
+                    # Draw cross-hairs on the map if there's an active pixel
+            if self.active_xy:
+                # Draw cross-hairs on the image axes
+                xline = self.image_ax.axvline(x=self.active_xy.x,
+                                              color='red', linestyle="--",
+                                              animated=True, zorder=10)
+                yline = self.image_ax.axhline(y=self.active_xy.y,
+                                              color='red', linestyle="--",
+                                              animated=True, zorder=10)
+                crosshairs = [xline, yline]
+            else:
+                crosshairs = []
+            all_artists.append((frame_artist, *xanes_artists, *particle_artists,
+                                *crosshairs))
+        self.frame_animation.artists = all_artists
+        self.frame_canvas.draw()
         return all_artists
 
     def connect_animation(self, event_source):
@@ -331,7 +378,7 @@ class GtkFramesetPlotter(FramesetPlotter):
                                               blit=True)
         self.refresh_artists()
         # Forces the animation to show the first frame
-        event_source._on_change()
+        # event_source._on_change()
         self.frame_canvas.draw()
 
     def destroy(self):

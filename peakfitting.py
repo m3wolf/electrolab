@@ -348,7 +348,10 @@ class Peak():
             - 'estimated'
         """
         # Save x range for later
-        self.x_range = (data.index[0], data.index[-1])
+        try:
+            self.x_range = (data.index[0], data.index[-1])
+        except IndexError:
+            raise exceptions.RefinementError("No data to fit.")
         # Create fit object(s)
         self.fit_list = []
         FitClass = self.FitClass
@@ -387,6 +390,8 @@ class Peak():
             angle = (self.x_range[0] + self.x_range[1]) / 2
             msg = "Peak ~{angle:.1f}°: {error}".format(angle=angle, error=e)
             raise exceptions.PeakFitError(msg)
+        except TypeError:
+            raise exceptions.RefinementError
         else:
             popt = result[0]
             # Split optimized parameters by number of fits

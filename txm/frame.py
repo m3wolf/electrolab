@@ -42,31 +42,38 @@ position = namedtuple('position', ('x', 'y', 'z'))
 Extent = namedtuple('extent', ('left', 'right', 'bottom', 'top'))
 
 
-def rebin_image(data, shape):
+def rebin_image(data, new_shape):
     """Resample image into new shape, but only if the new dimensions are
     smaller than the old. This is not meant to apply zoom corrections,
     only correct sizes in powers of two. Eg, a 2048x2048 images can be
-    down-sampled to 1024x1024.
+    down-sampled to 1024x1024. If there are extra pixels in either
+    direction, they are discarded from the bottom and right.
 
     Kwargs:
     -------
-    shape (tuple): The target shape for the new array.
+    new_shape (tuple): The target shape for the new array.
 
     """
     # Return original data is shapes are the same
-    if data.shape == shape:
+    if data.shape == new_shape:
         return data
     # Check that the new shape is not larger than the old shape
-    for idx, dim in enumerate(shape):
+    for idx, dim in enumerate(new_shape):
         if dim > data.shape[idx]:
             msg = 'New shape {new} is larger than original shape {original}.'
-            msg = msg.format(new=shape, original=data.shape)
+            msg = msg.format(new=new_shape, original=data.shape)
             raise ValueError(msg)
+    ratios = shape(data.shape[0] / new_shape[0],
+                   data.shape[1] / new_shape[1])
+    # Check for and discard extra pixels
+    if (ratios[0] % 1) or (ratios[1] % 1):
+        ratios = shape(int(ratios[0]), int(ratios[1]))
+        data = data[:ratios[0] * new_shape[0],:ratios[1] * new_shape[1]]
     # Determine new dimensions
-    sh = (shape[0],
-          data.shape[0] // shape[0],
-          shape[1],
-          data.shape[1] // shape[1])
+    sh = (new_shape[0],
+          int(ratios[0]),
+          new_shape[1],
+          int(ratios[1]))
     # new_data = data.reshape(sh).mean(-1).mean(1)
     new_data = data.reshape(sh).sum(-1).sum(1)
     return new_data
@@ -90,8 +97,8 @@ def apply_reference(data, reference_data):
         min([ds.shape[0] for ds in [data, reference_data]]),
         min([ds.shape[1] for ds in [data, reference_data]]),
     ]
-    reference_data = rebin_image(reference_data, shape=min_shape)
-    data = rebin_image(data, shape=min_shape)
+    reference_data = rebin_image(reference_data, new_shape=min_shape)
+    data = rebin_image(data, new_shape=min_shape)
     new_data = np.log10(reference_data / data)
     return new_data
 
@@ -103,7 +110,7 @@ def xy_to_pixel(xy, extent, shape):
     pixel_h = int(round(ratio_x * shape[1]))
     ratio_y = (xy.y - extent.bottom) / (extent.top - extent.bottom)
     # (1 - ratio) for y because images are top indexed
-    pixel_v = int(round((1 - ratio_y) * shape[0]))
+    pixel_v = int(round(ratio_y * shape[0]))
     return Pixel(vertical=pixel_v, horizontal=pixel_h)
 
 
@@ -118,7 +125,7 @@ def pixel_to_xy(pixel, extent, shape):
     ratio_h = (pixel.horizontal / shape[1])
     x = extent.left + ratio_h * (extent.right - extent.left)
     ratio_v = (pixel.vertical / shape[0])
-    y = extent.top - ratio_v * (extent.top - extent.bottom)
+    y = extent.bottom + ratio_v * (extent.top - extent.bottom)
     return xycoord(x=x, y=y)
 
 
@@ -148,13 +155,16 @@ class TXMFrame():
     _sample_position = HDFAttribute('sample_position',
                                     default=position(0, 0, 0),
                                     wrapper=lambda coords: position(*coords))
-    approximate_position = HDFAttribute(
-        'approximate_position',
+    relative_position = HDFAttribute(
+        'relative_position',
         default=position(0, 0, 0),
         wrapper=lambda coords: position(*coords)
     )
     _starttime = HDFAttribute('starttime')
     _endtime = HDFAttribute('endtime')
+    um_per_pixel = HDFAttribute('um_per_pixel',
+                                default=Pixel(0.0390625, 0.0390625),
+                                wrapper=lambda dims: Pixel(*dims))
     is_background = HDFAttribute('is_background', default=False)
     particle_labels_path = HDFAttribute('particle_labels_path', default=None)
     active_particle_idx = HDFAttribute('active_particle_idx', default=None)
@@ -169,11 +179,10 @@ class TXMFrame():
             self.sample_name = file.sample_name
             self.position_name = file.position_name
             # self.reference_path = file.reference_path
-            self.approximate_position = position(
-                round(self.sample_position.x, -1),
-                round(self.sample_position.y, -1),
-                round(self.sample_position.z, -1)
+            self.relative_position = position(
+                x=0, y=0, z=round(self.sample_position.z, -1)
             )
+            self.um_per_pixel = file.um_per_pixel()
             self.is_background = file.is_background
 
     def __repr__(self):
@@ -188,11 +197,18 @@ class TXMFrame():
     @property
     def sample_position(self):
         actual_position = self._sample_position
-        return position(20, 20, actual_position.z)
+        return actual_position
 
     @sample_position.setter
     def sample_position(self, new_position):
         self._sample_position = new_position
+
+    @property
+    def approximate_position(self):
+        actual_position = self._sample_position
+        return position(x=round(actual_position.x, -1),
+                        y=round(actual_position.y, -1),
+                        z=round(actual_position.z, -1))
 
     @property
     def starttime(self):
@@ -223,17 +239,21 @@ class TXMFrame():
     def hdf_node(self):
         return self.image_data
 
-    def extent(self, shape=None):
+    def extent(self, img_shape=None):
         """Determine physical dimensions for axes values."""
-        if shape is None:
-            shape = self.image_data.shape
-        y_pixels, x_pixels = shape
-        um_per_pixel = self.um_per_pixel()
-        center = self.sample_position
-        left = center.x - x_pixels * um_per_pixel.x / 2
-        right = center.x + x_pixels * um_per_pixel.x / 2
-        bottom = center.y - y_pixels * um_per_pixel.y / 2
-        top = center.y + y_pixels * um_per_pixel.y / 2
+        if img_shape is None:
+            img_shape = shape(*self.image_data.shape)
+        else:
+            img_shape = shape(*img_shape)
+        um_per_pixel = self.um_per_pixel
+        center = self.relative_position
+        width = img_shape.columns * um_per_pixel.horizontal
+        height = img_shape.rows * um_per_pixel.vertical
+        # Calculate boundaries from image shapes
+        left = center.x - width / 2
+        right = center.x + width / 2
+        bottom = center.y - height / 2
+        top = center.y + height / 2
         return Extent(left=left, right=right, bottom=bottom, top=top)
 
     def plot_histogram(self, ax=None, bins=100, *args, **kwargs):
@@ -253,9 +273,9 @@ class TXMFrame():
             ax = plots.new_image_axes()
         if data is None:
             data = self.image_data
-        extent = self.extent(shape=data.shape)
+        extent = self.extent(img_shape=shape(*data.shape))
         im_ax = ax.imshow(data, *args, cmap='gray', extent=extent,
-                          **kwargs)
+                          origin="lower", **kwargs)
         # Plot particles
         if show_particles:
             self.plot_particle_labels(ax=im_ax.axes, extent=extent)
@@ -282,11 +302,12 @@ class TXMFrame():
             masked_data = np.ma.array(data, mask=mask)
             artists.append(ax.imshow(masked_data, *args,
                                      alpha=opacity, cmap="Dark2",
-                                     extent=extent, **kwargs))
+                                     origin="lower", extent=extent,
+                                     **kwargs))
             # Plot text for label index
             particles = self.particles()
-            xs = [particle.sample_position().x for particle in particles]
-            ys = [particle.sample_position().y for particle in particles]
+            xs = [particle.relative_position().x for particle in particles]
+            ys = [particle.relative_position().y for particle in particles]
             for idx, x in enumerate(xs):
                 y = ys[idx]
                 txt = ax.text(x, y, str(idx),
@@ -306,19 +327,23 @@ class TXMFrame():
 
     def crop(self, top, left, bottom, right):
         """Reduce the image size to given box (in pixels)."""
-        labels = self.particle_labels()
         # Move particle and labels to top left
         self.shift_data(x_offset=-left, y_offset=-top)
-        self.shift_data(x_offset=-left, y_offset=-top,
-                        dataset=self.particle_labels())
         # Shrink images to bounding box size
         new_shape = shape(rows=(bottom - top), columns=(right - left))
         self.image_data.resize(new_shape)
-        labels.resize(new_shape)
-        # Reassign the active particle index (assume largest particle)
-        areas = [particle.area() for particle in self.particles()]
-        new_idx = areas.index(max(areas))
-        self.active_particle_idx = new_idx
+        try:
+            labels = self.particle_labels()
+        except exceptions.NoParticleError:
+            pass
+        else:
+            self.shift_data(x_offset=-left, y_offset=-top,
+                            dataset=self.particle_labels())
+            labels.resize(new_shape)
+        # # Reassign the active particle index (assume largest particle)
+        # areas = [particle.area() for particle in self.particles()]
+        # new_idx = areas.index(max(areas))
+        # self.active_particle_idx = new_idx
 
     def shift_data(self, x_offset, y_offset, dataset=None):
         """Move the image within the view field by the given offsets in
@@ -343,16 +368,16 @@ class TXMFrame():
         # Commit shift image
         dataset.write_direct(new_data)
         # Update stored position information
-        um_per_pixel = self.um_per_pixel()
+        um_per_pixel = self.um_per_pixel
         new_position = position(
-            x=self.sample_position.x + y_offset * um_per_pixel.x,
-            y=self.sample_position.y + y_offset * um_per_pixel.y,
+            x=self.sample_position.x + x_offset * um_per_pixel.horizontal,
+            y=self.sample_position.y + y_offset * um_per_pixel.vertical,
             z=self.sample_position.z
         )
         self.sample_position = new_position
         return dataset.value
 
-    def rebin(self, shape=None, factor=None):
+    def rebin(self, new_shape=None, factor=None):
         """Resample image into new shape. One of the kwargs `shape` or
         `factor` is required. Process is most effective when factors
         are powers of 2 (2, 4, 8, 16, etc). New shape is calculated
@@ -360,23 +385,22 @@ class TXMFrame():
 
         Kwargs:
         -------
-        shape (tuple): The target shape for the new array. Will
+        new_shape (tuple): The target shape for the new array. Will
             override `factor` if both are provided.
         factor (int): Factor by which to decrease the frame size. factor=2 would
             take a (1024, 1024) to (512, 512)
 
         """
-        original_shape = self.image_data.shape
-        if shape is None and factor is None:
+        original_shape = shape(*self.image_data.shape)
+        if new_shape is None and factor is None:
             # Raise an error if not arguments are passed.
             raise ValueError("Must pass one of `shape` or `factor`")
-        elif shape is None:
+        elif new_shape is None:
             # Determine new shape from factor if not provided.
             new_shape = tuple(int(dim / factor) for dim in original_shape)
-        else:
-            new_shape = shape
+        new_shape = shape(*new_shape)
         # Calculate new, rebinned image data
-        new_data = rebin_image(self.image_data.value, shape=new_shape)
+        new_data = rebin_image(self.image_data.value, new_shape=new_shape)
         # Resize existing dataset
         self.image_data.resize(new_shape)
         self.image_data.write_direct(new_data)
@@ -386,19 +410,26 @@ class TXMFrame():
         except exceptions.NoParticleError:
             pass
         else:
-            new_labels = rebin_image(labels.value, shape=new_shape)
+            new_labels = rebin_image(labels.value, new_shape=new_shape)
             # Resize existing particle labels
             labels.resize(new_shape)
             labels.write_direct(new_labels)
+        # Adjust pixel size appropriately
+        old_px_size = self.um_per_pixel
+        new_px_size = Pixel(
+            vertical=old_px_size.vertical * original_shape.rows / new_shape.rows,
+            horizontal=old_px_size.horizontal * original_shape.columns / new_shape.columns
+        )
+        self.um_per_pixel = new_px_size
         return new_data
 
-    def um_per_pixel(self):
-        """Use image size and nominal image field-of view of 40µm x 40µm to
-        compute spatial resolution."""
-        um_per_pixel_x = 40 / self.image_data.shape[1]
-        um_per_pixel_y = 40 / self.image_data.shape[0]
-        return xycoord(x=um_per_pixel_x,
-                       y=um_per_pixel_y)
+    # def um_per_pixel(self):
+    #     """Use image size and nominal image field-of view of 40µm x 40µm to
+    #     compute spatial resolution."""
+    #     um_per_pixel_x = 40 / self.image_data.shape[1]
+    #     um_per_pixel_y = 40 / self.image_data.shape[0]
+    #     return xycoord(x=um_per_pixel_x,
+    #                    y=um_per_pixel_y)
 
     def create_dataset(self, setname, hdf_group):
         """Save data and metadata to an HDF dataset."""
@@ -426,6 +457,9 @@ class TXMFrame():
     def particle_labels(self):
         if self.particle_labels_path is None:
             raise exceptions.NoParticleError
+        elif not self.particle_labels_path in self.image_data.file:
+            msg = "Could not load {}".format(self.particle_labels_path)
+            raise exceptions.FrameFileNotFound(msg)
         else:
             labels = self.image_data.file[self.particle_labels_path]
         return labels

@@ -151,9 +151,9 @@ def import_txm_framesets(directory, hdf_filename=None, flavor='ssrl'):
         for fs in frameset_list:
             for frame in prog(fs, 'Removing pixels beyond {}σ'.format(sigma)):
                 frame.remove_outliers(sigma=sigma)
-    # Identify particles
-    for frameset in frameset_list:
-        frameset.label_particles()
+    # # Identify particles
+    # for frameset in frameset_list:
+    #     frameset.label_particles()
     return frameset_list
 
 

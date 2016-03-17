@@ -58,7 +58,8 @@ class Queue():
     """A joinable queue that adds objects to a queue and then spawns
     workers to process them."""
 
-    def __init__(self, worker, totalsize, result_callback=None, description="Processing data"):
+    def __init__(self, worker, totalsize, result_callback=None,
+                 description="Processing data"):
         """Prepare the queue.
 
         Arguments
@@ -76,6 +77,7 @@ class Queue():
         description: The text to print in the progress bar during processing.
         """
         self.num_consumers = mp.cpu_count() * 2
+        self.worker = worker
         self.result_queue = mp.Queue(maxsize=totalsize)
         self.result_callback = result_callback
         self.totalsize = totalsize
@@ -122,7 +124,7 @@ class Queue():
                                   total=self.totalsize,
                                   elapsed=time() - self.start_time,
                                   prefix=self.description + ": ")
-            print(status, end='\r')
+            print('\r', status, end='')
         return ret
 
     def join(self):
@@ -136,11 +138,37 @@ class Queue():
         while self.results_left > 0:
             result = self.result_queue.get()
             self.process_result(result)
-        # Display "finished" message
-        # print('{description}: {bar} {total}/{total} [done]'.format(
-        #     description=self.description,
-        #     bar=progress_bar(self.totalsize, self.totalsize),
-        #     total=self.totalsize))
         if not prog.quiet:
-            print()
+            # Blank line to avoid overwriting results
+            print("")
         return ret
+
+
+class MockQueue(Queue):
+    """A joinable queue that processes the results without
+    multiprocessing. Usefuly for debugging exceptions inside a worker."""
+    _counter = 0
+
+    def __init__(self, worker, totalsize, result_callback=None,
+                 description="Processing data"):
+        self.worker = worker
+        self.totalsize = totalsize
+        self.result_callback = result_callback
+        self.description = description
+        self.start_time = time()
+
+    def put(self, obj):
+        # Just call the worker and result callbacks
+        result = self.worker(obj)
+        if self.result_callback:
+            self.result_callback(result)
+        if not prog.quiet:
+            status = format_meter(n=self._counter,
+                                  total=self.totalsize,
+                                  elapsed=time() - self.start_time,
+                                  prefix=self.description + ": ")
+            print('\r', status, end='')
+        self._counter += 1
+
+    def join():
+        pass

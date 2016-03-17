@@ -41,17 +41,32 @@ class Particle():
         self.regionprops = regionprops
         self.frame = frame
 
+    def relative_position(self):
+        """Convert centroid in pixels to relative sample position in x, y
+        (µm)."""
+        frame_center_pos = self.frame.relative_position
+        frame_center_pix = Pixel(self.frame.image_data.shape[0] / 2,
+                                 self.frame.image_data.shape[1] / 2)
+        pixel_distance_h = self.centroid().horizontal - frame_center_pix.horizontal
+        pixel_distance_v = self.centroid().vertical - frame_center_pix.vertical
+        um_per_pixel = self.frame.um_per_pixel
+        new_center = xycoord(
+            x=frame_center_pos.x + pixel_distance_h * um_per_pixel.horizontal,
+            y=frame_center_pos.y + pixel_distance_v * um_per_pixel.vertical
+        )
+        return new_center
+
     def sample_position(self):
         """Convert centroid in pixels to sample position in x, y (µm)."""
         frame_center_pos = self.frame.sample_position
         frame_center_pix = Pixel(self.frame.image_data.shape[0] / 2,
                                  self.frame.image_data.shape[1] / 2)
         pixel_distance_h = self.centroid().horizontal - frame_center_pix.horizontal
-        pixel_distance_v = frame_center_pix.vertical - self.centroid().vertical
-        um_per_pixel = self.frame.um_per_pixel()
+        pixel_distance_v = self.centroid().vertical - frame_center_pix.vertical
+        um_per_pixel = self.frame.um_per_pixel
         new_center = xycoord(
-            x=frame_center_pos.x + pixel_distance_h * um_per_pixel.x,
-            y=frame_center_pos.y + pixel_distance_v * um_per_pixel.y
+            x=frame_center_pos.x + pixel_distance_h * um_per_pixel.horizontal,
+            y=frame_center_pos.y + pixel_distance_v * um_per_pixel.vertical
         )
         return new_center
 

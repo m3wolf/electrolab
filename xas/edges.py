@@ -4,6 +4,7 @@ import numpy as np
 from pandas import Series
 from sklearn import linear_model, svm
 
+import exceptions
 from peakfitting import Peak
 import plots
 
@@ -61,11 +62,20 @@ class KEdge():
         X = []
         for power in range(1, self.post_edge_order+1):
             X.append(x**power)
+        # Reshape data for make sklearn regression happy
         X = np.array(X)
-        X = X.swapaxes(0, 1)
+        if X.shape == (1,):
+            # Single value for x
+            X = X.reshape(-1, 1)
+        elif X.ndim == 1:
+            # Single feature (eg [x, x^2])
+            X = X.reshape(1, -1)
+        elif X.ndim > 1:
+            # Multiple values for x
+            X = X.swapaxes(0, 1)
         return X
 
-    def fit(self, data: Series, width: int=4):
+    def fit(self, data: Series):
         """Regression fitting. First the pre-edge is linearlized and the
         extended (post) edge normalized using a polynomial. Pending: a
         step function is fit to the edge itself and any gaussian peaks
@@ -80,16 +90,17 @@ class KEdge():
           Returns a tuple of (peak, goodness) where peak is a fitted peak
           object and goodness is a measure of the goodness of fit.
 
-        width - How many points on either side of the maximum to
-          fit.
         """
         # Determine linear background region in pre-edge
         pre_edge = data.ix[self.pre_edge[0]:self.pre_edge[1]]
         self._pre_edge_fit = linear_model.LinearRegression()
-        self._pre_edge_fit.fit(
-            X=np.array(pre_edge.index).reshape(-1, 1),
-            y=pre_edge.values
-        )
+        try:
+            self._pre_edge_fit.fit(
+                X=np.array(pre_edge.index).reshape(-1, 1),
+                y=pre_edge.values
+            )
+        except ValueError:
+            raise exceptions.RefinementError
         # Correct the post edge region with polynomial fit
         post_edge = data.ix[self.post_edge[0]:self.post_edge[1]]
         self._post_edge_fit = linear_model.LinearRegression()
@@ -98,24 +109,22 @@ class KEdge():
             X=self._post_edge_xs(x),
             y=post_edge.values
         )
-        # max_idx = data.index.get_loc(data.argmax())
-        # left = max_idx - width
-        # if left < 0:
-        #     left = 0
-        # right = max_idx + width + 1
-        # if right > len(data):
-        #     right = len(data)
-        # subset = data.iloc[left:right]
-        # # Correct for background
-        # vertical_offset = subset.min()
-        # normalized = subset - vertical_offset
-        # # Perform fitting
-        # peak = Peak(method="gaussian")
-        # peak.vertical_offset = vertical_offset
-        # peak.fit(data=normalized)
-        # # Save residuals
-        # goodness = peak.goodness(subset)
-        # return (peak, goodness)
+
+        # Fit the whiteline peak to those values above E_0 in the map range
+        normalized = self.normalize(spectrum=data)
+        subset = normalized[self.map_range[0]:self.map_range[1]]
+        subset = subset[subset > 1]
+        # Correct for background
+        vertical_offset = 1
+        normed_subset = subset - vertical_offset
+        # Perform fitting
+        peak = Peak(method="gaussian")
+        peak.vertical_offset = vertical_offset
+        peak.fit(data=normed_subset)
+        # Save results
+        self.whiteline_peak = peak
+        goodness = peak.goodness(subset)
+        return (peak, goodness)
 
     def normalize(self, spectrum: Series) -> Series:
         """Adjust the given spectrum so that the pre-edge is around 0 and the
@@ -126,8 +135,11 @@ class KEdge():
         energies = np.array(spectrum.index)
         preedge = self._pre_edge_fit.predict(energies.reshape(-1, 1))
         # Calculate predicted absorbance at whiteline
-        abs_0 = self._post_edge_fit.predict(self.E_0)
-        abs_0 = abs_0 - self._pre_edge_fit.predict(self.E_0)
+        E_0 = self._post_edge_xs(self.E_0)
+        abs_0 = self._post_edge_fit.predict(E_0)
+        # print(abs_0)
+        pre_E_0 = np.array(self.E_0).reshape(-1, 1)
+        abs_0 = abs_0 - self._pre_edge_fit.predict(pre_E_0)
         # Perform normalization
         new_spectrum = (spectrum - preedge) / abs_0
         return new_spectrum
@@ -150,6 +162,9 @@ class KEdge():
         # Plot post-edge curve
         y = self._post_edge_fit.predict(self._post_edge_xs(x))
         ax.plot(x, y)
+        # Plot whiteline fit if performed
+        # if self.whiteline_peak is not None:
+        #     self.whiteline_peak.plot_fit(ax=ax)
 
 
 class NickelKEdge(KEdge):

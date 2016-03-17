@@ -33,7 +33,7 @@ import pytz
 from tests.cases import HDFTestCase, ScimapTestCase
 from utilities import xycoord, prog
 from peakfitting import Peak
-from txm.xanes_frameset import XanesFrameset, calculate_whiteline
+from txm.xanes_frameset import XanesFrameset, calculate_direct_whiteline, calculate_gaussian_whiteline
 from txm.frame import (
     average_frames, TXMFrame, xy_to_pixel, pixel_to_xy, Extent, Pixel,
     rebin_image, apply_reference, position)
@@ -47,6 +47,9 @@ from txm import plotter
 testdir = os.path.join(os.path.dirname(__file__), 'testdata')
 ssrldir = os.path.join(testdir, 'ssrl-txm-data')
 apsdir = os.path.join(testdir, 'aps-txm-data')
+
+# Silence progress bars for testing
+prog.quiet = True
 
 
 class ApsScriptTest(unittest.TestCase):
@@ -243,9 +246,18 @@ class XrayEdgeTest(unittest.TestCase):
         X = self.edge._post_edge_xs(x)
         expected = np.array([[1, 1], [2, 4], [3, 9]])
         self.assertTrue(np.array_equal(X, expected))
+        # Test it with a single value
+        x = 5
+        X = self.edge._post_edge_xs(x)
+        self.assertTrue(np.array_equal(X, [[5, 25]]))
+        # Test with a single value but first order
+        x = 5
+        self.edge.post_edge_order = 1
+        X = self.edge._post_edge_xs(x)
+        self.assertTrue(np.array_equal(X, [[5]]))
 
 # class TXMMapTest(HDFTestCase):
-# 
+#
 #     def setUp(self):
 #         ret = super().setUp()
 #         # Disable progress bars and notifications
@@ -284,20 +296,39 @@ class XrayEdgeTest(unittest.TestCase):
 class TXMMathTest(ScimapTestCase):
     """Holds tests for functions that perform base-level calculations."""
 
-    def test_calculate_whiteline(self):
+    def test_calculate_direct_whiteline(self):
         absorbances = [700, 705, 703]
         energies = [50, 55, 60]
         data = pd.Series(absorbances, index=energies)
-        out, goodness = calculate_whiteline(data, edge=k_edges['Ni']())
-        self.assertApproximatelyEqual(out, 57.33)
+        out, goodness = calculate_direct_whiteline(data, edge=k_edges['Ni']())
+        self.assertApproximatelyEqual(out, 55)
         # Test using multi-dimensional absorbances (eg. image frames)
         absorbances = [np.array([700, 700]),
                        np.array([705, 703]),
                        np.array([703, 707])]
         data = pd.Series(absorbances, index=energies)
-        out, goodness = calculate_whiteline(data, edge=k_edges['Ni']())
-        self.assertApproximatelyEqual(out[0], 57.33)
-        self.assertApproximatelyEqual(out[1], 57.98)
+        out, goodness = calculate_direct_whiteline(data, edge=k_edges['Ni']())
+        self.assertApproximatelyEqual(out[0], 55)
+        self.assertApproximatelyEqual(out[1], 60)
+
+    def test_calculate_gaussian_whiteline(self):
+        """These test patterns do not contain enough data to properly fit,
+        they merely test if the routine completes without errors."""
+        absorbances = [700, 698, 705, 703, 702]
+        energies = [8250, 8252, 8351, 8440, 8450]
+        data = pd.Series(absorbances, index=energies)
+        out, goodness = calculate_gaussian_whiteline(data, edge=k_edges['Ni']())
+        self.assertApproximatelyEqual(out, 8333)
+        # Test using multi-dimensional absorbances (eg. image frames)
+        absorbances = [np.array([700, 700]),
+                       np.array([698, 703]),
+                       np.array([705, 704]),
+                       np.array([703, 705]),
+                       np.array([702, 707])]
+        data = pd.Series(absorbances, index=energies)
+        out, goodness = calculate_gaussian_whiteline(data, edge=k_edges['Ni']())
+        self.assertApproximatelyEqual(out[0], 8333)
+        self.assertApproximatelyEqual(out[1], 8333)
 
     def test_2d_whiteline(self):
         # Test using two-dimensional absorbances (ie. image frames)
@@ -311,20 +342,20 @@ class TXMMathTest(ScimapTestCase):
         ]
         energies = [50, 55, 60]
         data = pd.Series(absorbances, index=energies)
-        out, goodness = calculate_whiteline(data, edge=k_edges['Ni']())
+        out, goodness = calculate_direct_whiteline(data, edge=k_edges['Ni']())
         expected = [[50, 60],
                     [55, 55]]
-        self.assertApproximatelyEqual(out[0][0], 52.25)
-        self.assertApproximatelyEqual(out[0][1], 58.16)
-        self.assertApproximatelyEqual(out[1][0], 57.27)
-        self.assertApproximatelyEqual(out[1][1], 57.27)
+        self.assertApproximatelyEqual(out[0][0], 50)
+        self.assertApproximatelyEqual(out[0][1], 60)
+        self.assertApproximatelyEqual(out[1][0], 55)
+        self.assertApproximatelyEqual(out[1][1], 55)
 
     def test_fit_whiteline(self):
         filename = 'tests/testdata/NCA-cell2-soc1-fov1-xanesspectrum.tsv'
         data = pd.Series.from_csv(filename, sep="\t")
-        data = data[8325:8360]
+        # data = data[:8360]
         edge = k_edges['Ni']()
-        peak, goodness = edge.fit(data, width=5)
+        peak, goodness = edge.fit(data)
         self.assertTrue(8352 < peak.center() < 8353,
                         "Center not within range {} eV".format(peak.center()))
 
@@ -465,6 +496,16 @@ class TXMFrameTest(HDFTestCase):
         self.assertEqual(xrm.endtime(), end)
         xrm.close()
 
+    def test_extent(self):
+        frame = TXMFrame()
+        frame.relative_position = (0, 0, 0)
+        frame.um_per_pixel = Pixel(vertical=0.0390625, horizontal=0.0390625)
+        expected = Extent(
+            left=-20, right=20,
+            bottom=-10, top=10
+        )
+        self.assertEqual(frame.extent(img_shape=(512, 1024)), expected)
+
     def test_xy_to_pixel(self):
         extent = Extent(
             left=-1000, right=-900,
@@ -475,7 +516,7 @@ class TXMFrameTest(HDFTestCase):
             extent=extent,
             shape=(10, 10)
         )
-        self.assertEqual(result, Pixel(vertical=10, horizontal=5))
+        self.assertEqual(result, Pixel(vertical=0, horizontal=5))
 
     def test_pixel_to_xy(self):
         extent = Extent(
@@ -487,7 +528,7 @@ class TXMFrameTest(HDFTestCase):
             extent=extent,
             shape=(10, 10)
         )
-        self.assertEqual(result, xycoord(x=-950, y=250))
+        self.assertEqual(result, xycoord(x=-950, y=300))
 
     def test_shift_data(self):
         frame = TXMFrame()
@@ -522,12 +563,12 @@ class TXMFrameTest(HDFTestCase):
             [8, 12, 11, 10],
         ])
         # Check that binning to same shape return original array
-        result_data = rebin_image(original_data, shape=(4, 4))
+        result_data = rebin_image(original_data, new_shape=(4, 4))
         self.assertTrue(
             result_data is original_data
         )
         # Check for rebinning by shape
-        result_data = rebin_image(original_data, shape=(2, 2))
+        result_data = rebin_image(original_data, new_shape=(2, 2))
         expected_data = np.array([
             [6, 16],
             [31, 37]
@@ -548,7 +589,24 @@ class TXMFrameTest(HDFTestCase):
         with self.assertRaisesRegex(ValueError, 'larger than original shape'):
             frame.rebin(factor=0.5)
         with self.assertRaisesRegex(ValueError, 'larger than original shape'):
-            frame.rebin(shape=(6, 6))
+            frame.rebin(new_shape=(6, 6))
+
+    def test_rebin_odd(self):
+        """There is a bug where oddly shaped arrays don't rebin well."""
+        frame = TXMFrame()
+        original_data = np.array([
+            [1., 1., 3., 3., 4],
+            [2, 2, 5, 5, 5],
+            [5, 6, 7, 9, 2],
+            [8, 12, 11, 10, 1],
+        ])
+        # Check that binning to same shape return original array
+        result_data = rebin_image(original_data, new_shape=(2, 2))
+        expected_data = np.array([
+            [6, 16],
+            [31, 37]
+        ])
+        self.assertTrue(np.array_equal(result_data, expected_data))
 
     def test_subtract_background(self):
         data = np.array([

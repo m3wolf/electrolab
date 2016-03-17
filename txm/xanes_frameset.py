@@ -20,6 +20,8 @@
 import functools
 import warnings
 from typing import Callable, Union
+import math
+from collections import namedtuple
 
 import pandas as pd
 from matplotlib import cm, pyplot
@@ -30,7 +32,7 @@ import numpy as np
 from skimage import morphology, filters, feature, transform
 from sklearn import linear_model
 
-from utilities import prog, xycoord, Pixel
+from utilities import prog, xycoord, Pixel, shape
 from peakfitting import Peak
 from .frame import (
     TXMFrame, calculate_particle_labels, pixel_to_xy,
@@ -48,31 +50,25 @@ def build_series(frames):
     series = pd.Series(images, index=energies)
     return series
 
-def calculate_whiteline(data, edge):
+def calculate_gaussian_whiteline(data, edge):
     """Calculates the whiteline position of the absorption edge data
     contained in `data`.
 
     The "whiteline" for an absorption K-edge is the energy at which
     the specimin has its highest absorbance. This function will return
-    an array with the same shape as each entry in the data series,
-    that gives the energy of the highest absorbance.
+    an 2 arrays with the same shape as each entry in the data
+    series. 1st array gives the energy of the highest absorbance and
+    2nd array contains goodness of fits.
 
     Arguments
     ---------
     data - The X-ray absorbance data. Should be similar to a pandas
     Series. Assumes that the index is energy. This can be a Series of
     numpy arrays, which allows calculation of image frames, etc.
-    """
-    # First disassemble the data series
-    # energies = data.index
-    # imagestack = np.array(list(data.values))
-    # # Now calculate the indices of the whiteline
-    # whiteline_indices = np.argmax(imagestack, axis=0)
-    # # Convert indices to energy
-    # map_energy = np.vectorize(lambda idx: energies[idx],
-    #                           otypes=[np.float])
-    # whiteline_energies = map_energy(whiteline_indices)
 
+    edge - An instantiated edge object that can be used for fitting.
+
+    """
     # Prepare data for manipulation
     energies = data.index.astype(np.float64)
     absorbances = np.array(list(data.values))
@@ -88,17 +84,81 @@ def calculate_whiteline(data, edge):
     spectrum_length = absorbances.shape[-1]
     absorbances = absorbances.reshape((num_spectra, spectrum_length))
     # Calculate whitelines and goodnesses(?)
-    whitelines = []
-    goodnesses = []
-    for spectrum in prog(absorbances, "Calculating whiteline"):
+    # whitelines = np.zeros_like(absorbances)
+    whitelines = np.zeros(shape=(num_spectra,))
+    goodnesses = np.zeros_like(whitelines)
+    # Prepare multiprocessing functions
+    def result_callback(payload):
+        # Unpack and save results to arrays.
+        idx = payload['idx']
+        whitelines[idx] = payload['center']
+        goodnesses[idx] = payload['goodness']
+    def worker(payload):
+        # Calculate the whiteline position by fitting.
+        try:
+            peak, goodness = edge.fit(payload['spectrum'])
+        except exceptions.RefinementError as e:
+            # Fit failed so set as bad cell
+            center = edge.E_0
+            goodness = 0
+        else:
+            center = peak.center()
+        # Return calculated whiteline position as dictionary
+        result = {
+            'idx': payload['idx'],
+            'center': center,
+            'goodness': goodness
+        }
+        return result
+    # Prepare multiprocessing queue
+    queue = smp.Queue(worker=worker,
+                      totalsize=len(absorbances),
+                      result_callback=result_callback,
+                      description="Calculating whiteline")
+    # Fill queue with tasks
+    for idx, spectrum in enumerate(absorbances):
         spectrum = pd.Series(spectrum, index=energies)
-        peak, goodness = edge.fit(spectrum)
-        whitelines.append(peak.center())
-        goodnesses.append(goodness)
+        payload = {
+            'idx': idx,
+            'spectrum': spectrum
+        }
+        queue.put(payload)
+    # Wait for workers to finish
+    queue.join()
     # Convert results back to their original shape
     whitelines = np.array(whitelines).reshape(orig_shape)
     goodnesses = np.array(goodnesses).reshape(orig_shape)
     return whitelines, goodnesses
+
+def calculate_direct_whiteline(data, *args, **kwargs):
+    """Calculates the whiteline position of the absorption edge data
+    contained in `data`. This method uses the energy of maximum
+    absorbance and is a faster alternative to `calculate_whiteline`.
+    The "whiteline" for an absorption K-edge is the energy at which
+    the specimin has its highest absorbance. This function will return
+    an 2 arrays with the same shape as each entry in the data
+    series. 1st array gives the energy of the highest absorbance and
+    2nd array contains a mock array of goodness of fits (all values
+    are 1).
+
+    Arguments
+    ---------
+    data - The X-ray absorbance data. Should be similar to a pandas
+    Series. Assumes that the index is energy. This can be a Series of
+    numpy arrays, which allows calculation of image frames, etc.
+
+    """
+    # First disassemble the data series
+    energies = data.index
+    imagestack = np.array(list(data.values))
+    # Now calculate the indices of the whiteline
+    whiteline_indices = np.argmax(imagestack, axis=0)
+    # Convert indices to energy
+    map_energy = np.vectorize(lambda idx: energies[idx],
+                              otypes=[np.float])
+    whiteline_energies = map_energy(whiteline_indices)
+    goodness = np.ones_like(whiteline_energies)
+    return (whiteline_energies, goodness)
 
 
 class XanesFrameset():
@@ -106,12 +166,16 @@ class XanesFrameset():
     active_groupname = None
     latest_groupname = HDFAttribute('latest_groupname')
     background_groupname = HDFAttribute('background_groupname')
-    active_particle_idx = HDFAttribute('active_particle_idx', default=None,
+    active_particle_idx = HDFAttribute('active_particle_idx',
+                                       default=None,
                                        group_func='active_group')
     latest_labels = HDFAttribute('latest_labels', default='particle_labels')
     map_name = HDFAttribute('map_name', group_func='active_group')
     map_goodness_name = HDFAttribute('map_goodness_name',
                                      group_func='active_group')
+    map_method = HDFAttribute('map_method',
+                              group_func='active_group',
+                              default=None)
     cmap = 'plasma'
 
     def __init__(self, filename, groupname, edge=None):
@@ -127,6 +191,10 @@ class XanesFrameset():
                         print(msg.format(groupname))
                     hdf_file.create_group(groupname)
             self.active_groupname = self.latest_groupname
+
+    def __repr__(self):
+        s = "<{cls} '{filename}'>"
+        return s.format(cls=self.__class__.__name__, filename=self.hdf_filename)
 
     def __iter__(self):
         """Get each frame from the HDF5 file"""
@@ -195,10 +263,15 @@ class XanesFrameset():
         fs = ParticleFrameset(parent=self, particle_idx=particle_idx)
         return fs
 
-    def switch_group(self, name):
+    def switch_group(self, name=""):
         """Set the frameset to retrieve image data from a different hdf
         group. Special value 'background_frames' sets to the reference
         image used during importing.
+
+        Arguments
+        ---------
+        name (str) - The HDF groupname for this frameset. If omitted
+          or "", a list of available options will be listed.
         """
         valid_groups = list(self.hdf_group().keys()) + ['background_frames']
         if name not in valid_groups:
@@ -358,7 +431,8 @@ class XanesFrameset():
                       loc=xycoord(x=20, y=20), reference_frame=0,
                       plot_fit=False):
         """Apply a linear correction for a misalignment of zoneplate in APS
-        8BM-B beamline as of Nov 2015.
+        8BM-B beamline as of Nov 2015. Deprecated in favor of
+        align_frames method.
 
         Arguments
         ---
@@ -436,52 +510,186 @@ class XanesFrameset():
         for frame in self:
             frame.activate_closest_particle(loc=loc)
 
-    def align_frames(self, new_name="aligned_frames", reference_frame=None):
+    def align_frames(self, new_name="aligned_frames",
+                     reference_frame=None, passes=1):
         """Use phase correlation algorithm to line up the frames. All frames
         have their sample position set set to (0, 0) since we don't
-        know which one is the real position.
+        know which one is the real position. This operation will
+        interpolate between pixels so introduces error. If multiple
+        passes are performed, the translations are saved and combined
+        at the end so this error is only introduced once.
+
+        Arguments
+        ---------
+        new_name : HDF groupname to assign to the aligned frameset
+
+        reference_frame (int or None) : The index of the frame to
+          which all other frames should be aligned. If omitted or None,
+          the frame of highest intensity will be used.
+
+        passes : Number of times to repeat the alignment to try and
+          narrow in on no jitter (default 1). Subsequent passes will use
+          higher oversampling rates.
+
         """
-        # Guess best reference frame
+        Crop = namedtuple("Crop", ('top', 'bottom', 'left', 'right'))
+        # Guess best reference frame to use
         if reference_frame is None:
             spectrum = self.xanes_spectrum()
             reference_frame = np.argmax(spectrum.values)
-        reference_image = self[reference_frame].image_data.value
-        # Multiprocessing setup
+        # Keep track of how many passes and where we started
+        current_pass = 0
+        shifts = {} # Keeps track of shifts for final translation
+        all_crops = [] # Keeps track of how to crop the original image
+        original_group = self.active_groupname
+        self.fork_group(new_name)
+        if self.active_labels_groupname:
+            self.fork_labels(new_name + "_labels")
+        # Run through all passes
+        while current_pass < passes:
+            # Retrieve reference frame
+            original_shape = shape(*self[reference_frame].image_data.shape)
+            reference_image = self[reference_frame].image_data.value
+            # Higher passes receive more oversampling
+            upsampling = current_pass * 20 + 1
+            # Multiprocessing setup
+            def worker(payload):
+                key = payload['key']
+                data = payload['data']
+                labels = payload.get('labels', None)
+                # Determine what the new translation should be
+                results = feature.register_translation(reference_image,
+                                                       data,
+                                                       upsample_factor=upsampling)
+                shift, error, diffphase = results
+                shift = xycoord(-shift[1], -shift[0])
+                # Apply net transformation with bicubic interpolation
+                transformation = transform.SimilarityTransform(translation=shift)
+                new_data = transform.warp(data, transformation,
+                                          order=3, mode="wrap")
+                result = {
+                    'key': key,
+                    'energy': payload['energy'],
+                    'data': new_data,
+                    'shift': shift,
+                }
+                # Transform labels
+                if labels:
+                    original_dtype = labels.dtype
+                    labels = labels.astype(np.float64)
+                    new_labels = transform.warp(labels, transformation, order=0, mode="constant")
+                    new_labels = new_labels.astype(original_dtype)
+                    result['labels'] = new_labels
+                return result
 
-        def worker(payload):
-            key = payload['key']
-            data = payload['data']
-            labels = payload['labels']
-            # Determine what the new translation should be
-            results = feature.register_translation(reference_image, data,
-                                                   upsample_factor=20)
-            shift, error, diffphase = results
-            shift = xycoord(-shift[1], -shift[0])
-            # Apply net transformation with bicubic interpolation
-            transformation = transform.SimilarityTransform(translation=shift)
-            new_data = transform.warp(data, transformation,
-                                      order=3, mode="wrap")
-            # Transform labels
-            original_dtype = labels.dtype
-            labels = labels.astype(np.float64)
-            new_labels = transform.warp(labels, transformation, order=0, mode="constant")
-            new_labels = new_labels.astype(original_dtype)
-            result = {
-                'key': key,
-                'energy': payload['energy'],
-                'data': new_data,
-                'labels': new_labels,
+            # Save coordinates for determining cropping later on
+            limits = {
+                'left': 0,
+                'right': 0,
+                'top': 0,
+                'bottom': 0,
             }
-            return result
 
-        # Launch the multiprocessing queue
-        description = "Aligning to frame [{}]".format(reference_frame)
-        process_with_smp(frameset=self,
-                         worker=worker,
-                         description=description)
-        # Update new positions
-        for frame in self:
-            frame.sample_position = position(0, 0, frame.sample_position.z)
+            def process_result(payload):
+                # import pdb; pdb.set_trace()
+                key = payload['key']
+                shift = payload.pop('shift')
+                # Check if these shifts set new cropping limits
+                if shift.y > limits['bottom']:
+                    limits['bottom'] = shift.y
+                elif shift.y < limits['top']:
+                    limits['top'] = shift.y
+                if shift.x > limits['right']:
+                    limits['right'] = shift.x
+                elif shift.x < limits['left']:
+                    limits['left'] = shift.x
+                # Save shift for final transformation
+                past_shifts = shifts.get(key, [])
+                past_shifts.append(shift)
+                shifts[key] = past_shifts
+                return payload
+
+            # Launch the multiprocessing queue
+            description = "Aligning pass {curr}/{total}"
+            description = description.format(curr=current_pass+1,
+                                             total=passes,
+                                             frame=reference_frame)
+            process_with_smp(frameset=self,
+                             worker=worker,
+                             process_result=process_result,
+                             description=description)
+            # Update new positions
+            for frame in self:
+                frame.sample_position = position(0, 0, frame.sample_position.z)
+            # Crop frames and save for later
+            top = math.ceil(abs(limits['top']))
+            bottom = math.floor(original_shape.rows - abs(limits['bottom']))
+            left = math.ceil(abs(limits['left']))
+            right = math.floor(original_shape.columns - abs(limits['right']))
+            for frame in prog(self, "Cropping frames"):
+                frame.crop(top=top, left=left, bottom=bottom, right=right)
+            all_crops.append(
+                Crop(top=top, left=left, bottom=bottom, right=right)
+            )
+            current_pass += 1
+
+        # Perform a final, complete translation and cropping if necessary
+        if passes > 1:
+            # Retrieve reference frame
+            original_shape = shape(*self[reference_frame].image_data.shape)
+            reference_image = self[reference_frame].image_data.value
+            # Revert back to original frameset
+            self.switch_group(original_group)
+            self.fork_group(new_name)
+            if self.active_labels_groupname:
+                self.fork_labels(new_name + "_labels")
+            # Multiprocessing setup
+            def worker(payload):
+                key = payload['key']
+                data = payload['data']
+                labels = payload.get('labels', None)
+                # Compute the net translation needed for this frame
+                curr_shifts = shifts[key]
+                shift = xycoord(
+                    sum([n[0] for n in curr_shifts]),
+                    sum([n[1] for n in curr_shifts])
+                )
+                transformation = transform.SimilarityTransform(translation=shift)
+                new_data = transform.warp(data, transformation,
+                                          order=3, mode="wrap")
+                result = {
+                    'key': key,
+                    'energy': payload['energy'],
+                    'data': new_data,
+                    'shift': shift,
+                }
+                # Transform labels
+                if labels:
+                    original_dtype = labels.dtype
+                    labels = labels.astype(np.float64)
+                    new_labels = transform.warp(labels,
+                                                transformation,
+                                                order=0,
+                                                mode="constant")
+                    new_labels = new_labels.astype(original_dtype)
+                    result['labels'] = new_labels
+                return result
+            process_with_smp(frameset=self,
+                             worker=worker,
+                             description="Performing final alignment")
+            # Calculate smallest cropping size
+            top, bottom, left, right = (0, 0, 0, 0)
+            for crop in all_crops:
+                bottom += crop.bottom
+                left += crop.left
+            last_crop = all_crops[-1]
+            right = left + last_crop.right - last_crop.left
+            top = bottom + last_crop.top - last_crop.bottom
+            crop = Crop(top=top, left=left, bottom=bottom, right=right)
+            # Crop frames down to size
+            for frame in prog(self, "Performing final crop"):
+                frame.crop(left=crop.left, bottom=crop.bottom,
+                           right=crop.right, top=crop.top)
 
     def align_to_particle(self, loc, new_name, reference_frame=None):
         """Use template matching algorithm to line up the frames. Similar to
@@ -569,6 +777,10 @@ class XanesFrameset():
 
     def crop_to_particle(self, new_name='cropped_particle', loc=None):
         """Reduce the image size to just show the particle in question."""
+        # Make sure particles have been labeled
+        if not self.active_labels_groupname:
+            msg = "No particles found, please run {cls}.label_particles() method first"
+            raise exceptions.NoParticleError(msg.format(cls=self))
         # Create new HDF5 groups
         self.fork_group(new_name)
         self.fork_labels(new_name + '_labels')
@@ -611,6 +823,8 @@ class XanesFrameset():
             # Determine new main particle index
             new_idx = np.argmax([p.convex_area() for p in frame.particles()])
             frame.active_particle_idx = new_idx
+            # Set the new relative position for this frames position in the image
+            frame.relative_position = position(*loc, z=frame.sample_position.z)
 
     def align_frame_positions(self):
         """Correct for inaccurate motion in the sample motors."""
@@ -683,14 +897,15 @@ class XanesFrameset():
                          process_result=process_result,
                          description="Detecting particles")
 
-    def rebin(self, shape=None, factor=None):
+    def rebin(self, new_shape=None, factor=None):
         """Resample all images into new shape. Arguments `shape` and `factor`
         passed to txm.frame.TXMFrame.rebin().
         """
         self.fork_group('rebinned')
-        self.fork_labels('rebinned_labels')
+        if self.active_labels_groupname:
+            self.fork_labels('rebinned_labels')
         for frame in prog(self, "Rebinning"):
-            frame.rebin(shape=shape, factor=factor)
+            frame.rebin(new_shape=new_shape, factor=factor)
 
     def normalize(self, plot_fit=False):
         """Correct for background material not absorbing at this edge. Uses
@@ -716,7 +931,7 @@ class XanesFrameset():
             original_data = payload['data']
             payload['data'] = original_data - offset
             # Remove labels since we don't need to save it
-            payload.pop('labels')
+            payload.pop('labels', None)
             return payload
 
         description = "Normalizing background (R²={:.3f})"
@@ -763,7 +978,8 @@ class XanesFrameset():
         if ax is None:
             ax = new_image_axes()
         data = self.mean_image()
-        artist = ax.imshow(data, extent=self.extent(), cmap='gray')
+        artist = ax.imshow(data, extent=self.extent(), origin="lower",
+                           cmap='gray')
         return artist
 
     def mean_image(self):
@@ -776,11 +992,7 @@ class XanesFrameset():
     @functools.lru_cache()
     def xanes_spectrum(self, pixel=None, edge_jump_filter=""):
         """Collapse the dataset down to a two-dimensional spectrum. Returns a
-        pandas series containing the resulting spectrum. If a frame
-        has the attribute `active_particle_index` set to a truthy
-        value, only pixels inside the detected particle area are
-        counted for the spectrum (provided pixel or edge_jump_filter
-        are not passed).
+        pandas series containing the resulting spectrum.
 
         Arguments
         ---------
@@ -803,16 +1015,6 @@ class XanesFrameset():
         # Determine the contribution from each energy frame
         for frame in self:
             data = frame.image_data.value
-            # Find the active particle (if any)
-            if frame.active_particle_idx is not None:
-                # Frame-specific particle
-                particle = frame.particles()[frame.active_particle_idx]
-            elif self.active_particle_idx is not None:
-                # Frameset global particle
-                particle = frame.particles()[self.active_particle_idx]
-            else:
-                # No particle
-                particle = None
             # Determine which subset of pixels to use
             if pixel is not None:
                  # Specific pixel is requested
@@ -820,15 +1022,6 @@ class XanesFrameset():
             elif edge_jump_filter:
                 masked_data = np.ma.array(data, mask=mask)
                 # Average absorbances for datasets
-                intensity = np.sum(masked_data) / np.sum(masked_data.mask)
-            elif particle:
-                bbox = particle.bbox()
-                mask = np.zeros_like(data)
-                mask[bbox.top:bbox.bottom, bbox.left:bbox.right] = particle.mask()
-                mask = np.logical_not(mask)
-                masked_data = np.copy(data)
-                masked_data[mask] = 0
-                # Sum absorbances for datasets
                 intensity = np.sum(masked_data) / np.sum(masked_data.mask)
             else:
                 masked_data = data
@@ -876,16 +1069,21 @@ class XanesFrameset():
             # Prepare an edge for fitting
             edge = self.edge()
             edge.post_edge_order = 1
-            edge.fit(spectrum)
+            try:
+                edge.fit(spectrum)
+            except exceptions.RefinementError:
+                # Fit failed, so we can't normalize
+                normalize = False
+                show_fit = False
         if normalize:
             # Adjust the limits of the spectrum to be between 0 and 1
             spectrum = edge.normalize(spectrum)
         ax.plot(spectrum, linestyle=":")
+        xlim = ax.get_xlim()
+        ylim = ax.get_ylim()
         if show_fit:
             # Plot the predicted values from edge fitting
             edge.plot(ax=ax)
-        xlim = ax.get_xlim()
-        ylim = ax.get_ylim()
         scatter = ax.scatter(spectrum.index, spectrum.values, c=colors, s=25)
         # Restore axes limits, they get messed up by scatter()
         ax.set_xlim(*xlim)
@@ -921,7 +1119,8 @@ class XanesFrameset():
         if ax is None:
             ax = new_image_axes()
         ej = self.edge_jump_filter()
-        artist = ax.imshow(ej, extent=self.extent(), cmap=self.cmap, alpha=alpha)
+        artist = ax.imshow(ej, extent=self.extent(), cmap=self.cmap,
+                           origin="lower", alpha=alpha)
         ax.set_xlabel('µm')
         ax.set_ylabel('µm')
         return artist
@@ -990,7 +1189,7 @@ class XanesFrameset():
         mask = np.logical_not(mask)
         return mask
 
-    def calculate_map(self, new_name=None):
+    def calculate_map(self, new_name=None, *args, **kwargs):
         """Generate a map based on pixel-wise Xanes spectra. Default is to
         compute X-ray whiteline position."""
         # Get default hdf group name
@@ -999,12 +1198,14 @@ class XanesFrameset():
                                                      group=self.active_groupname)
         goodness_name = new_name + "_goodness"
         # Get map data
-        map_data, goodness = self.whiteline_map()
-        # Create dataset
+        map_data, goodness = self.whiteline_map(*args, **kwargs)
+        # Delete old datasets
         try:
             del self.hdf_file()[new_name]
+            del self.hdf_file()[goodness_name]
         except KeyError:
             pass
+        # Save new datasets
         self.hdf_file().create_dataset(new_name, data=map_data)
         self.map_name = new_name
         self.hdf_file().create_dataset(goodness_name, data=goodness)
@@ -1092,17 +1293,34 @@ class XanesFrameset():
         pl.connect_animation()
         pl.save_movie(filename=filename, *args, **kwargs)
 
-    def whiteline_map(self):
-        """Calculate a map where each pixel is the energy of the whiteline."""
-        if not prog.quiet:
-            print('Calculating whiteline map...', end='')
+    def whiteline_map(self, method="direct"):
+        """Calculate a map where each pixel is the energy of the whiteline.
+
+        Arguments
+        ---------
+        method: A string declaring which method to use
+          - "gaussian": fit the whiteline with a gaussian peak (accurate)
+          - "direct": Find the energy with maximum absorbance (fast)
+        """
         imagestack = build_series(self)
-        # Restrict to spectrum to only those values on the edge itself
-        imagestack = imagestack.ix[self.edge.map_range[0]:
-                                   self.edge.map_range[1]]
-        whiteline, goodness = calculate_whiteline(imagestack)
-        if not prog.quiet:
-            print('done')
+        # Call the appropriate calculation function
+        if method == "gaussian":
+            whiteline, goodness = calculate_gaussian_whiteline(
+                imagestack, edge=self.edge()
+            )
+        elif method == "direct":
+            if not prog.quiet:
+                print("Calculating whiteline map...", end="")
+            whiteline, goodness = calculate_direct_whiteline(
+                imagestack, edge=self.edge()
+            )
+            if not prog.quiet:
+                print("done")
+        else:
+            # Unknown value for method
+            msg = 'Unknown method "{}".'.format(method)
+            raise ValueError(msg)
+        self.map_method = "whiteline_" + method
         return whiteline, goodness
 
     def whiteline_energy(self):
@@ -1111,7 +1329,7 @@ class XanesFrameset():
         edge-jump filter.
         """
         spectrum = self.xanes_spectrum(edge_jump_filter=True)
-        whiteline = calculate_whiteline(spectrum)
+        whiteline = calculate_whiteline(spectrum, edge=self.edge())
         return whiteline
 
     def fit_whiteline(self, width=4):
@@ -1259,10 +1477,10 @@ def process_with_smp(frameset: XanesFrameset,
             frame.image_data.write_direct(payload['data'])
         if 'labels' in payload.keys():
             frame.particle_labels().write_direct(payload['labels'])
-    queue = queue = smp.Queue(worker=worker,
-                              totalsize=len(frameset),
-                              result_callback=result_callback,
-                              description=description)
+    queue = smp.Queue(worker=worker,
+                      totalsize=len(frameset),
+                      result_callback=result_callback,
+                      description=description)
 
     # Populate the queue
     for frame in frameset:
@@ -1275,6 +1493,8 @@ def process_with_smp(frameset: XanesFrameset,
         try:
             labels = frame.particle_labels().value
         except exceptions.NoParticleError:
+            pass
+        except exceptions.FrameFileNotFound:
             pass
         else:
             payload['labels'] = labels

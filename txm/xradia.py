@@ -32,6 +32,7 @@ import numpy as np
 import pytz
 
 import exceptions
+from utilities import shape, Pixel
 
 
 def decode_aps_params(filename):
@@ -148,6 +149,16 @@ class XRMFile():
             msg = "Unknown flavor for filename: {}"
             raise exceptions.FileFormatError(msg.format(self.filename))
         return params
+
+    def um_per_pixel(self):
+        """Describe the size of a pixel in microns. Currently assumes 40µm
+        square fields of view."""
+        img_shape = shape(*self.image_data().shape)
+        pixel_size = Pixel(
+            vertical=(40 / img_shape.rows),
+            horizontal=(40 / img_shape.columns)
+        )
+        return pixel_size
 
     def ole_value(self, stream, fmt=None):
         """Get arbitrary data from the ole file and convert from bytes."""

@@ -17,6 +17,29 @@
     <property name="step_increment">1</property>
     <property name="page_increment">10</property>
   </object>
+  <object class="GtkWindow" id="WaitingWindow">
+    <property name="width_request">200</property>
+    <property name="height_request">50</property>
+    <property name="can_focus">False</property>
+    <property name="window_position">center-on-parent</property>
+    <child>
+      <object class="GtkLabel" id="label15">
+        <property name="visible">True</property>
+        <property name="can_focus">False</property>
+        <property name="label" translatable="yes">Please wait...</property>
+        <property name="ellipsize">end</property>
+      </object>
+    </child>
+  </object>
+  <object class="GtkImage" id="image1">
+    <property name="visible">True</property>
+    <property name="can_focus">False</property>
+    <property name="stock">gtk-goto-top</property>
+  </object>
+  <object class="GtkToggleAction" id="toggleEdgeJump">
+    <signal name="toggled" handler="toggle-edge-jump" swapped="no"/>
+  </object>
+  <object class="GtkToggleAction" id="toggleNormalization"/>
   <object class="GtkWindow" id="MapViewerWindow">
     <property name="width_request">1000</property>
     <property name="height_request">500</property>
@@ -137,31 +160,6 @@
               </packing>
             </child>
             <child>
-              <object class="GtkLabel" id="EdgeJumpLabel">
-                <property name="visible">True</property>
-                <property name="can_focus">False</property>
-                <property name="margin_left">15</property>
-                <property name="label" translatable="yes">Edge Jump: </property>
-              </object>
-              <packing>
-                <property name="expand">False</property>
-                <property name="fill">True</property>
-                <property name="position">8</property>
-              </packing>
-            </child>
-            <child>
-              <object class="GtkSwitch" id="EdgeJumpSwitch">
-                <property name="visible">True</property>
-                <property name="can_focus">True</property>
-                <signal name="state-set" handler="toggle-edge-jump" swapped="no"/>
-              </object>
-              <packing>
-                <property name="expand">False</property>
-                <property name="fill">True</property>
-                <property name="position">9</property>
-              </packing>
-            </child>
-            <child>
               <object class="GtkLabel" id="MapNormalizeLabel">
                 <property name="visible">True</property>
                 <property name="can_focus">False</property>
@@ -172,13 +170,40 @@
               <packing>
                 <property name="expand">False</property>
                 <property name="fill">True</property>
-                <property name="position">10</property>
+                <property name="position">8</property>
               </packing>
             </child>
             <child>
               <object class="GtkSwitch" id="NormMapXanesSwitch">
+                <property name="related_action">toggleNormalization</property>
                 <property name="visible">True</property>
                 <property name="can_focus">True</property>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">9</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkLabel" id="EdgeJumpLabel">
+                <property name="visible">True</property>
+                <property name="can_focus">False</property>
+                <property name="margin_left">15</property>
+                <property name="label" translatable="yes">Edge Jump: </property>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">10</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkSwitch" id="EdgeJumpSwitch">
+                <property name="related_action">toggleEdgeJump</property>
+                <property name="visible">True</property>
+                <property name="can_focus">True</property>
+                <signal name="state-set" handler="toggle-edge-jump" swapped="no"/>
               </object>
               <packing>
                 <property name="expand">False</property>
@@ -235,25 +260,6 @@
         </child>
       </object>
     </child>
-  </object>
-  <object class="GtkWindow" id="WaitingWindow">
-    <property name="width_request">200</property>
-    <property name="height_request">50</property>
-    <property name="can_focus">False</property>
-    <property name="window_position">center-on-parent</property>
-    <child>
-      <object class="GtkLabel" id="label15">
-        <property name="visible">True</property>
-        <property name="can_focus">False</property>
-        <property name="label" translatable="yes">Please wait...</property>
-        <property name="ellipsize">end</property>
-      </object>
-    </child>
-  </object>
-  <object class="GtkImage" id="image1">
-    <property name="visible">True</property>
-    <property name="can_focus">False</property>
-    <property name="stock">gtk-goto-top</property>
   </object>
   <object class="GtkWindow" id="XanesViewerWindow">
     <property name="width_request">1400</property>
@@ -807,6 +813,41 @@
                     <property name="position">4</property>
                   </packing>
                 </child>
+                <child>
+                  <object class="GtkBox" id="ICursorBox">
+                    <property name="visible">True</property>
+                    <property name="can_focus">False</property>
+                    <child>
+                      <object class="GtkLabel" id="label8">
+                        <property name="visible">True</property>
+                        <property name="can_focus">False</property>
+                        <property name="label" translatable="yes">I: </property>
+                      </object>
+                      <packing>
+                        <property name="expand">False</property>
+                        <property name="fill">True</property>
+                        <property name="position">0</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkLabel" id="ICursorLabel">
+                        <property name="visible">True</property>
+                        <property name="can_focus">False</property>
+                        <property name="label" translatable="yes">0</property>
+                      </object>
+                      <packing>
+                        <property name="expand">False</property>
+                        <property name="fill">True</property>
+                        <property name="position">1</property>
+                      </packing>
+                    </child>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">5</property>
+                  </packing>
+                </child>
               </object>
               <packing>
                 <property name="expand">False</property>
@@ -895,6 +936,22 @@
                   </packing>
                 </child>
                 <child>
+                  <object class="GtkButton" id="RefreshButton">
+                    <property name="label">gtk-refresh</property>
+                    <property name="visible">True</property>
+                    <property name="can_focus">True</property>
+                    <property name="receives_default">True</property>
+                    <property name="use_stock">True</property>
+                    <property name="always_show_image">True</property>
+                    <signal name="clicked" handler="create-artists" swapped="no"/>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">4</property>
+                  </packing>
+                </child>
+                <child>
                   <object class="GtkButton" id="ForwardButton">
                     <property name="label">gtk-go-forward</property>
                     <property name="visible">True</property>
@@ -907,7 +964,7 @@
                   <packing>
                     <property name="expand">False</property>
                     <property name="fill">True</property>
-                    <property name="position">4</property>
+                    <property name="position">5</property>
                   </packing>
                 </child>
                 <child>
@@ -923,7 +980,7 @@
                   <packing>
                     <property name="expand">False</property>
                     <property name="fill">True</property>
-                    <property name="position">5</property>
+                    <property name="position">6</property>
                   </packing>
                 </child>
                 <child>
@@ -937,7 +994,7 @@
                   <packing>
                     <property name="expand">True</property>
                     <property name="fill">True</property>
-                    <property name="position">6</property>
+                    <property name="position">7</property>
                   </packing>
                 </child>
               </object>
@@ -1004,7 +1061,7 @@
                   <object class="GtkLabel" id="NormalizeLabel">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
-                    <property name="label" translatable="yes">Normalize Xanes: </property>
+                    <property name="label" translatable="yes">Normalize Xanes:</property>
                     <property name="ellipsize">end</property>
                   </object>
                   <packing>
@@ -1015,6 +1072,7 @@
                 </child>
                 <child>
                   <object class="GtkSwitch" id="NormXanesSwitch">
+                    <property name="related_action">toggleNormalization</property>
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
                     <property name="active">True</property>
@@ -1024,6 +1082,30 @@
                     <property name="expand">False</property>
                     <property name="fill">True</property>
                     <property name="position">4</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkLabel" id="EdgeJumpXanesLabel">
+                    <property name="visible">True</property>
+                    <property name="can_focus">False</property>
+                    <property name="label" translatable="yes">Edge Jump Filter:</property>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">6</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkSwitch" id="EdgeJumpXanesSwitch">
+                    <property name="related_action">toggleEdgeJump</property>
+                    <property name="visible">True</property>
+                    <property name="can_focus">True</property>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">7</property>
                   </packing>
                 </child>
               </object>
