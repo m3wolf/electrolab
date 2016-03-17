@@ -203,6 +203,7 @@ class NativeRefinement(BaseRefinement):
                 if self.scan.contains_peak(reflection.two_theta_range):
                     left = reflection.two_theta_range[0]
                     right = reflection.two_theta_range[1]
+                    # print(self.subtracted.loc[69:70])
                     df = self.subtracted.loc[left:right]
                     # Try each fit method until one works
                     for method in fitMethods:

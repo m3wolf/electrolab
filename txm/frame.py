@@ -340,10 +340,6 @@ class TXMFrame():
             self.shift_data(x_offset=-left, y_offset=-top,
                             dataset=self.particle_labels())
             labels.resize(new_shape)
-        # # Reassign the active particle index (assume largest particle)
-        # areas = [particle.area() for particle in self.particles()]
-        # new_idx = areas.index(max(areas))
-        # self.active_particle_idx = new_idx
 
     def shift_data(self, x_offset, y_offset, dataset=None):
         """Move the image within the view field by the given offsets in

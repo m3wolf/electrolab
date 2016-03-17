@@ -162,6 +162,10 @@ def calculate_direct_whiteline(data, *args, **kwargs):
 
 
 class XanesFrameset():
+    """A collection of TXM frames at different energies moving across an
+    absorption edge. Iterating over this object gives the individual
+    Frame() objects.
+    """
     _attrs = {}
     active_groupname = None
     latest_groupname = HDFAttribute('latest_groupname')
@@ -531,6 +535,9 @@ class XanesFrameset():
           narrow in on no jitter (default 1). Subsequent passes will use
           higher oversampling rates.
 
+        mask : A numpy array of the same shape as the frame
+          images. Where this array is True, the pixels will be ignored
+          in calculating the aligned frame.
         """
         Crop = namedtuple("Crop", ('top', 'bottom', 'left', 'right'))
         # Guess best reference frame to use
@@ -550,6 +557,17 @@ class XanesFrameset():
             # Retrieve reference frame
             original_shape = shape(*self[reference_frame].image_data.shape)
             reference_image = self[reference_frame].image_data.value
+            reference_target = reference_image[
+                int(0.1*original_shape.rows):int(0.9*original_shape.rows),
+                int(0.1*original_shape.columns):int(0.9*original_shape.columns)
+            ]
+            reference_match = feature.match_template(reference_image,
+                                                     reference_target,
+                                                     pad_input=True)
+            reference_center = np.unravel_index(reference_match.argmax(),
+                                                reference_match.shape)
+            reference_center = Pixel(vertical=reference_center[0],
+                                     horizontal=reference_center[1])
             # Higher passes receive more oversampling
             upsampling = current_pass * 20 + 1
             # Multiprocessing setup
@@ -558,11 +576,16 @@ class XanesFrameset():
                 data = payload['data']
                 labels = payload.get('labels', None)
                 # Determine what the new translation should be
-                results = feature.register_translation(reference_image,
-                                                       data,
-                                                       upsample_factor=upsampling)
-                shift, error, diffphase = results
-                shift = xycoord(-shift[1], -shift[0])
+                match = feature.match_template(data,
+                                               reference_target,
+                                               pad_input=True)
+                center = np.unravel_index(match.argmax(), match.shape)
+                center = Pixel(vertical=center[0], horizontal=center[1])
+                # Determine the net translation necessary to align to reference frame
+                shift = xycoord(
+                    x=center.horizontal - reference_center.horizontal,
+                    y=center.vertical - reference_center.vertical,
+                )
                 # Apply net transformation with bicubic interpolation
                 transformation = transform.SimilarityTransform(translation=shift)
                 new_data = transform.warp(data, transformation,
@@ -628,6 +651,7 @@ class XanesFrameset():
             right = math.floor(original_shape.columns - abs(limits['right']))
             for frame in prog(self, "Cropping frames"):
                 frame.crop(top=top, left=left, bottom=bottom, right=right)
+            # Save cropping dimensions for final crop after last pass
             all_crops.append(
                 Crop(top=top, left=left, bottom=bottom, right=right)
             )

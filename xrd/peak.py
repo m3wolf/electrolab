@@ -4,6 +4,7 @@ import pandas as pd
 from pandas import Series
 import numpy as np
 
+import exceptions
 from xrd.tube import tubes, KALPHA2_RATIO
 from peakfitting import Peak
 
@@ -41,6 +42,9 @@ class XRDPeak(Peak):
         threshold = 0.5 * np.std(data)
         peak_data = data[data > threshold]
         # Guess mean peak position based on weight average of x values
+        if len(peak_data) == 0:
+            msg = "No data exceeds background for peak."
+            raise exceptions.PeakFitError(msg)
         mean_center = np.average(peak_data.index, weights=peak_data.values)
 
         # Convert average center to k-alpha1, k-alpha2
