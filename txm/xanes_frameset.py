@@ -514,8 +514,10 @@ class XanesFrameset():
         for frame in self:
             frame.activate_closest_particle(loc=loc)
 
-    def align_frames(self, new_name="aligned_frames",
-                     reference_frame=None, passes=1):
+    def align_frames(self, new_name: str="aligned_frames",
+                     reference_frame=None, passes: int=1,
+                     method: str="cross_correlation",
+                     methods=[]):
         """Use phase correlation algorithm to line up the frames. All frames
         have their sample position set set to (0, 0) since we don't
         know which one is the real position. This operation will
@@ -535,11 +537,26 @@ class XanesFrameset():
           narrow in on no jitter (default 1). Subsequent passes will use
           higher oversampling rates.
 
-        mask : A numpy array of the same shape as the frame
-          images. Where this array is True, the pixels will be ignored
-          in calculating the aligned frame.
+        method : Which technique to use to calculate the translation
+          - cross_correlation (default)
+          - template_match
+
+        method : List of techniques corresponding to each pass,
+          similar to method arguments. If omitted, the method argument
+          will be used for each pass.
         """
         Crop = namedtuple("Crop", ('top', 'bottom', 'left', 'right'))
+        # Sanity check on `method` argument
+        valid_methods = ['cross_correlation', 'template_match']
+        if method not in valid_methods:
+            msg = "Unknown method '{}'".format(method)
+            raise ValueError(msg)
+        elif methods == []:
+            # use the same method each time
+            methods = [method for i in range(0, passes)]
+        if not len(methods) == passes:
+            msg = "`methods` must be same length as `passes`: {}".format(methods)
+            raise ValueError(msg)
         # Guess best reference frame to use
         if reference_frame is None:
             spectrum = self.xanes_spectrum()
@@ -554,38 +571,51 @@ class XanesFrameset():
             self.fork_labels(new_name + "_labels")
         # Run through all passes
         while current_pass < passes:
+            current_method = methods[current_pass]
             # Retrieve reference frame
             original_shape = shape(*self[reference_frame].image_data.shape)
             reference_image = self[reference_frame].image_data.value
-            reference_target = reference_image[
-                int(0.1*original_shape.rows):int(0.9*original_shape.rows),
-                int(0.1*original_shape.columns):int(0.9*original_shape.columns)
-            ]
-            reference_match = feature.match_template(reference_image,
-                                                     reference_target,
-                                                     pad_input=True)
-            reference_center = np.unravel_index(reference_match.argmax(),
-                                                reference_match.shape)
-            reference_center = Pixel(vertical=reference_center[0],
-                                     horizontal=reference_center[1])
-            # Higher passes receive more oversampling
-            upsampling = current_pass * 20 + 1
+            if current_method == "cross_correlation":
+                # Higher passes receive more oversampling
+                upsampling = current_pass * 20 + 1
+            elif current_method == "template_match":
+                # Prepare the template that will be matching in the other frames
+                reference_target = reference_image[
+                    int(0.1*original_shape.rows):int(0.9*original_shape.rows),
+                    int(0.1*original_shape.columns):int(0.9*original_shape.columns)
+                ]
+                reference_match = feature.match_template(reference_image,
+                                                         reference_target,
+                                                         pad_input=True)
+                reference_center = np.unravel_index(reference_match.argmax(),
+                                                    reference_match.shape)
+                reference_center = Pixel(vertical=reference_center[0],
+                                         horizontal=reference_center[1])
             # Multiprocessing setup
             def worker(payload):
                 key = payload['key']
                 data = payload['data']
                 labels = payload.get('labels', None)
-                # Determine what the new translation should be
-                match = feature.match_template(data,
-                                               reference_target,
-                                               pad_input=True)
-                center = np.unravel_index(match.argmax(), match.shape)
-                center = Pixel(vertical=center[0], horizontal=center[1])
-                # Determine the net translation necessary to align to reference frame
-                shift = xycoord(
-                    x=center.horizontal - reference_center.horizontal,
-                    y=center.vertical - reference_center.vertical,
-                )
+                if current_method == "cross_correlation":
+                    # Determine what the new translation should be
+                    results = feature.register_translation(reference_image,
+                                                           data,
+                                                           upsample_factor=upsampling)
+                    shift, error, diffphase = results
+                    shift = xycoord(-shift[1], -shift[0])
+                elif current_method == "template_match":
+                    # Determine what the new translation should be
+                    match = feature.match_template(data,
+                                                   reference_target,
+                                                   pad_input=True)
+                    center = np.unravel_index(match.argmax(), match.shape)
+
+                    center = Pixel(vertical=center[0], horizontal=center[1])
+                    # Determine the net translation necessary to align to reference frame
+                    shift = xycoord(
+                        x=center.horizontal - reference_center.horizontal,
+                        y=center.vertical - reference_center.vertical,
+                    )
                 # Apply net transformation with bicubic interpolation
                 transformation = transform.SimilarityTransform(translation=shift)
                 new_data = transform.warp(data, transformation,
@@ -645,12 +675,12 @@ class XanesFrameset():
             for frame in self:
                 frame.sample_position = position(0, 0, frame.sample_position.z)
             # Crop frames and save for later
-            top = math.ceil(abs(limits['top']))
-            bottom = math.floor(original_shape.rows - abs(limits['bottom']))
+            bottom = math.ceil(abs(limits['top']))
+            top = math.floor(original_shape.rows - abs(limits['bottom']))
             left = math.ceil(abs(limits['left']))
             right = math.floor(original_shape.columns - abs(limits['right']))
             for frame in prog(self, "Cropping frames"):
-                frame.crop(top=top, left=left, bottom=bottom, right=right)
+                frame.crop(bottom=bottom, left=left, top=top, right=right)
             # Save cropping dimensions for final crop after last pass
             all_crops.append(
                 Crop(top=top, left=left, bottom=bottom, right=right)

@@ -141,7 +141,8 @@ class GtkTxmViewer():
         handlers = {
             'gtk-quit': Gtk.main_quit,
             'previous-frame': self.previous_frame,
-            'create-artists': self.refresh_artists,
+            'create-artists': WatchCursor(self.refresh_artists,
+                                          windows=both_windows),
             'max-frame': self.max_frame,
             'next-frame': self.next_frame,
             'play-frames': WatchCursor(self.play_frames,
@@ -149,23 +150,30 @@ class GtkTxmViewer():
             'last-frame': self.last_frame,
             'first-frame': self.first_frame,
             'key-release-main': self.key_pressed_main,
-            'key-release-map': self.navigate_map,
-            'toggle-particles': self.toggle_particles,
-            'toggle-normalization': self.toggle_normalization,
+            'key-release-map': WatchCursor(self.navigate_map,
+                                           windows=[self.map_window]),
+            'toggle-particles': WatchCursor(self.toggle_particles,
+                                            windows=both_windows),
+            'toggle-normalization': WatchCursor(self.toggle_normalization,
+                                                windows=both_windows),
             'update-window': self.update_window,
             'change-active-group': WatchCursor(self.change_active_group,
                                                windows=[self.window]),
             'launch-map-window': WatchCursor(self.launch_map_window,
                                              windows=[self.window]),
             'hide-map-window': self.hide_map_window,
-            'toggle-map': self.toggle_map_visible,
-            'toggle-map-background': self.toggle_map_background,
-            'toggle-edge-jump': self.toggle_edge_jump,
+            'toggle-map': WatchCursor(self.toggle_map_visible,
+                                      windows=[self.map_window]),
+            'toggle-map-background': WatchCursor(self.toggle_map_background,
+                                                 windows=[self.map_window]),
+            'toggle-edge-jump': WatchCursor(self.toggle_edge_jump,
+                                            windows=both_windows),
         }
         self.builder.connect_signals(handlers)
         self.window.connect('delete-event', self.quit)
         # Connect handlers for clicking on a pixel
-        click_pixel = self.click_map_pixel
+        click_pixel = WatchCursor(self.click_map_pixel,
+                                  windows=[self.map_window])
         self.plotter.map_figure.canvas.mpl_connect('button_press_event',
                                                    click_pixel)
         # Connect handler for mousing over the frame image
@@ -179,22 +187,22 @@ class GtkTxmViewer():
 
     def toggle_map_visible(self, widget, object=None):
         self.show_map = widget.get_active()
-        self.draw_map_plots()
-        self.update_map_window()
+        GLib.idle_add(self.draw_map_plots)
+        GLib.idle_add(self.update_map_window)
 
     def toggle_edge_jump(self, widget, object=None):
         self.plotter.apply_edge_jump = widget.get_active()
         if self.frameset.map_name:
             # Only replot the map if necessary
-            self.draw_map_plots()
-            self.update_map_window()
+            GLib.idle_add(self.draw_map_plots)
+            GLib.idle_add(self.update_map_window)
         self.refresh_artists()
         self.update_window()
 
     def toggle_map_background(self, widget, object=None):
         self.show_map_background = widget.get_active()
-        self.draw_map_plots()
-        self.update_map_window()
+        GLib.idle_add(self.draw_map_plots)
+        GLib.idle_add(self.update_map_window)
 
     def quit(self, widget, object=None):
         self.map_window.destroy()
@@ -230,8 +238,8 @@ class GtkTxmViewer():
             self.active_xy = None
             self.plotter.active_pixel = None
             self.plotter.active_xy = None
-        self.draw_map_plots()
-        self.update_map_window()
+        GLib.idle_add(self.draw_map_plots)
+        GLib.idle_add(self.update_map_window)
 
     def update_current_location(self, event):
         x_label = self.builder.get_object('XCursorLabel')
@@ -267,6 +275,7 @@ class GtkTxmViewer():
             color = 'white'
         else:
             color = 'black'
+        print(self.active_xy)
         self.plotter.draw_crosshairs(active_xy=self.active_xy, color=color)
         self.plotter.draw_map_xanes()
 
@@ -297,8 +306,10 @@ class GtkTxmViewer():
             self.active_xy = pixel_to_xy(self.active_pixel,
                                          extent=self.frameset.extent(),
                                          shape=self.frameset.map_shape())
-        self.draw_map_plots()
-        self.update_map_window()
+            self.plotter.active_pixel = self.active_pixel
+            self.plotter.active_xy = self.active_xy
+        GLib.idle_add(self.draw_map_plots)
+        GLib.idle_add(self.update_map_window)
 
     def change_active_group(self, widget, object=None):
         """Update to a new frameset HDF group after user has changed combobox."""
@@ -311,8 +322,8 @@ class GtkTxmViewer():
         self.active_groupname = new_group
         self.frameset.switch_group(new_group)
         # Update UI elements
-        GLib.idle_add(self.update_window)
-        GLib.idle_add(self.refresh_artists)
+        self.refresh_artists()
+        self.update_window()
 
     @property
     def current_idx(self):
@@ -381,36 +392,39 @@ class GtkTxmViewer():
                 artist.remove()
 
     def refresh_artists(self, *args, **kwargs):
-        self.plotter.connect_animation(self.event_source)
-        # self.plotter.refresh_artists(*args, **kwargs)
+        def connect_animation():
+            self.plotter.connect_animation(self.event_source)
+        GLib.idle_add(connect_animation)
 
     def update_window(self, widget=None):
-        current_frame = self.current_frame()
-        # Set labels on the sidepanel
-        energy_label = self.builder.get_object('EnergyLabel')
-        energy_label.set_text(str(current_frame.energy))
-        x_label = self.builder.get_object('XPosLabel')
-        x_label.set_text(str(current_frame.sample_position.x))
-        y_label = self.builder.get_object('YPosLabel')
-        y_label.set_text(str(current_frame.sample_position.y))
-        z_label = self.builder.get_object('ZPosLabel')
-        z_label.set_text(str(current_frame.sample_position.z))
-        particle_label = self.builder.get_object('ActiveParticleLabel')
-        particle_label.set_text(str(current_frame.active_particle_idx))
-        shape_label = self.builder.get_object('ShapeLabel')
-        shape_label.set_text(str(current_frame.image_data.shape))
-        norm_label = self.builder.get_object('NormLabel')
-        norm_text = '[{}, {}]'.format(
-            round(self.frameset.image_normalizer().vmin, 2),
-            round(self.frameset.image_normalizer().vmax, 2)
-        )
-        norm_label.set_text(norm_text)
-        # Check if the "show map" button should be active
-        map_btn = self.builder.get_object("ShowMapButton")
-        if self.frameset.map_name:
-            map_btn.set_sensitive(True)
-        else:
-            map_btn.set_sensitive(False)
+        def change_gui():
+            current_frame = self.current_frame()
+            # Set labels on the sidepanel
+            energy_label = self.builder.get_object('EnergyLabel')
+            energy_label.set_text(str(current_frame.energy))
+            x_label = self.builder.get_object('XPosLabel')
+            x_label.set_text(str(current_frame.sample_position.x))
+            y_label = self.builder.get_object('YPosLabel')
+            y_label.set_text(str(current_frame.sample_position.y))
+            z_label = self.builder.get_object('ZPosLabel')
+            z_label.set_text(str(current_frame.sample_position.z))
+            particle_label = self.builder.get_object('ActiveParticleLabel')
+            particle_label.set_text(str(current_frame.active_particle_idx))
+            shape_label = self.builder.get_object('ShapeLabel')
+            shape_label.set_text(str(current_frame.image_data.shape))
+            norm_label = self.builder.get_object('NormLabel')
+            norm_text = '[{}, {}]'.format(
+                round(self.frameset.image_normalizer().vmin, 2),
+                round(self.frameset.image_normalizer().vmax, 2)
+            )
+            norm_label.set_text(norm_text)
+            # Check if the "show map" button should be active
+            map_btn = self.builder.get_object("ShowMapButton")
+            if self.frameset.map_name:
+                map_btn.set_sensitive(True)
+            else:
+                map_btn.set_sensitive(False)
+        GLib.idle_add(change_gui)
 
     def progress_modal(self, objs, operation='Working'):
         """

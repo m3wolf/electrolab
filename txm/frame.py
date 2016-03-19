@@ -325,19 +325,19 @@ class TXMFrame():
         s = d / sdev if sdev else 0.
         self.image_data[s >= sigma] = 0
 
-    def crop(self, top, left, bottom, right):
+    def crop(self, bottom, left, top, right):
         """Reduce the image size to given box (in pixels)."""
         # Move particle and labels to top left
-        self.shift_data(x_offset=-left, y_offset=-top)
+        self.shift_data(x_offset=-left, y_offset=-bottom)
         # Shrink images to bounding box size
-        new_shape = shape(rows=(bottom - top), columns=(right - left))
+        new_shape = shape(rows=(top - bottom), columns=(right - left))
         self.image_data.resize(new_shape)
         try:
             labels = self.particle_labels()
         except exceptions.NoParticleError:
             pass
         else:
-            self.shift_data(x_offset=-left, y_offset=-top,
+            self.shift_data(x_offset=-left, y_offset=-bottom,
                             dataset=self.particle_labels())
             labels.resize(new_shape)
 
