@@ -21,6 +21,7 @@ import gc
 
 from matplotlib import figure, pyplot, cm, animation
 from matplotlib.gridspec import GridSpec
+from matplotlib.cm import get_cmap
 from matplotlib.colors import BoundaryNorm, Normalize
 # from matplotlib.backends.backend_gtk import FigureCanvasGTK
 import numpy as np
@@ -97,6 +98,39 @@ class FramesetPlotter():
         self.map_ax.set_ylabel("µm")
         return artist
 
+    def plot_histogram(self, ax=None, norm_range=None, goodness_filter=False):
+        if ax is None:
+            ax = plots.new_axes()
+        # Set normalizer
+        if norm_range is None:
+            norm_range = self.frameset.edge.map_range
+        norm = Normalize(norm_range[0], norm_range[1])
+        masked_map = self.frameset.masked_map(goodness_filter=goodness_filter)
+        mask = masked_map.mask
+        # Add a bin for any above and below the range
+        energies = self.frameset.edge().energies_in_range(norm_range=norm_range)
+        energies = [
+            2 * energies[0] - energies[1],
+            *energies,
+            2 * energies[-1] - energies[-2]
+        ]
+        clipped_map =  np.clip(masked_map, energies[0], energies[-1])
+        n, bins, patches = ax.hist(clipped_map[~mask],
+                                   bins=energies)
+        # Set colors on histogram
+        for patch in patches:
+            x_position = patch.get_x()
+            cmap = get_cmap(self.map_cmap)
+            color = cmap(norm(x_position))
+            patch.set_color(color)
+        # Set axes decorations
+        ax.set_xlabel("Whiteline position /eV")
+        ax.set_ylabel("Pixels")
+        ax.set_xlim(energies[0], energies[-1])
+        # ax.xaxis.set_ticks(energies)
+        ax.xaxis.get_major_formatter().set_useOffset(False)
+        return ax
+
     def plot_xanes_spectrum(self, *args, **kwargs):
         self.xanes_scatter = self.frameset.plot_xanes_spectrum(ax=self.xanes_ax,
                                                                *args, **kwargs)
@@ -106,7 +140,7 @@ class FramesetPlotter():
 
     def draw_crosshairs(self, active_xy=None, color="black", ax=None):
         # Remove old cross-hairs
-        if self.map_crosshairs:
+        if getattr(self, 'map_crosshairs', None):
             for line in self.map_crosshairs:
                 line.remove()
             self.map_crosshairs = None
@@ -118,7 +152,6 @@ class FramesetPlotter():
                                         color=color, linestyle="--")
             self.map_crosshairs = (xline, yline)
         self.map_ax.figure.canvas.draw()
-        self.image_ax.figure.canvas.draw()
 
 
 class FramesetMoviePlotter(FramesetPlotter):
@@ -231,6 +264,16 @@ class GtkFramesetPlotter(FramesetPlotter):
         self.map_canvas.draw()
         return artists
 
+    def plot_histogram(self, *args, **kwargs):
+        # Use the standard histogram axes unless overridden
+        ax = kwargs.get('ax', self.map_hist_ax)
+        super().plot_histogram(ax=ax, goodness_filter=self.apply_edge_jump)
+
+    def draw_crosshairs(self, *args, **kwargs):
+        ret = super().draw_crosshairs(*args, **kwargs)
+        self.image_ax.figure.canvas.draw()
+        return ret
+
     def draw_map_xanes(self, active_pixel=None):
         self.map_xanes_ax.clear()
         show_fit = False
@@ -288,8 +331,10 @@ class GtkFramesetPlotter(FramesetPlotter):
         self.map_ax = self.map_figure.add_subplot(map_spec)
         plots.set_outside_ticks(self.map_ax)
         self.draw_colorbar()
-        self.map_xanes_ax = self.map_figure.add_subplot(2, 2, 2)
-        self.map_edge_ax = self.map_figure.add_subplot(2, 2, 4)
+        xanes_spec = gridspec.new_subplotspec((0, 1), colspan=2)
+        self.map_xanes_ax = self.map_figure.add_subplot(xanes_spec)
+        self.map_hist_ax = self.map_figure.add_subplot(2, 4, 7)
+        self.map_edge_ax = self.map_figure.add_subplot(2, 4, 8)
 
     def draw(self):
         self.frame_figure.canvas.draw()

@@ -21,6 +21,7 @@ import os
 import threading
 import time
 
+import numpy as np
 import gi
 from gi.repository import Gtk, Gdk, GObject, GLib
 
@@ -85,7 +86,7 @@ class GtkTxmViewer():
     _current_idx = 0
     animation_delay = 1000 / 15
     show_map = True
-    show_map_background = True
+    show_map_background = False
     apply_edge_jump = False
     """View a XANES frameset using a Gtk GUI."""
     def __init__(self, frameset, plotter=None):
@@ -257,7 +258,9 @@ class GtkTxmViewer():
             y_label.set_text(str(xy.y))
             v_label.set_text(str(pixel.vertical))
             h_label.set_text(str(pixel.horizontal))
-            value = frame.image_data[pixel.vertical-1][pixel.horizontal-1]
+            row = np.clip(pixel.vertical, 0, frame.image_data.shape[0]-1)
+            col = np.clip(pixel.horizontal, 0, frame.image_data.shape[1]-1)
+            value = frame.image_data[row][col]
             I_label.set_text(str(round(value, 4)))
         else:
             # Set all the cursor labels to blank values
@@ -266,6 +269,7 @@ class GtkTxmViewer():
             y_label.set_text(s)
             v_label.set_text(s)
             h_label.set_text(s)
+            I_label.set_text(s)
 
     def draw_map_plots(self):
         self.plotter.draw_map(show_map=self.show_map,
@@ -275,16 +279,16 @@ class GtkTxmViewer():
             color = 'white'
         else:
             color = 'black'
-        print(self.active_xy)
         self.plotter.draw_crosshairs(active_xy=self.active_xy, color=color)
         self.plotter.draw_map_xanes()
+        self.plotter.plot_histogram()
 
     def update_map_window(self):
         # Show position of active pixel
         if self.active_pixel is None:
             s = "None"
         else:
-            s = "(H:{h}, V:{v})".format(h=self.active_pixel.horizontal,
+            s = "(V:{v}, H:{h})".format(h=self.active_pixel.horizontal,
                                         v=self.active_pixel.vertical)
         label = self.builder.get_object("ActivePixelLabel")
         label.set_text(s)

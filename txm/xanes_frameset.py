@@ -26,7 +26,6 @@ from collections import namedtuple
 import pandas as pd
 from matplotlib import cm, pyplot
 from matplotlib.colors import Normalize
-from mapping.colormaps import cmaps
 import h5py
 import numpy as np
 from skimage import morphology, filters, feature, transform
@@ -1063,7 +1062,7 @@ class XanesFrameset():
         intensities = []
         # Calculate masks if necessary
         if edge_jump_filter == "inverse":
-            mask = ~self.edge_jump_mask(sensitivity=0.1)
+            mask = ~self.edge_jump_mask(sensitivity=0.4)
         elif edge_jump_filter:
             mask = self.edge_jump_mask()
         # Determine the contribution from each energy frame
@@ -1090,7 +1089,7 @@ class XanesFrameset():
 
     def plot_xanes_spectrum(self, ax=None, pixel=None,
                             norm_range=None, normalize=False,
-                            show_fit=False, edge_jump_filter=True):
+                            show_fit=False, edge_jump_filter=False):
         """Calculate and plot the xanes spectrum for this field-of-view.
 
         Arguments
@@ -1204,7 +1203,7 @@ class XanesFrameset():
         # Apply normalizer? (maybe later)
         return filtered_img
 
-    def edge_jump_mask(self, sensitivity: float=0.5):
+    def edge_jump_mask(self, sensitivity: float=0.7):
         """Calculate the edge jump image for this frameset, apply some image
         processing to fill out the space, and convert it into a binary
         mask.
@@ -1215,8 +1214,10 @@ class XanesFrameset():
           the actual threshold.
         """
         edge_jump = self.edge_jump_filter()
+        img_range = (edge_jump.min(), edge_jump.max())
         threshold = filters.threshold_otsu(edge_jump)
-        mask = edge_jump > (sensitivity * threshold)
+        threshold = img_range[0] + sensitivity * (threshold - img_range[0])
+        mask = edge_jump > threshold
         mask = morphology.dilation(mask)
         mask = np.logical_not(mask)
         return mask
@@ -1282,7 +1283,8 @@ class XanesFrameset():
             mask = self.edge_jump_mask()
         else:
             # No-op filter
-            mask = np.zeros_like(map_data)
+            # mask = np.zeros_like(map_data)
+            mask = np.ma.nomask
         masked_map = np.ma.array(map_data, mask=mask)
         return masked_map
 
@@ -1294,42 +1296,32 @@ class XanesFrameset():
         return self[0].extent()
 
     def plot_map(self, plotter=None, ax=None, norm_range=None, alpha=1,
-                 goodness_filter=False, return_type="axes", *args, **kwargs):
+                 goodness_filter=False, return_type="axes", active_pixel=None,
+                 *args, **kwargs):
         """Use a default frameset plotter to draw a map of the chemical data."""
         if plotter is None:
             plotter = FramesetPlotter(frameset=self, map_ax=ax)
         plotter.draw_map(norm_range=norm_range, alpha=alpha,
                          goodness_filter=goodness_filter,
                          *args, **kwargs)
+        # Draw crosshairs for the active pixel if necessary
+        if active_pixel:
+            xy = pixel_to_xy(active_pixel, extent=self.extent(),
+                             shape=self.map_shape())
+            plotter.draw_crosshairs(active_xy=xy)
         return plotter
 
-    def plot_histogram(self, ax=None, norm_range=None):
-        if ax is None:
-            ax = new_axes()
-        # Set normalizer
-        if norm_range is None:
-            norm = Normalize(self.edge.map_range[0], self.edge.map_range[1])
-        else:
-            norm = Normalize(norm_range[0], norm_range[1])
-        masked_map = self.masked_map()
-        # n, bins, patches = ax.hist(masked_map[~masked_map.mask],
-        #                            bins=self.edge.all_energies())
-        n, bins, patches = ax.hist(masked_map[~masked_map.mask],
-                                   bins=np.linspace(start=norm.vmin,
-                                                    stop=norm.vmax,
-                                                    num=100))
-        # Set colors on histogram
-        for patch in patches:
-            x_position = patch.get_x()
-            cmap = cmaps[self.cmap]
-            color = cmap(norm(x_position))
-            patch.set_color(color)
-        # Set axes decorations
-        ax.set_xlabel("Whiteline position /eV")
-        ax.set_ylabel("Pixels")
-        ax.set_xlim(norm.vmin, norm.vmax)
-        ax.xaxis.get_major_formatter().set_useOffset(False)
-        return ax
+    def plot_histogram(self, plotter=None, ax=None, norm_range=None,
+                       goodness_filter=False,
+                       active_pixel=None,
+                       *args, **kwargs):
+        """Use a default frameset plotter to draw a map of the chemical data."""
+        if plotter is None:
+            plotter = FramesetPlotter(frameset=self, map_ax=ax)
+        artists = plotter.plot_histogram(norm_range=norm_range,
+                                         goodness_filter=goodness_filter,
+                                         *args, **kwargs)
+        return artists
 
     def movie_plotter(self):
         """Creates an animation of all the frames in ascending energy, but
