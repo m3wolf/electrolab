@@ -75,6 +75,7 @@ class Map():
     def locus(self, cube_coords):
         """Find a mapping cell in the array give a set of cubic coordinates"""
         result = None
+        cube_coords = Cube(*cube_coords)
         for locus in self.loci:
             if locus.cube_coords == cube_coords:
                 result = locus
@@ -309,13 +310,12 @@ class Map():
         analysis.
         """
         if WindowClass is None:
-            from mapping.gtkmapwindow import GtkMapWindow
-            WindowClass = GtkMapWindow
+            from mapping.gtkmapviewer import GtkMapViewer
+            WindowClass = GtkMapViewer
         # Show GTK window
         title = "Maps for sample '{}'".format(self.sample_name)
-        window = WindowClass(parent_map=self, title=title)
-        window.show_all()
-        window.main()
+        viewer = WindowClass(parent_map=self, title=title)
+        viewer.show()
         # Close the current blank plot
         pyplot.close()
 

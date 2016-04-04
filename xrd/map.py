@@ -264,8 +264,8 @@ class XRDMap(Map):
         return self.plot_map(*args, **kwargs)
 
     def plot_map_gtk(self):
-        from xrd.gtkmapwindow import GtkXrdMapWindow
-        return super().plot_map_gtk(WindowClass=GtkXrdMapWindow)
+        from xrd.gtkmapviewer import GtkXrdMapViewer
+        return super().plot_map_gtk(WindowClass=GtkXrdMapViewer)
 
     def dots_per_mm(self):
         """Determine the width of the scan images based on sample's camera

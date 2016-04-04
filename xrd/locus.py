@@ -14,9 +14,12 @@ class XRDLocus(Locus):
                  refinement=NativeRefinement, **kwargs):
         ret = super().__init__(*args, **kwargs)
         # Attach XRDScan object
-        self.xrdscan = XRDScan(phases=phases, background_phases=background_phases,
-                               refinement=refinement, two_theta_range=two_theta_range,)
-        # Filename is not passed to XRDScan constructor to delay loading the datafile
+        self.xrdscan = XRDScan(phases=phases,
+                               background_phases=background_phases,
+                               refinement=refinement,
+                               two_theta_range=two_theta_range,)
+        # Filename is not passed to XRDScan constructor to delay
+        # loading the datafile
         self.xrdscan.filename = self.filename
         self.xrdscan.refinement.basename = os.path.splitext(self.filename)[0]
         self.load_diffractogram(self.filename)

@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 
-from mapping.gtkmapwindow import GtkMapWindow
+from mapping.gtkmapviewer import GtkMapViewer
 
 
-class GtkXrdMapWindow(GtkMapWindow):
+class GtkXrdMapViewer(GtkMapViewer):
 
     def plot_locus_detail(self, locus):
         if locus:

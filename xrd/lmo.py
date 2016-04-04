@@ -13,10 +13,10 @@ from refinement.fullprof import FullProfPhase, ProfileMatch
 
 class CubicLMO(Phase):
     name = 'cubic LiMn2O4'
-    unit_cell = CubicUnitCell(a=8)
+    unit_cell = CubicUnitCell(a=8.08)
     spacegroup = 'Fd-3m'
     fullprof_spacegroup = 'F D -3 M'
-    diagnostic_hkl = '311'
+    diagnostic_hkl = '333'
     reflection_list = [
         Reflection('111', multiplicity=8, intensity=7.344,
                    two_theta_range=(17.5, 19.5)),

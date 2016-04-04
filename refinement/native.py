@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 
 import math
+import warnings
+
 import numpy
 import scipy
 from scipy.interpolate import UnivariateSpline
@@ -27,15 +29,19 @@ class NativeRefinement(BaseRefinement):
         phase_idx = self.scan.phases.index(phase)
         actual_peaks = self._peak_list[phase_idx]
         # Make sure lists line up
-        if len(predicted_peaks) != len(actual_peaks):
-            msg = 'uneven peak lists: {} != {}'.format(len(predicted_peaks),
-                                                       len(actual_peaks))
-            raise exceptions.RefinementError(msg)
+        # if len(predicted_peaks) != len(actual_peaks):
+        #     msg = 'uneven peak lists: {} != {}'.format(len(predicted_peaks),
+        #                                                len(actual_peaks))
+        #     raise exceptions.RefinementError(msg)
         # Prepare list of peak position differences
         for idx, actual_peak in enumerate(actual_peaks):
-            actual = actual_peak.center_kalpha
-            predicted = predicted_peaks[idx].two_theta
-            diffs.append(actual - predicted)
+            # actual = actual_peak.center_kalpha
+            # predicted = min(predicted_peaks, key=lambda x:abs(x.two_theta - 
+            # predicted = predicted_peaks[idx].two_theta
+            offsets = [abs(p.two_theta-actual_peak.center_kalpha)
+                       for p in predicted_peaks]
+            diffs.append(min(offsets))
+            # diffs.append(actual - predicted)
         # Calculate mean-square-difference
         running_total = 0
         for diff in diffs:
@@ -218,8 +224,8 @@ class NativeRefinement(BaseRefinement):
                             break
                     else:
                         # No sucessful fit could be found.
-                        msg = "peak could not be fit for {}.".format(reflection)
-                        print(msg)
+                        msg = "RefinementWarning: peak could not be fit for {}.".format(reflection)
+                        warnings.warn(msg, RuntimeWarning)
             self._peak_list.append(phase_peak_list)
         return self._peak_list
 

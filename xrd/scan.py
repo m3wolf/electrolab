@@ -68,14 +68,15 @@ class XRDScan():
         self._filename = val
 
     @property
-    def diffractogram(self, filename=None):
+    def diffractogram(self):
         """Return a pandas dataframe with the X-ray diffractogram for this
         scan.
         """
-        if filename is None:
+        if self._df is not None:
+            # Retrieve cached diffractogram
             df = self._df
         else:
-            df = self.load_diffractogram(filename)
+            df = self.load_diffractogram(filename=self.filename)
         return df
 
     @diffractogram.setter

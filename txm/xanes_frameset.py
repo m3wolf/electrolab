@@ -1482,6 +1482,8 @@ class XanesFrameset():
         from .gtk_viewer import GtkTxmViewer
         viewer = GtkTxmViewer(frameset=self)
         viewer.show()
+        # Close the current blank plot
+        pyplot.close()
 
 
 def process_with_smp(frameset: XanesFrameset,

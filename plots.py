@@ -104,7 +104,7 @@ def dual_axes(orientation='horizontal'):
     return (ax1, ax2)
 
 
-def plot_scans(scan_list, step_size=0, ax=None):
+def plot_scans(scan_list, step_size=0, ax=None, names=[]):
     """Plot a series of XRDScans as a waterfall. step_size controls the
     spacing between the waterfall stacking. Optional keyword arg 'ax'
     plots on a specific Axes.
@@ -117,7 +117,11 @@ def plot_scans(scan_list, step_size=0, ax=None):
         df = scan.diffractogram.copy()
         df.counts = df.counts + step_size * idx
         lines.append(ax.plot(df.index, df.counts)[0])
-        scannames.append(scan.name)
+        # Try and determine a name for this scan
+        try:
+            scannames.append(names[idx])
+        except IndexError:
+            scannames.append(getattr(scan, 'name', "Pattern {}".format(idx)))
     ax.legend(reversed(lines), reversed(scannames))
     # Set axes limits
     df = scan_list[0].diffractogram

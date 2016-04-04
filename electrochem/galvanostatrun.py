@@ -19,7 +19,9 @@
 
 import re
 import os
+import warnings
 
+import numpy as np
 import units
 import units.predefined
 import pytz
@@ -236,32 +238,67 @@ class GalvanostatRun():
                 verticalalignment="top")
         return artist
 
-    def plot_discharge_capacity(self, ax=None, ax2=None):
-        if not ax:
-            ax = new_axes()
-        if not ax2:
-            ax2 = ax.twinx()
-        cycle_numbers = []
-        capacities = []
-        efficiencies = []
+    def discharge_capacities(self):
+        capacities = np.array([cycle.discharge_capacity()
+                               for cycle in self.cycles])
+        return capacities
+
+    def charge_capacities(self):
+        capacities = np.array([cycle.charge_capacity()
+                               for cycle in self.cycles])
+        return capacities
+
+    def plot_discharge_capacity(self, *args, **kwargs):
+        with warnings.catch_warnings():
+            warnings.filterwarnings("once")
+            warnings.warn("Use `plot_capacities(direction='discharge')` instead",
+                          DeprecationWarning)
+        kwargs['direction'] = kwargs.get('direction', "discharge")
+        return self.plot_capacities(*args, **kwargs)
+
+    def plot_capacities(self, ax=None, ax2=None,
+                        direction="discharge", plot_efficiences=True):
+        """Plot capacity of each cycle versus cycle number.
+
+        Arguments
+        ---------
+        - ax : Matplotlib axes for plotting capacities.
+        - ax2 : Matplotlib axes for plotting coulombic efficiences
+        - direction : whether to plot "charge" capcity or "discharge"
+          capacity.
+        - plot_efficiences : Whether to plot the coulombic efficiency
+          as well
+        """
         # Calculate relevant plotting values
-        for cycle in self.cycles:
-            cycle_numbers.append(cycle.number)
-            capacities.append(cycle.discharge_capacity())
-            discharge = cycle.discharge_capacity()
-            charge = cycle.charge_capacity()
-            efficiency = 100 * discharge / charge
-            efficiencies.append(efficiency)
+        discharge = self.discharge_capacities()
+        charge = self.charge_capacities()
+        if direction == "discharge":
+            capacities = discharge
+        elif direction == "charge":
+            capacities = charge
+        else:
+            raise ValueError("direction '{}' not recognized.")
+        cycle_numbers = [c.number for c in self.cycles]
+        # Plot cycle capacities
+        if ax is None:
+            ax = new_axes()
         ax.plot(cycle_numbers,
                 capacities,
                 marker='o',
                 linestyle='--',
                 label="Discharge capacity")
-        ax2.plot(cycle_numbers,
-                 efficiencies,
-                 marker='^',
-                 linestyle='--',
-                 label="Coulombic efficiency")
+        if plot_efficiences:
+            efficiencies = discharge / charge * 100
+            if ax2 is None:
+                ax2 = ax.twinx()
+            ax2.plot(cycle_numbers,
+                     efficiencies,
+                     marker='^',
+                     linestyle='--',
+                     label="Coulombic efficiency")
+            ax2.set_ylim(0, 105)
+            ax2.legend(loc='lower right')
+            ax2.set_ylabel('Coulombic efficiency (%)')
         # Format axes
         if max(cycle_numbers) < 20:
             # Only show all of the ticks if there are less than 20
@@ -271,9 +308,6 @@ class GalvanostatRun():
         ax.set_xlabel('Cycle')
         ax.set_ylabel('Discharge capacity $/mAhg^{-1}$')
         ax.legend(loc='lower left')
-        ax2.set_ylim(0, 105)
-        ax2.legend(loc='lower right')
-        ax2.set_ylabel('Coulombic efficiency (%)')
         return ax, ax2
 
     def plot_differential_capacity(self, ax=None, ax2=None, cycle=None):
