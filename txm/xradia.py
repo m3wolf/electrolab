@@ -151,12 +151,24 @@ class XRMFile():
         return params
 
     def um_per_pixel(self):
-        """Describe the size of a pixel in microns. Currently assumes 40µm
-        square fields of view."""
+        """Describe the size of a pixel in microns. If this is an SSRL frame,
+        the pixel size is dependent on energy. For APS frames, the pixel size
+        is uniform and assumes a 40µm field-of-view.
+        """
+        # Based on calibration data from Yijin:
+        #   For 9 keV, at binning 2, the pixel size is 35.54 nm.  In our
+        #   system, the pixel size is proportional to the X-ray energy.
+        #   Say you have 8.5 keV, your pixel size at binning 2 will be
+        #   35.54/9*8.5
+        if self.flavor == "ssrl":
+            energy = self.energy()
+            field_size = 36.39296 * energy / 9000
+        else:
+            field_size = 40
         img_shape = shape(*self.image_data().shape)
         pixel_size = Pixel(
-            vertical=(40 / img_shape.rows),
-            horizontal=(40 / img_shape.columns)
+            vertical=(field_size / img_shape.rows),
+            horizontal=(field_size / img_shape.columns)
         )
         return pixel_size
 

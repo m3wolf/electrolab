@@ -21,7 +21,7 @@ class ScimapTestCase(unittest.TestCase):
                 self.fail(msg=msg.format(actual=actual, expected=expected))
 
 
-class HDFTestCase(unittest.TestCase):
+class HDFTestCase(ScimapTestCase):
     """A test case that sets up and tears down an HDF file."""
     def setUp(self):
         curdir = os.path.dirname(os.path.realpath(__file__))

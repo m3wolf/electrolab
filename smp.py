@@ -124,7 +124,7 @@ class Queue():
                                   total=self.totalsize,
                                   elapsed=time() - self.start_time,
                                   prefix=self.description + ": ")
-            print(status, end='\r')
+            print("\r" + status, end='')
         return ret
 
     def join(self):

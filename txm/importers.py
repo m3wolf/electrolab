@@ -72,7 +72,7 @@ def import_txm_framesets(directory, hdf_filename=None, flavor='ssrl'):
         bg_groupname = formatter.format(ctr=counter)
     hdf_file.create_group(bg_groupname)
     if not prog.quiet:
-        print('Created background group {}'.format(bg_groupname))
+        print('\rCreated background group {}'.format(bg_groupname))
     bg_frameset = XanesFrameset(filename=hdf_filename, groupname=bg_groupname)
     sample_framesets = {}
     # Now do the importing
@@ -128,7 +128,7 @@ def import_txm_framesets(directory, hdf_filename=None, flavor='ssrl'):
                                   total=total_files,
                                   elapsed=time() - start_time,
                                   prefix="Importing raw frames: ")
-            print(status, end='\r')
+            print("\r", status, end='')
     if not prog.quiet:
         print()  # Blank line to avoid over-writing status message
     # print(' frames: {curr}/{total} [done]'.format(curr=total_files,
@@ -151,9 +151,6 @@ def import_txm_framesets(directory, hdf_filename=None, flavor='ssrl'):
         for fs in frameset_list:
             for frame in prog(fs, 'Removing pixels beyond {}σ'.format(sigma)):
                 frame.remove_outliers(sigma=sigma)
-    # # Identify particles
-    # for frameset in frameset_list:
-    #     frameset.label_particles()
     return frameset_list
 
 

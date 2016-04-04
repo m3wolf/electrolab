@@ -475,7 +475,7 @@ class TXMFrame():
         current_min = 999999
         current_idx = None
         for idx, particle in enumerate(particles):
-            center = particle.sample_position()
+            center = particle.relative_position()
             distance = math.sqrt(
                 (loc[0] - center[0])**2 + (loc[1] - center[1])**2
             )

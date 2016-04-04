@@ -27,7 +27,7 @@ from utilities import xycoord, Pixel
 Describes a single particle detected by image processing (skimage).
 """
 
-BoundingBox = namedtuple('BoundingBox', ('top', 'left', 'bottom', 'right'))
+BoundingBox = namedtuple('BoundingBox', ('bottom', 'left', 'top', 'right'))
 
 
 class Particle():

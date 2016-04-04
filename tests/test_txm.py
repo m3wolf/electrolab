@@ -470,6 +470,14 @@ class TXMFrameTest(HDFTestCase):
         }
         self.assertEqual(result, expected)
 
+    def test_pixel_size(self):
+        sample_filename = "rep01_201502221044_NAT1050_Insitu03_p01_OCV_08250.0_eV_001of002.xrm"
+        xrm = XRMFile(os.path.join(ssrldir, sample_filename), flavor="ssrl")
+        self.assertApproximatelyEqual(
+            xrm.um_per_pixel(),
+            (0.0325783, 0.0325783)
+        )
+
     def test_timestamp_from_xrm(self):
         sample_filename = "rep01_201502221044_NAT1050_Insitu03_p01_OCV_08250.0_eV_001of002.xrm"
         xrm = XRMFile(os.path.join(ssrldir, sample_filename), flavor="ssrl")

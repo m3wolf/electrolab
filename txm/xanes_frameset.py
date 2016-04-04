@@ -190,7 +190,7 @@ class XanesFrameset():
             with self.hdf_file() as hdf_file:
                 if groupname not in hdf_file.keys():
                     if not prog.quiet:
-                        msg = "Created new frameset group: {}"
+                        msg = "\rCreated new frameset group: {}"
                         print(msg.format(groupname))
                     hdf_file.create_group(groupname)
             self.active_groupname = self.latest_groupname
@@ -351,24 +351,26 @@ class XanesFrameset():
         energies. This method applies a correction to each frame to
         make the magnification similar to that of the first frame.
         """
-        # Regression parameters
-        slope = -0.00010558834052580277
-        intercept = 1.871559636328671
+        ref_um_per_pixel = self[0].um_per_pixel
         # Prepare multiprocessing objects
         def worker(payload):
             key = payload['key']
             energy = payload['energy']
             data = payload['data']
             # Determine degree of magnification required
-            magnification = energy * slope + intercept
+            um_per_pixel = payload['um_per_pixel']
+            magnification = Pixel(
+                vertical=(ref_um_per_pixel.vertical / um_per_pixel.vertical),
+                horizontal=(ref_um_per_pixel.horizontal / um_per_pixel.horizontal),
+            )
             original_shape = xycoord(x=data.shape[1], y=data.shape[0])
             # Expand the image by magnification degree and re-center
             translation = xycoord(
-                x=original_shape.x / 2 * (1 - magnification),
-                y=original_shape.y / 2 * (1 - magnification),
+                x=original_shape.x / 2 * (1 - magnification.horizontal),
+                y=original_shape.y / 2 * (1 - magnification.vertical),
             )
             transformation = transform.SimilarityTransform(
-                scale=magnification,
+                scale=max(magnification),
                 translation=translation
             )
             # Apply the transformation
@@ -376,7 +378,8 @@ class XanesFrameset():
             result = {
                 'key': key,
                 'energy': energy,
-                'data': new_data
+                'data': new_data,
+                'um_per_pixel': ref_um_per_pixel,
             }
             return result
         # Launch multiprocessing queue
@@ -729,7 +732,7 @@ class XanesFrameset():
                 return result
             process_with_smp(frameset=self,
                              worker=worker,
-                             description="Performing final alignment")
+                             description="Final alignment")
             # Calculate smallest cropping size
             top, bottom, left, right = (0, 0, 0, 0)
             for crop in all_crops:
@@ -740,7 +743,7 @@ class XanesFrameset():
             top = bottom + last_crop.top - last_crop.bottom
             crop = Crop(top=top, left=left, bottom=bottom, right=right)
             # Crop frames down to size
-            for frame in prog(self, "Performing final crop"):
+            for frame in prog(self, "Final crop"):
                 frame.crop(left=crop.left, bottom=crop.bottom,
                            right=crop.right, top=crop.top)
 
@@ -850,8 +853,8 @@ class XanesFrameset():
         boxes = [frame.particles()[frame.active_particle_idx].bbox()
                  for frame in self]
         left = min([box.left for box in boxes])
-        top = min([box.top for box in boxes])
-        bottom = max([box.bottom for box in boxes])
+        bottom = min([box.bottom for box in boxes])
+        top = max([box.top for box in boxes])
         right = max([box.right for box in boxes])
 
         # Make sure the expanded box is square
@@ -860,16 +863,18 @@ class XanesFrameset():
             new_lower = center - target / 2
             new_upper = center + target / 2
             return (new_lower, new_upper)
-        vertical = bottom - top
+        vertical = top - bottom
         horizontal = right - left
         if horizontal > vertical:
-            top, bottom = expand_dims(top, bottom, target=horizontal)
+            bottom, top = expand_dims(bottom, top, target=horizontal)
         elif vertical > horizontal:
             left, right = expand_dims(left, right, target=vertical)
         # Sanity checks to make sure the new window is square
-        vertical = bottom - top
+        vertical = top - bottom
         horizontal = right - left
         assert abs(horizontal) == abs(vertical), "{}h ≠ {}v".format(horizontal, vertical)
+        assert bottom < top
+        assert left < right
         # Roll each image to have the particle top left
         for frame in prog(self, 'Cropping frames'):
             frame.crop(top=top, left=left, bottom=bottom, right=right)
@@ -1525,6 +1530,8 @@ def process_with_smp(frameset: XanesFrameset,
             frame.image_data.write_direct(payload['data'])
         if 'labels' in payload.keys():
             frame.particle_labels().write_direct(payload['labels'])
+        if 'um_per_pixel' in payload.keys():
+            frame.um_per_pixel = payload['um_per_pixel']
     queue = smp.Queue(worker=worker,
                       totalsize=len(frameset),
                       result_callback=result_callback,
@@ -1536,6 +1543,7 @@ def process_with_smp(frameset: XanesFrameset,
             'data': frame.image_data.value,
             'key': frame.image_data.name.split('/')[-1],
             'energy': frame.energy,
+            'um_per_pixel': frame.um_per_pixel,
             # 'labels': frame.particle_labels().value,
         }
         try:
