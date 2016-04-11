@@ -43,8 +43,9 @@ class FramesetPlotter():
     """
     map_cmap = "plasma"
 
-    def __init__(self, frameset, map_ax=None):
+    def __init__(self, frameset, map_ax=None, goodness_ax=None):
         self.map_ax = map_ax
+        self.goodness_ax = goodness_ax
         self.frameset = frameset
 
     def draw_colorbar(self, norm_range=None):
@@ -63,14 +64,15 @@ class FramesetPlotter():
 
     def map_normalizer(self, norm_range=None):
         cmap = cm.get_cmap(self.map_cmap)
-        edge = self.frameset.edge()
-        energies = edge.energies_in_range(norm_range=norm_range)
-        if self.frameset.map_method == "whiteline_direct":
-            # Discrete normalization range
-            norm = BoundaryNorm(energies, cmap.N)
-        else:
-            # Continuous normalization range
-            norm = Normalize(energies[0], energies[-1])
+        norm = self.frameset.edge().map_normalizer(method=self.frameset.map_method)
+        # edge = self.frameset.edge()
+        # energies = edge.energies_in_range(norm_range=norm_range)
+        # if self.frameset.map_method == "direct":
+        #     # Discrete normalization range
+        #     norm = BoundaryNorm(energies, cmap.N)
+        # else:
+        #     # Continuous normalization range
+        #     norm = Normalize(energies[0], energies[-1])
         return norm
 
     def draw_map(self, norm_range=None, alpha=1,
@@ -98,6 +100,27 @@ class FramesetPlotter():
         self.map_ax.set_ylabel("µm")
         return artist
 
+    def draw_goodness(self, norm_range=None, alpha=1, *args, **kwargs):
+        """Draw a map of the goodness of fit on the map_ax. If no axes exist,
+        a new Axes is created with a colorbar.
+        """
+        # Create a new axes if necessary
+        if self.goodness_ax is None:
+            self.goodness_ax = plots.new_image_axes()
+        # Plot chemical map (on top of absorbance image, if present)
+        extent = self.frameset.extent()
+        goodness_map = self.frameset.goodness_filter()
+        artist = self.goodness_ax.imshow(goodness_map,
+                                    extent=extent,
+                                    cmap=self.map_cmap,
+                                    origin="lower",
+                                    alpha=alpha,
+                                    *args, **kwargs)
+        # Decorate axes labels, etc
+        self.goodness_ax.set_xlabel("µm")
+        self.goodness_ax.set_ylabel("µm")
+        return artist
+
     def plot_histogram(self, ax=None, norm_range=None, goodness_filter=False):
         if ax is None:
             ax = plots.new_axes()
@@ -108,15 +131,16 @@ class FramesetPlotter():
         masked_map = self.frameset.masked_map(goodness_filter=goodness_filter)
         mask = masked_map.mask
         # Add a bin for any above and below the range
-        energies = self.frameset.edge().energies_in_range(norm_range=norm_range)
-        energies = [
-            2 * energies[0] - energies[1],
-            *energies,
-            2 * energies[-1] - energies[-2]
-        ]
-        clipped_map =  np.clip(masked_map, energies[0], energies[-1])
+        edge = self.frameset.edge()
+        # energies = self.frameset.edge().energies_in_range(norm_range=norm_range)
+        # energies = [
+        #     2 * energies[0] - energies[1],
+        #     *energies,
+        #     2 * energies[-1] - energies[-2]
+        # ]
+        clipped_map =  np.clip(masked_map, edge.map_range[0], edge.map_range[1])
         n, bins, patches = ax.hist(clipped_map[~mask],
-                                   bins=energies)
+                                   bins=100)
         # Set colors on histogram
         for patch in patches:
             x_position = patch.get_x()
@@ -126,7 +150,7 @@ class FramesetPlotter():
         # Set axes decorations
         ax.set_xlabel("Whiteline position /eV")
         ax.set_ylabel("Pixels")
-        ax.set_xlim(energies[0], energies[-1])
+        ax.set_xlim(edge.map_range[0], edge.map_range[1])
         # ax.xaxis.set_ticks(energies)
         ax.xaxis.get_major_formatter().set_useOffset(False)
         return ax
@@ -231,6 +255,8 @@ class GtkFramesetPlotter(FramesetPlotter):
 
     def __init__(self, frameset):
         super().__init__(frameset=frameset)
+        # To preserve previous plots
+        pyplot.figure()
         # Figures for drawing images of frames
         self._frame_fig = figure.Figure(figsize=(13.8, 10))
         self.frame_canvas = FigureCanvasGTK3Agg(self._frame_fig)
@@ -249,7 +275,7 @@ class GtkFramesetPlotter(FramesetPlotter):
         # Show or hide maps as dictated by GUI toggle buttons
         if show_background:
             # Plot the absorbance background image
-            bg_artist = self.frameset.plot_edge_jump(ax=self.map_ax)
+            bg_artist = self.frameset.plot_mean_image(ax=self.map_ax)
             bg_artist.set_cmap('gray')
             artists.append(bg_artist)
             map_alpha = 0.4

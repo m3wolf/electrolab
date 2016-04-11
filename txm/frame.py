@@ -31,13 +31,15 @@ from skimage.exposure import rescale_intensity
 from skimage.measure import regionprops, label
 from skimage.filters import threshold_adaptive, rank
 from skimage.feature import peak_local_max
+from units import unit, predefined
 
 import exceptions
 import plots
-from hdf import HDFAttribute
+from hdf import Attr, hdf_attrs, HDFAttribute
 from utilities import xycoord, Pixel, shape
 from .particle import Particle
 
+predefined.define_units()
 position = namedtuple('position', ('x', 'y', 'z'))
 Extent = namedtuple('extent', ('left', 'right', 'bottom', 'top'))
 
@@ -143,65 +145,72 @@ def average_frames(*frames):
     new_frame.image_data = new_image
     return new_frame
 
-
+@hdf_attrs
 class TXMFrame():
     """A single microscopy image at a certain energy."""
 
-    image_data = np.zeros(shape=(1024, 1024))
-    _attrs = {}
-    energy = HDFAttribute('energy', default=0.0)
-    approximate_energy = HDFAttribute('approximate_energy', default=0.0)
-    original_filename = HDFAttribute('original_filename', default=None)
-    _sample_position = HDFAttribute('sample_position',
-                                    default=position(0, 0, 0),
-                                    wrapper=lambda coords: position(*coords))
-    relative_position = HDFAttribute(
-        'relative_position',
-        default=position(0, 0, 0),
-        wrapper=lambda coords: position(*coords)
-    )
-    _starttime = HDFAttribute('starttime')
-    _endtime = HDFAttribute('endtime')
-    um_per_pixel = HDFAttribute('um_per_pixel',
-                                default=Pixel(0.0390625, 0.0390625),
-                                wrapper=lambda dims: Pixel(*dims))
-    is_background = HDFAttribute('is_background', default=False)
-    particle_labels_path = HDFAttribute('particle_labels_path', default=None)
-    active_particle_idx = HDFAttribute('active_particle_idx', default=None)
+    # HDF Attributes
+    hdf_default_scope = "frame"
+    hdfattrs = {
+        'energy': Attr(key='energy'),
+        'approximate_energy': Attr('approximate_energy', default=0.0),
+        'is_background': Attr(key='is_background', default=False),
+        '_starttime': Attr('starttime'),
+        '_endtime': Attr('endtime'),
+        'pixel_size_value': Attr(key="pixel_size", default=1),
+        'pixel_size_unit': Attr(key="pixel_unit",  default="px"),
+        'position_unit': Attr(key="position_unit", default="m", wrapper=unit),
+        'relative_position': Attr(key="relative_position",
+                                  default=position(0, 0, 0),
+                                  wrapper=lambda coords: position(*coords)),
+        'sample_position': Attr(key="sample_position",
+                                 default=(0, 0, 0),
+                                 wrapper=lambda coords: position(*coords)),
+        # wrapper=lambda coords: position(*coords)),
+        'original_filename': Attr('original_filename'),
+        'particle_labels_path': Attr(key="particle_labels_path"),
+        'active_particle_idx': Attr(key="active_particle_idx"),
 
-    def __init__(self, file=None, frameset=None):
-        if file:
-            self.energy = file.energy()
-            self.approximate_energy = round(self.energy, 1)
-            self.original_filename = os.path.basename(file.filename)
-            self.image_data = file.image_data()
-            self.sample_position = file.sample_position()
-            self.sample_name = file.sample_name
-            self.position_name = file.position_name
-            # self.reference_path = file.reference_path
-            self.relative_position = position(
-                x=0, y=0, z=round(self.sample_position.z, -1)
-            )
-            self.um_per_pixel = file.um_per_pixel()
-            self.is_background = file.is_background
+    }
+
+    def __init__(self, frameset=None, groupname=None):
+        self.frameset = frameset
+        self.frame_group = groupname
 
     def __repr__(self):
-        name = "<TXMFrame: {energy} eV at ({x}, {y}, {z})>"
+        name = '<TXMFrame: "{}">'
         return name.format(
-            energy=int(self.energy),
-            x=self.approximate_position.x,
-            y=self.approximate_position.y,
-            z=self.approximate_position.z,
+            self.frame_group
         )
 
-    @property
-    def sample_position(self):
-        actual_position = self._sample_position
-        return actual_position
+    # @property
+    # def sample_position(self):
+    #     raw_pos = self._sample_position
+    #     unit = self.position_unit
+    #     pos = position([unit(c) for c in raw_pos])
+    #     return pos
 
-    @sample_position.setter
-    def sample_position(self, new_position):
-        self._sample_position = new_position
+    # @sample_position.setter
+    # def sample_position(self, new_position):
+    #     self._sample_position = new_position
+
+    @property
+    def image_data(self):
+        with self.hdf_file(mode="r") as f:
+            img = f[self.frame_group]['modulus'].value
+        return img
+
+    @image_data.setter
+    def image_data(self, new_data):
+        with self.hdf_file(mode="a") as f:
+            ds = f[self.frame_group]['modulus']
+            if ds.shape != new_data.shape:
+                ds.resize(new_data.shape)
+            img = ds.write_direct(new_data)
+        return img
+
+    def hdf_file(self, *args, **kwargs):
+        return self.frameset.hdf_file(*args, **kwargs)
 
     @property
     def approximate_position(self):
@@ -245,23 +254,24 @@ class TXMFrame():
             img_shape = shape(*self.image_data.shape)
         else:
             img_shape = shape(*img_shape)
-        um_per_pixel = self.um_per_pixel
+        pixel_size = self.pixel_size()
         center = self.relative_position
-        width = img_shape.columns * um_per_pixel.horizontal
-        height = img_shape.rows * um_per_pixel.vertical
+        width = img_shape.columns * pixel_size
+        height = img_shape.rows * pixel_size
         # Calculate boundaries from image shapes
-        left = center.x - width / 2
-        right = center.x + width / 2
-        bottom = center.y - height / 2
-        top = center.y + height / 2
-        return Extent(left=left, right=right, bottom=bottom, top=top)
+        left = width.unit(center.x) - width / 2
+        right = width.unit(center.x) + width / 2
+        bottom = height.unit(center.y) - height / 2
+        top = height.unit(center.y) + height / 2
+        return Extent(left=left.num, right=right.num,
+                      bottom=bottom.num, top=top.num)
 
     def plot_histogram(self, ax=None, bins=100, *args, **kwargs):
         if ax is None:
             ax = plots.new_axes()
         ax.set_xlabel('Absorbance (AU)')
         ax.set_ylabel('Occurences')
-        data = np.nan_to_num(self.image_data.value)
+        data = np.nan_to_num(self.image_data)
         artist = ax.hist(data.flatten(), bins=bins, *args, **kwargs)
         return artist
 
@@ -280,8 +290,9 @@ class TXMFrame():
         if show_particles:
             self.plot_particle_labels(ax=im_ax.axes, extent=extent)
         # Set labels, etc
-        ax.set_xlabel('µm')
-        ax.set_ylabel('µm')
+        unit = self.pixel_size().unit
+        ax.set_xlabel(unit)
+        ax.set_ylabel(unit)
         im_ax.set_extent(extent)
         return im_ax
 
@@ -331,7 +342,10 @@ class TXMFrame():
         self.shift_data(x_offset=-left, y_offset=-bottom)
         # Shrink images to bounding box size
         new_shape = shape(rows=(top - bottom), columns=(right - left))
-        self.image_data.resize(new_shape)
+        data = self.image_data
+        data = np.array(data[0:new_shape[0],
+                             0:new_shape[1]])
+        self.image_data = data
         try:
             labels = self.particle_labels()
         except exceptions.NoParticleError:
@@ -362,16 +376,20 @@ class TXMFrame():
         # Roll along y axis
         new_data = np.roll(new_data, int(y_offset), axis=0)
         # Commit shift image
-        dataset.write_direct(new_data)
+        self.image_data = new_data
         # Update stored position information
-        um_per_pixel = self.um_per_pixel
+        um_per_pixel = self.pixel_size()
+        px_unit = um_per_pixel.unit
+        pos_unit = self.position_unit
+        sample_position = position(*[px_unit(pos_unit(c))
+                                     for c in self.sample_position])
         new_position = position(
-            x=self.sample_position.x + x_offset * um_per_pixel.horizontal,
-            y=self.sample_position.y + y_offset * um_per_pixel.vertical,
-            z=self.sample_position.z
+            x=sample_position.x + x_offset * um_per_pixel,
+            y=sample_position.y + y_offset * um_per_pixel,
+            z=sample_position.z
         )
-        self.sample_position = new_position
-        return dataset.value
+        self.sample_position = [c.num for c in new_position]
+        return new_data
 
     def rebin(self, new_shape=None, factor=None):
         """Resample image into new shape. One of the kwargs `shape` or
@@ -419,13 +437,10 @@ class TXMFrame():
         self.um_per_pixel = new_px_size
         return new_data
 
-    # def um_per_pixel(self):
-    #     """Use image size and nominal image field-of view of 40µm x 40µm to
-    #     compute spatial resolution."""
-    #     um_per_pixel_x = 40 / self.image_data.shape[1]
-    #     um_per_pixel_y = 40 / self.image_data.shape[0]
-    #     return xycoord(x=um_per_pixel_x,
-    #                    y=um_per_pixel_y)
+    def pixel_size(self):
+        px_unit = unit(self.pixel_size_unit)
+        px_size = px_unit(self.pixel_size_value)
+        return px_size
 
     def create_dataset(self, setname, hdf_group):
         """Save data and metadata to an HDF dataset."""

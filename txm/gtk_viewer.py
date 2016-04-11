@@ -20,6 +20,7 @@
 import os
 import threading
 import time
+from collections import namedtuple
 
 import numpy as np
 import gi
@@ -114,19 +115,63 @@ class GtkTxmViewer():
         # Set some initial values
         self.current_adj = self.builder.get_object('CurrentFrame')
         self.current_adj.set_property('upper', len(self.frameset) - 1)
+        # Prepare the tree of different subsets
+        with self.frameset.hdf_file(mode='r') as f:
+            parent_group = f[self.frameset.frameset_group]
+            groups = []
+            node = namedtuple('node', ('name', 'path', 'parent'))
+            for key in parent_group.keys():
+                group = parent_group[key]
+                groups.append(node(name=key,
+                                   path=group.name,
+                                   parent=group.attrs.get('parent', None)))
+        # Remove non-frameset nodes
+        treestore = Gtk.TreeStore(str)
+        groups = [g for g in groups if g.parent is not None]
+        top_level = [g for g in groups if g.parent == ""]
+        active_iters = []
+        def add_node(parent_iter, node):
+            new_iter = treestore.append(parent_iter, (node.name,))
+            # Check if this group should be selected
+            if node.path == self.frameset.active_group:
+                active_iters.append(new_iter)
+            groups.pop(groups.index(node))
+            # Resursive function that builds the tree
+            children = [g for g in groups if g.parent == node.path]
+            for child in children:
+                add_node(parent_iter=new_iter, node=child)
+        # Start at the top and build the tree recursively
+        for node in top_level:
+            add_node(parent_iter=None, node=node)
+        treeview = self.builder.get_object("FramesetTreeView")
+        treeview.set_model(treestore)
+        # import pdb; pdb.set_trace()
+        columns = ["name"]
+        for i in range(0, len(columns)):
+            cell = Gtk.CellRendererText()
+            col = Gtk.TreeViewColumn(columns[i], cell, text=i)
+            treeview.append_column(col)
+        # Set current active group
+        if active_iters:
+            # treeselection = self.builder.get_object("TreeViewSelection")
+            selection = treeview.get_selection()
+            selection.select_iter(active_iters[0])
         # Put the non-glade things in the window
         self.plotter.plot_xanes_spectrum()
         # Populate the combobox with list of available HDF groups
         self.group_combo = self.builder.get_object('ActiveGroupCombo')
         self.group_list = Gtk.ListStore(str, str)
-        for group in self.frameset.hdf_group().keys():
+        with self.frameset.hdf_file() as f:
+            groups = list(f[self.frameset.frameset_group].keys())
+        for group in groups:
             uppercase = " ".join(
                 [word.capitalize() for word in group.split('_')]
             )
             tree_iter = self.group_list.append([uppercase, group])
             # Save active group for later initialization
-            if group == self.frameset.active_groupname:
+            if group == self.frameset.active_group:
                 self.active_group = tree_iter
+        group_list = groups
         # Add background frames as an option
         bg_iter = self.group_list.append(
             ['Background Frames', 'background_frames']
@@ -135,8 +180,8 @@ class GtkTxmViewer():
             self.active_group = bg_iter
         self.group_combo.set_model(self.group_list)
         # Set initial active group name
-        self.group_combo.set_active_iter(self.active_group)
-        self.active_groupname = self.frameset.active_groupname
+        # self.group_combo.set_active_iter(self.frameset.active_group)
+        self.active_groupname = self.frameset.active_group
         # Set event handlers
         both_windows = [self.window, self.map_window]
         handlers = {
@@ -315,17 +360,18 @@ class GtkTxmViewer():
         GLib.idle_add(self.draw_map_plots)
         GLib.idle_add(self.update_map_window)
 
-    def change_active_group(self, widget, object=None):
+    def change_active_group(self, selection, object=None):
         """Update to a new frameset HDF group after user has changed combobox."""
+        model, treeiter = selection.get_selected()
         def disable_map_button():
             # Disable map button until the data are loaded (reset in self.update_window)
             self.builder.get_object("ShowMapButton").set_sensitive(False)
         GLib.idle_add(disable_map_button)
         # Load new group
-        new_group = self.group_list[widget.get_active_iter()][1]
+        new_group = model[treeiter][0]
         self.active_groupname = new_group
         self.frameset.switch_group(new_group)
-        # Update UI elements
+        # # Update UI elements
         self.refresh_artists()
         self.update_window()
 

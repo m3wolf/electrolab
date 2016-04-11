@@ -2,16 +2,29 @@
 
 import numpy as np
 from pandas import Series
-from sklearn import linear_model, svm
+from sklearn import linear_model, svm, utils
+from matplotlib.colors import Normalize
 
 import exceptions
 from peakfitting import Peak
 import plots
 
 
-class KEdge():
+class Edge():
     """An X-ray absorption edge. It is defined by a series of energy
-    ranges. All energies are assumed to be in units of electron-volts.
+    ranges. All energies are assumed to be in units of
+    electron-volts. This class is intended to be extended into K-edge,
+    L-edge, etc.
+    """
+    pass
+
+
+class LEdge(Edge):
+    pass
+
+
+class KEdge(Edge):
+    """An X-ray absorption K-edge corresponding to a 2p→3d transition.
 
     Attributes
     ---------
@@ -34,6 +47,7 @@ class KEdge():
     map_range: 2-tuple (start, stop) - Energy range used for
       normalizing maps. If not supplied, will be determine from pre-
       and post-edge arguments.
+
     """
     regions = []
     pre_edge = None
@@ -45,7 +59,10 @@ class KEdge():
     def all_energies(self):
         energies = []
         for region in self.regions:
-            energies += range(region[0], region[1] + region[2], region[2])
+            r = region[1] - region[0]
+            num = int(r / region[2])
+            energies.append(np.linspace(region[0], region[1], num))
+        energies = np.concatenate(energies)
         return sorted(list(set(energies)))
 
     def energies_in_range(self, norm_range=None):
@@ -102,13 +119,14 @@ class KEdge():
         except ValueError:
             raise exceptions.RefinementError
         # Correct the post edge region with polynomial fit
-        post_edge = data.ix[self.post_edge[0]:self.post_edge[1]]
         self._post_edge_fit = linear_model.LinearRegression()
-        x = np.array(post_edge.index)
-        self._post_edge_fit.fit(
-            X=self._post_edge_xs(x),
-            y=post_edge.values
-        )
+        post_edge = data.ix[self.post_edge[0]:self.post_edge[1]]
+        if len(post_edge) > 0:
+            x = np.array(post_edge.index)
+            self._post_edge_fit.fit(
+                X=self._post_edge_xs(x),
+                y=post_edge.values
+            )
 
         # Fit the whiteline peak to those values above E_0 in the map range
         normalized = self.normalize(spectrum=data)
@@ -136,8 +154,10 @@ class KEdge():
         preedge = self._pre_edge_fit.predict(energies.reshape(-1, 1))
         # Calculate predicted absorbance at whiteline
         E_0 = self._post_edge_xs(self.E_0)
-        abs_0 = self._post_edge_fit.predict(E_0)
-        # print(abs_0)
+        try:
+            abs_0 = self._post_edge_fit.predict(E_0)
+        except utils.validation.NotFittedError:
+            raise exceptions.RefinementError() from None
         pre_E_0 = np.array(self.E_0).reshape(-1, 1)
         abs_0 = abs_0 - self._pre_edge_fit.predict(pre_E_0)
         # Perform normalization
@@ -166,6 +186,37 @@ class KEdge():
         # if self.whiteline_peak is not None:
         #     self.whiteline_peak.plot_fit(ax=ax)
 
+class NCANickelLEdge(KEdge):
+    E_0 = 853
+    regions = [
+        (844, 848, 1),
+        (849, 856, 0.25),
+        (857, 862, 1),
+    ]
+    pre_edge = (844, 848)
+    post_edge = (857, 862)
+    map_range = (0, 1)
+    _peak1 = 851
+    _peak2 = 853
+
+    def calculate_direct_map(self, imagestack, energies):
+        """Return a map with the ratios of intensitie ast 851 and 853 eV."""
+        idx1 = energies.index(self._peak1)
+        idx2 = energies.index(self._peak2)
+        # Now calculate the peak ratio
+        peak1 = imagestack[idx1]
+        peak2 = imagestack[idx2]
+        ratio = peak2 / (peak1 + peak2)
+        goodness = (peak1 + peak2)
+        return (ratio, goodness)
+
+    def map_normalizer(self, method="direct"):
+        return Normalize(0, 1)
+
+    def annotate_spectrum(self, ax):
+        ax.axvline(x=self._peak1, linestyle='-', color="0.55", alpha=0.4)
+        ax.axvline(x=self._peak2, linestyle='-', color="0.55", alpha=0.4)
+
 
 class NickelKEdge(KEdge):
     E_0 = 8333
@@ -187,4 +238,8 @@ class NickelKEdge(KEdge):
 # Dictionaries make it more intuitive to access these edges by element
 k_edges = {
     'Ni': NickelKEdge,
+}
+
+l_edges = {
+    'Ni_NCA': NCANickelLEdge,
 }

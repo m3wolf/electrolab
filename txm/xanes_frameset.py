@@ -22,14 +22,16 @@ import warnings
 from typing import Callable, Union
 import math
 from collections import namedtuple
+import os
 
 import pandas as pd
 from matplotlib import cm, pyplot
 from matplotlib.colors import Normalize
 import h5py
 import numpy as np
-from skimage import morphology, filters, feature, transform
+from skimage import morphology, filters, feature, transform, exposure, color
 from sklearn import linear_model
+from sklearn.utils import validation
 
 from utilities import prog, xycoord, Pixel, shape
 from peakfitting import Peak
@@ -39,17 +41,56 @@ from .frame import (
 from .plotter import FramesetPlotter, FramesetMoviePlotter
 from plots import new_axes, new_image_axes
 import exceptions
-from hdf import HDFAttribute
+import hdf
+from hdf import HDFAttribute, Attr, hdf_attrs
 import smp
+
+
+# So all modules can use the same HDF indices
+energy_key = "{:.2f}_eV"
 
 
 def build_series(frames):
     energies = [frame.energy for frame in frames]
-    images = [frame.image_data.value for frame in frames]
+    images = [frame.image_data for frame in frames]
     series = pd.Series(images, index=energies)
     return series
 
+
+def merge_framesets(framesets, group="merged"):
+    """Combine two set of frame data into one. No energy should be
+    duplicated. A new HDF group will be greated.
+    """
+    ref_fs = framesets[0]
+    dest = "/" + group
+    with ref_fs.hdf_file(mode="a") as f:
+        # Copy first group as a template
+        try:
+            del f[dest]
+        except KeyError:
+            pass
+        src_group = f[ref_fs.frameset_group]
+        src_group.copy(src_group, dest=dest)
+        for key in f[dest]:
+            del f[dest][key]
+        # Set some attributes
+        new_fs_group = f[dest].create_group("merged")
+        f[dest].attrs['latest_group'] = new_fs_group.name
+        new_fs_group.attrs['level'] = 0
+        new_fs_group.attrs['parent'] = ""
+        # Now link to the other nodes
+        for fs in framesets:
+            for frame in fs:
+                key = energy_key.format(frame.energy)
+                new_fs_group[key] = f[frame.frame_group]
+    # return new_frameset
+    fs = XanesFrameset(filename=ref_fs.hdf_filename,
+                       edge=ref_fs.edge,
+                       groupname=dest)
+    return fs
+
 def calculate_gaussian_whiteline(data, edge):
+
     """Calculates the whiteline position of the absorption edge data
     contained in `data`.
 
@@ -159,63 +200,110 @@ def calculate_direct_whiteline(data, *args, **kwargs):
     goodness = np.ones_like(whiteline_energies)
     return (whiteline_energies, goodness)
 
-
+@hdf_attrs
 class XanesFrameset():
     """A collection of TXM frames at different energies moving across an
     absorption edge. Iterating over this object gives the individual
-    Frame() objects.
-    """
-    _attrs = {}
-    active_groupname = None
-    latest_groupname = HDFAttribute('latest_groupname')
-    background_groupname = HDFAttribute('background_groupname')
-    active_particle_idx = HDFAttribute('active_particle_idx',
-                                       default=None,
-                                       group_func='active_group')
-    latest_labels = HDFAttribute('latest_labels', default='particle_labels')
-    map_name = HDFAttribute('map_name', group_func='active_group')
-    map_goodness_name = HDFAttribute('map_goodness_name',
-                                     group_func='active_group')
-    map_method = HDFAttribute('map_method',
-                              group_func='active_group',
-                              default=None)
-    cmap = 'plasma'
+    Frame() objects. The class assumes that the data have
+    been imported into an HDF file.
 
-    def __init__(self, filename, groupname, edge=None):
+    Arguments
+    ---------
+    - filename : path to the HDF file that holds these data.
+
+    - groupname : Top level HDF group corresponding to this
+    frameset. This argument is only required if there is more than one
+    top-level group.
+    """
+    active_group = None
+    cmap = 'plasma'
+    hdf_default_scope = "frameset"
+    hdfattrs = {
+        'reference_group': Attr('reference_group', default='hello'),
+        'latest_group': Attr('latest_group'),
+        'map_method': Attr('map_method'),
+        'map_name': Attr('map_name'),
+        'map_goodness_name': Attr('map_goodness_name'),
+    }
+
+    def __init__(self, filename, edge, groupname=None):
         self.hdf_filename = filename
-        self.parent_groupname = groupname
         self.edge = edge
         # Check to make sure a valid group is given
         if filename:
             with self.hdf_file() as hdf_file:
-                if groupname not in hdf_file.keys():
-                    if not prog.quiet:
-                        msg = "\rCreated new frameset group: {}"
-                        print(msg.format(groupname))
-                    hdf_file.create_group(groupname)
-            self.active_groupname = self.latest_groupname
+                # Detect the groupname if only 1 top-level group exists
+                if groupname is None:
+                    if len(hdf_file.keys()) == 1:
+                        self.frameset_group = list(hdf_file.keys())[0]
+                    else:
+                        msg = "Multiple groups found, please pass `groupname`. "
+                        msg += "Choices are {}".format(list(hdf_file.keys()))
+                        raise exceptions.GroupKeyError(msg)
+                elif groupname not in hdf_file.keys():
+                    # Group not found at top-level in hdf file
+                    msg = "'{}' does not exist. Choices are {}"
+                    msg = msg.format(groupname, list(hdf_file.keys()))
+                    raise exceptions.GroupKeyError(msg)
+                else:
+                    # Valid group, save for later
+                    self.frameset_group = "/" + groupname
+            self.active_group = self.latest_group
 
     def __repr__(self):
         s = "<{cls} '{filename}'>"
         return s.format(cls=self.__class__.__name__, filename=self.hdf_filename)
 
+    def _frame_keys(self):
+        """Return a list of valid hdf5 keys in the group that correspond to
+        actual energy frames."""
+        keys = []
+        with self.hdf_file() as f:
+            parent_group = f[self.active_group]
+            # Filter out groups that do not have an energy associated with them
+            for group in parent_group:
+                if parent_group[group].attrs.get('energy', False):
+                    keys.append(group)
+        return keys
+
     def __iter__(self):
         """Get each frame from the HDF5 file"""
-        for dataset_name in self.active_group().keys():
-            yield TXMFrame.load_from_dataset(self.active_group()[dataset_name])
+        energies = self.energies()
+        for E in energies:
+            frame_group = os.path.join(self.active_group, energy_key.format(E))
+            yield TXMFrame(frameset=self, groupname=frame_group)
 
     def __len__(self):
-        return len(self.active_group().keys())
+        return len(self.energies())
 
     def __getitem__(self, index):
-        # First just use the index directly
-        try:
-            frame = TXMFrame.load_from_dataset(self.active_group()[index])
-        except AttributeError:
-            keys = list(self.active_group().keys())
-            name = keys[index]
-            frame = TXMFrame.load_from_dataset(self.active_group()[name])
+        """Retrieve the given item. If index is a float, it is assumed to be
+        the energy of the scan in eV, otherwise it will be treated like a
+        normal index."""
+        if isinstance(index, float):
+            # Floats are considered to be scan energies
+            energy = index
+            # Check that the energy is a valid option
+            if energy not in self.energies():
+                raise KeyError(energy)
+        else:
+            # Get energy from index
+            energies = self.energies()
+            energy = energies[index]
+            # with self.hdf_file(mode='r') as f:
+            #     energies = f[self.frameset_group]['energies']
+            #     energy = energies[index]
+        group = os.path.join(self.active_group,
+                             energy_key.format(float(energy)))
+        frame = TXMFrame(frameset=self, groupname=group)
         return frame
+
+    def save_images(self, directory):
+        """Save a series of TIF's of the individual frames in `directory`."""
+        if not os.path.exists(directory):
+            os.mkdir(directory)
+        for frame in self:
+            pyplot.imsave(os.path.join(directory, str(frame.energy) + ".tif"), frame.image_data)
 
     def clear_caches(self):
         """Clear cached function values so they will be recomputed with fresh
@@ -228,6 +316,7 @@ class XanesFrameset():
     def active_labels_groupname(self):
         """The group name for the latest frameset of detected particle labels."""
         # Save as an HDF5 attribute
+        return None
         group = self.active_group()
         return group.attrs.get('active_labels', None)
 
@@ -245,7 +334,7 @@ class XanesFrameset():
         """Determine the earliest timestamp amongst all of the frames."""
         all_times = [f.starttime for f in self]
         # Check background frames as well
-        old_groupname = self.active_groupname
+        old_groupname = self.active_group
         self.switch_group('background_frames')
         all_times += [f.starttime for f in self]
         self.switch_group(old_groupname)
@@ -255,7 +344,7 @@ class XanesFrameset():
         """Determine the latest timestamp amongst all of the frames."""
         all_times = [f.endtime for f in self]
         # Check background frames as well
-        old_groupname = self.active_groupname
+        old_groupname = self.active_group
         self.switch_group('background_frames')
         all_times += [f.endtime for f in self]
         self.switch_group(old_groupname)
@@ -276,7 +365,8 @@ class XanesFrameset():
         name (str) - The HDF groupname for this frameset. If omitted
           or "", a list of available options will be listed.
         """
-        valid_groups = list(self.hdf_group().keys()) + ['background_frames']
+        with self.hdf_file() as f:
+            valid_groups = list(f[self.frameset_group].keys())
         if name not in valid_groups:
             msg = "{name} is not a valid group. Choices are {choices}."
             raise exceptions.GroupKeyError(
@@ -284,32 +374,30 @@ class XanesFrameset():
             )
         if name == 'background_frames':
             # Clear cached value
-            self.active_groupname = self.background_groupname
+            self.active_group = self.background_groupname
         else:
-            self.active_groupname = name
+            self.active_group = os.path.join(self.frameset_group, name)
         self.clear_caches()
 
     def fork_group(self, name):
         """Create a new, copy of the current active group inside the HDF
         parent with name: `name`.
         """
-        # Create an empty group
-        try:
-            del self.hdf_group()[name]
-        except KeyError as e:
-            # Ignore error only if group doesn't exists
-            if not e.args[0] == "Couldn't delete link (Can't delete self)":
-                raise
-        # Copy the old data
-        self.hdf_group().copy(source=self.active_groupname, dest=name)
-        # Update the group name
-        self.latest_groupname = name
+        with self.hdf_file(mode='a') as f:
+            parent_group = f[self.frameset_group]
+            old_group = f[self.active_group]
+            try:
+                del parent_group[name]
+            except KeyError as e:
+                # Ignore error only if group doesn't exists
+                if not e.args[0] == "Couldn't delete link (Can't delete self)":
+                    raise
+            # Copy the old data
+            parent_group.copy(source=old_group, dest=name)
+            new_path = parent_group[name].name
+            parent_group[name].attrs['parent'] = self.active_group
+        self.latest_group = new_path
         self.switch_group(name)
-        # Delete reference to the old map (rather recalculate than risk a stale map)
-        try:
-            del self.map_name
-        except KeyError:
-            pass
 
     def fork_labels(self, name):
         # Create a new group
@@ -343,7 +431,57 @@ class XanesFrameset():
             frame.image_data.write_direct(new_data)
         # self.hdf_file().close()
 
+    def apply_internal_reference(self, mask=None, plot_background=True, ax=None):
+        """Use a portion of each frame for internal reference correction. This
+        converts frames from intensity to absorbance. The median of
+        unmasked pixels is used as I_0. The absorbance of each frame
+        is taken as the log_10(I_0/I) for each pixel intensity I.
+
+        Arguments
+        ---------
+
+        mask : An array the same size as each frame that contains a
+          mask to be provided to numpy's ma module.
+
+        plot_background : If truthy, the values of I_0 are plotted as
+          a function of energy.
+
+        ax : The axes to use for plotting if `plot_background` is
+          truthy.
+        """
+        self.fork_group("reference_corrected")
+        # Prepare mask by converting to greyscale only
+        if mask is not None:
+            graymask = color.rgb2gray(mask)
+        # Array for holding background correction for plotting
+        if plot_background:
+            Es = []
+            I_0s = []
+        # Step through each frame and apply reference correction
+        for frame in prog(self, "Reference correction"):
+            if mask is not None:
+                data = np.ma.array(frame.image_data, mask=graymask)
+                I_0 = np.ma.median(data)
+            else:
+                data = frame.image_data
+                I_0 = np.median(data)
+            # Save values for plotting
+            if plot_background:
+                Es.append(frame.energy)
+                I_0s.append(I_0)
+            # Apply actual reference
+            frame.image_data = np.log(I_0 / frame.image_data)
+        # Plot background for evaluation
+        if plot_background:
+            if ax is None:
+                ax = new_axes()
+            ax.plot(Es, I_0s)
+            ax.set_title("Background Intensity used for Reference Correction")
+            ax.set_xlabel("Energy (eV)")
+            ax.set_ylabel("$I_0$")
+
     def correct_magnification(self):
+
         """Correct for changes in magnification at different energies.
 
         As the X-ray energy increases, the focal length of the zone
@@ -516,10 +654,14 @@ class XanesFrameset():
         for frame in self:
             frame.activate_closest_particle(loc=loc)
 
-    def align_frames(self, new_name: str="aligned_frames",
-                     reference_frame=None, passes: int=1,
+    def align_frames(self,
+                     new_name,
+                     reference_frame="mean",
+                     blur=None,
+                     passes: int=1,
                      method: str="cross_correlation",
-                     methods=[]):
+                     methods=[],
+                     template=None):
         """Use phase correlation algorithm to line up the frames. All frames
         have their sample position set set to (0, 0) since we don't
         know which one is the real position. This operation will
@@ -529,33 +671,53 @@ class XanesFrameset():
 
         Arguments
         ---------
-        new_name : HDF groupname to assign to the aligned frameset
+        new_name : HDF groupname to assign to the aligned frameset.
 
-        reference_frame (int or None) : The index of the frame to
-          which all other frames should be aligned. If omitted or None,
-          the frame of highest intensity will be used.
+        reference_frame (int, str or None) : The index of the frame to
+          which all other frames should be aligned. If None, the frame
+          of highest intensity will be used. If "mean" (default) or
+          "median", the average or median of all frames will be
+          used. This attribute has no effect if template matching is
+          used.
 
         passes : Number of times to repeat the alignment to try and
           narrow in on no jitter (default 1). Subsequent passes will use
           higher oversampling rates.
 
-        method : Which technique to use to calculate the translation
-          - cross_correlation (default)
-          - template_match
+        blur  : A type of filter to apply to each frame of the data
+          before attempting registration. Choices are "median" or None
 
-        method : List of techniques corresponding to each pass,
+        method : Which technique to use to calculate the translation
+          - "cross_correlation" (default)
+          - "template_match"
+          (If "template_match" is used, the `template` argument should
+          be provided.)
+
+        methods : List of techniques corresponding to each pass,
           similar to method arguments. If omitted, the method argument
           will be used for each pass.
+
+        template : Image data that should be matched if the
+          `template_match` method is used. If omitted, the middle 80% of
+          the image will be used.
+
         """
+        # Check for valid attributes
+        valid_filters = ["median", None]
+        if blur not in valid_filters:
+            msg = "Invalid blur filter {}. Choices are {}".format(blur,
+                                                                  valid_filters)
+            raise AttributeError(msg) from None
         Crop = namedtuple("Crop", ('top', 'bottom', 'left', 'right'))
         # Sanity check on `method` argument
         valid_methods = ['cross_correlation', 'template_match']
-        if method not in valid_methods:
-            msg = "Unknown method '{}'".format(method)
-            raise ValueError(msg)
-        elif methods == []:
+        if methods == []:
             # use the same method each time
             methods = [method for i in range(0, passes)]
+        for m in methods:
+            if m not in valid_methods:
+                msg = "Unknown method {}. Choices are {}".format(m, valid_methods)
+                raise ValueError(msg)
         if not len(methods) == passes:
             msg = "`methods` must be same length as `passes`: {}".format(methods)
             raise ValueError(msg)
@@ -567,7 +729,7 @@ class XanesFrameset():
         current_pass = 0
         shifts = {} # Keeps track of shifts for final translation
         all_crops = [] # Keeps track of how to crop the original image
-        original_group = self.active_groupname
+        original_group = self.active_group
         self.fork_group(new_name)
         if self.active_labels_groupname:
             self.fork_labels(new_name + "_labels")
@@ -575,17 +737,29 @@ class XanesFrameset():
         while current_pass < passes:
             current_method = methods[current_pass]
             # Retrieve reference frame
-            original_shape = shape(*self[reference_frame].image_data.shape)
-            reference_image = self[reference_frame].image_data.value
+            if reference_frame == "mean":
+                reference_image = self.mean_image()
+            elif reference_frame == "median":
+                reference_image = self.median_image()
+            else:
+                reference_image = self[reference_frame].image_data
+                if blur == "median":
+                    reference_image = exposure.rescale_intensity(self[reference_frame].image_data,
+                                                                 out_range=(-1, 1))
+                    reference_image = filters.median(reference_image, morphology.disk(20))
+            original_shape = shape(*reference_image.shape)
             if current_method == "cross_correlation":
                 # Higher passes receive more oversampling
                 upsampling = current_pass * 20 + 1
             elif current_method == "template_match":
-                # Prepare the template that will be matching in the other frames
-                reference_target = reference_image[
-                    int(0.1*original_shape.rows):int(0.9*original_shape.rows),
-                    int(0.1*original_shape.columns):int(0.9*original_shape.columns)
-                ]
+                if template is None:
+                    # Prepare the template that will be matching in the other frames
+                    reference_target = reference_image[
+                        int(0.1*original_shape.rows):int(0.9*original_shape.rows),
+                        int(0.1*original_shape.columns):int(0.9*original_shape.columns)
+                    ]
+                else:
+                    reference_target = template
                 reference_match = feature.match_template(reference_image,
                                                          reference_target,
                                                          pad_input=True)
@@ -597,11 +771,21 @@ class XanesFrameset():
             def worker(payload):
                 key = payload['key']
                 data = payload['data']
+                # Temporarily rescale the data to be between -1 and 1
+                in_range = (data.min(), data.max())
+                out_range = (-1, 1)
+                data = exposure.rescale_intensity(data,
+                                                  in_range=in_range,
+                                                  out_range=out_range)
+                if blur == "median":
+                    blurred_data = filters.median(data, morphology.disk(20))
+                elif blur is None:
+                    blurred_data = np.copy(data)
                 labels = payload.get('labels', None)
                 if current_method == "cross_correlation":
                     # Determine what the new translation should be
                     results = feature.register_translation(reference_image,
-                                                           data,
+                                                           blurred_data,
                                                            upsample_factor=upsampling)
                     shift, error, diffphase = results
                     shift = xycoord(-shift[1], -shift[0])
@@ -622,6 +806,10 @@ class XanesFrameset():
                 transformation = transform.SimilarityTransform(translation=shift)
                 new_data = transform.warp(data, transformation,
                                           order=3, mode="wrap")
+                # Reset intensities of original values
+                new_data = exposure.rescale_intensity(new_data,
+                                                      in_range=out_range,
+                                                      out_range=in_range)
                 result = {
                     'key': key,
                     'energy': payload['energy'],
@@ -692,10 +880,10 @@ class XanesFrameset():
         # Perform a final, complete translation and cropping if necessary
         if passes > 1:
             # Retrieve reference frame
-            original_shape = shape(*self[reference_frame].image_data.shape)
-            reference_image = self[reference_frame].image_data.value
+            # original_shape = shape(*self[reference_frame].image_data.shape)
+            # reference_image = self[reference_frame].image_data
             # Revert back to original frameset
-            self.switch_group(original_group)
+            self.switch_group(os.path.basename(original_group))
             self.fork_group(new_name)
             if self.active_labels_groupname:
                 self.fork_labels(new_name + "_labels")
@@ -703,6 +891,12 @@ class XanesFrameset():
             def worker(payload):
                 key = payload['key']
                 data = payload['data']
+                # Temporarily rescale the data to be between -1 and 1
+                in_range = (data.min(), data.max())
+                out_range = (-1, 1)
+                data = exposure.rescale_intensity(data,
+                                                  in_range=in_range,
+                                                  out_range=out_range)
                 labels = payload.get('labels', None)
                 # Compute the net translation needed for this frame
                 curr_shifts = shifts[key]
@@ -713,6 +907,10 @@ class XanesFrameset():
                 transformation = transform.SimilarityTransform(translation=shift)
                 new_data = transform.warp(data, transformation,
                                           order=3, mode="wrap")
+                # Reset intensities of original values
+                new_data = exposure.rescale_intensity(new_data,
+                                                      in_range=out_range,
+                                                      out_range=in_range)
                 result = {
                     'key': key,
                     'energy': payload['energy'],
@@ -917,7 +1115,7 @@ class XanesFrameset():
             frame.sample_position = new_position
 
     def label_particles(self):
-        labels_groupname = self.active_groupname + "_labels"
+        labels_groupname = self.active_group + "_labels"
         if labels_groupname in self.hdf_group().keys():
             del self.hdf_group()[labels_groupname]
         self.active_labels_groupname = labels_groupname
@@ -1047,6 +1245,13 @@ class XanesFrameset():
         avg_frame = np.mean(frames, axis=0)
         return avg_frame
 
+    def median_image(self):
+        """Determine an overall image by taking the median intensity of each
+        pixel across all frames."""
+        frames = np.array([f.image_data for f in self])
+        median_frame = np.median(frames, axis=0)
+        return median_frame
+
     @functools.lru_cache()
     def xanes_spectrum(self, pixel=None, edge_jump_filter=""):
         """Collapse the dataset down to a two-dimensional spectrum. Returns a
@@ -1072,7 +1277,7 @@ class XanesFrameset():
             mask = self.edge_jump_mask()
         # Determine the contribution from each energy frame
         for frame in self:
-            data = frame.image_data.value
+            data = frame.image_data
             # Determine which subset of pixels to use
             if pixel is not None:
                  # Specific pixel is requested
@@ -1116,6 +1321,7 @@ class XanesFrameset():
             norm_range = (self.edge.map_range[0], self.edge.map_range[1])
         norm = Normalize(*norm_range)
         spectrum = self.xanes_spectrum(pixel=pixel, edge_jump_filter=edge_jump_filter)
+        edge = self.edge()
         if ax is None:
             ax = new_axes()
         # Color code the markers by energy
@@ -1125,11 +1331,11 @@ class XanesFrameset():
             colors.append(cmap(norm(energy)))
         if normalize or show_fit:
             # Prepare an edge for fitting
-            edge = self.edge()
             edge.post_edge_order = 1
             try:
                 edge.fit(spectrum)
-            except exceptions.RefinementError:
+            except (exceptions.RefinementError,
+                    validation.NotFittedError,):
                 # Fit failed, so we can't normalize
                 normalize = False
                 show_fit = False
@@ -1157,9 +1363,10 @@ class XanesFrameset():
                                  y=round(xy.y, 2),
                                  val=val)
             ax.set_title(title)
-        # Plot lines at edge of normalization range
-        ax.axvline(x=norm_range[0], linestyle='-', color="0.55", alpha=0.4)
-        ax.axvline(x=norm_range[1], linestyle='-', color="0.55", alpha=0.4)
+        # Plot lines at edge of normalization range or indicate peak positions
+        edge.annotate_spectrum(ax)
+        # ax.axvline(x=norm_range[0], linestyle='-', color="0.55", alpha=0.4)
+        # ax.axvline(x=norm_range[1], linestyle='-', color="0.55", alpha=0.4)
         return scatter
 
     def plot_xanes_edge(self, *args, **kwargs):
@@ -1229,8 +1436,13 @@ class XanesFrameset():
 
     def goodness_filter(self):
         """Calculate an image based on the goodness of fit. `calculate_map`
-        must have been called previously."""
-        return self.hdf_file()[self.map_goodness_name]
+        will be called if not already calculated."""
+        if not self.map_goodness_name:
+            map_data, goodness = self.calculate_map()
+        else:
+            with self.hdf_file() as f:
+                goodness = f[self.map_goodness_name].value
+        return goodness
 
     def goodness_mask(self, sensitivity: float=0.5):
         """Calculate an image based on the goodness of fit. `calculate_map`
@@ -1244,7 +1456,7 @@ class XanesFrameset():
         """
         goodness = self.goodness_filter()
         threshold = filters.threshold_otsu(goodness)
-        mask = edge_jump > (sensitivity * threshold)
+        mask = goodness > (sensitivity * threshold)
         mask = morphology.dilation(mask)
         mask = np.logical_not(mask)
         return mask
@@ -1254,43 +1466,42 @@ class XanesFrameset():
         compute X-ray whiteline position."""
         # Get default hdf group name
         if new_name is None:
-            new_name = "{parent}/{group}_map".format(parent=self.parent_groupname,
-                                                     group=self.active_groupname)
+            new_name = "{group}/map".format(group=self.active_group)
         goodness_name = new_name + "_goodness"
+        # Convert data into an imagestack for mapping
+        energies = self.energies()
+        imagestack = []
+        for frame in self:
+            imagestack.append(frame.image_data)
         # Get map data
-        map_data, goodness = self.whiteline_map(*args, **kwargs)
-        # Delete old datasets
-        try:
-            del self.hdf_file()[new_name]
-            del self.hdf_file()[goodness_name]
-        except KeyError:
-            pass
-        # Save new datasets
-        self.hdf_file().create_dataset(new_name, data=map_data)
+        map_data, goodness = self.edge().calculate_direct_map(imagestack, energies)
+        # Update the hdf file
+        with self.hdf_file(mode="a") as f:
+            # Delete old datasets
+            try:
+                del self.hdf_file()[new_name]
+                del self.hdf_file()[goodness_name]
+            except KeyError:
+                pass
+            # Save new datasets
+            f.create_dataset(new_name, data=map_data)
+            f.create_dataset(goodness_name, data=goodness)
         self.map_name = new_name
-        self.hdf_file().create_dataset(goodness_name, data=goodness)
         self.map_goodness_name = goodness_name
-        return self.hdf_file()[new_name]
+        return map_data, goodness
 
     def masked_map(self, goodness_filter=True):
         """Generate a map based on pixel-wise Xanes spectra and apply an
         edge-jump filter mask. Default is to compute X-ray whiteline
         position.
         """
-        # import pdb; pdb.set_trace()
         # Check for cached map of the whiteline position for each pixel
         if not self.map_name:
-            map_data = self.calculate_map()
+            map_data, goodness = self.calculate_map()
         else:
-            map_data = self.hdf_file()[self.map_name]
-        if goodness_filter:
-            # Apply edge jump mask
-            mask = self.edge_jump_mask()
-        else:
-            # No-op filter
-            # mask = np.zeros_like(map_data)
-            mask = np.ma.nomask
-        masked_map = np.ma.array(map_data, mask=mask)
+            with self.hdf_file() as f:
+                map_data = f[self.map_name].value
+        masked_map = np.ma.array(map_data, mask=self.goodness_mask())
         return masked_map
 
     def map_shape(self):
@@ -1314,6 +1525,15 @@ class XanesFrameset():
             xy = pixel_to_xy(active_pixel, extent=self.extent(),
                              shape=self.map_shape())
             plotter.draw_crosshairs(active_xy=xy)
+        return plotter
+
+    def plot_goodness(self, plotter=None, ax=None, norm_range=None,
+                      *args, **kwargs):
+        """Use a default frameset plotter to draw a map of the goodness of fit
+        as determined by the Edge object."""
+        if plotter is None:
+            plotter = FramesetPlotter(frameset=self, goodness_ax=ax)
+        plotter.draw_goodness(norm_range=norm_range, *args, **kwargs)
         return plotter
 
     def plot_histogram(self, plotter=None, ax=None, norm_range=None,
@@ -1374,6 +1594,17 @@ class XanesFrameset():
         self.map_method = "whiteline_" + method
         return whiteline, goodness
 
+    def energies(self):
+        energies = []
+        with self.hdf_file() as f:
+            for key in f[self.active_group]:
+                group = f[self.active_group][key]
+                try:
+                    energies.append(group.attrs['approximate_energy'])
+                except KeyError:
+                    pass
+        return energies
+
     def whiteline_energy(self):
         """Calculate the energy corresponding to the whiteline (maximum
         absorbance) for the whole frame. This first applies an
@@ -1391,23 +1622,20 @@ class XanesFrameset():
         peak, goodness = fit_whiteline(spectrum, width=width)
         return peak
 
-    def hdf_file(self):
+    def hdf_file(self, mode='r'):
+        """Return an open h5py.File object for this (any maybe other) frameset.
+
+        Arguments
+        ---------
+        mode : A mode string, see h5py documentation for options. To
+        avoid file corruption, calling this method as a context
+        manager is recommended, especially with a mode other than 'r'.
+        """
         if self.hdf_filename is not None:
-            # Determine filename
-            try:
-                file = h5py.File(self.hdf_filename, 'r+')
-            except OSError as e:
-                print(e)
-                # HDF File does not exist, make a new one
-                print('Creating new HDF5 file: {}'.format(self.hdf_filename))
-                file = h5py.File(self.hdf_filename, 'w-')
-                file.create_group(self.parent_groupname)
+            file = h5py.File(self.hdf_filename, mode)
         else:
             file = None
         return file
-
-    def hdf_group(self):
-        return self.hdf_file()[self.parent_groupname]
 
     def background_group(self):
         return self.hdf_file()[self.background_groupname]
@@ -1417,21 +1645,7 @@ class XanesFrameset():
         return self.hdf_group()
 
     def is_background(self):
-        return self.active_groupname == self.background_groupname
-
-    def active_group(self):
-        parent_group = self.hdf_group()
-        if self.active_groupname is None:
-            group = parent_group
-        elif self.is_background():
-            # Background frames are relative to file root
-            group = self.hdf_file()[self.active_groupname]
-        else:
-            # Create group if necessary
-            if self.active_groupname not in parent_group.keys():
-                parent_group.create_group(self.active_groupname)
-            group = parent_group[self.active_groupname]
-        return group
+        return self.active_group == self.background_group
 
     def add_frame(self, frame):
         setname_template = "{energy}_eV"
@@ -1443,6 +1657,12 @@ class XanesFrameset():
         # Name found, so create the actual dataset
         frame.create_dataset(setname=setname, hdf_group=frames_group)
         return setname
+
+    def drop_frame(self, index):
+        frame = self[index]
+        with self.hdf_file(mode="a") as f:
+            # Delete group
+            del f[frame.frame_group]
 
     def background_normalizer(self):
         # Find global limits
@@ -1465,7 +1685,7 @@ class XanesFrameset():
         global_min = 99999999999
         global_max = 0
         for frame in self:
-            data = frame.image_data.value
+            data = frame.image_data
             # Remove outliers temporarily
             sigma = 9
             median = np.median(data)
@@ -1521,13 +1741,13 @@ def process_with_smp(frameset: XanesFrameset,
     """
     # Prepare callbacks and queue
     def result_callback(payload):
-        frame = frameset[payload['key']]
+        frame = TXMFrame(frameset=frameset, groupname=payload['key'])
         # Call user-provided result callback
         if process_result is not None:
             payload = process_result(payload)
         # Save data and/or labels if necessary
         if 'data' in payload.keys():
-            frame.image_data.write_direct(payload['data'])
+            frame.image_data = payload['data']
         if 'labels' in payload.keys():
             frame.particle_labels().write_direct(payload['labels'])
         if 'um_per_pixel' in payload.keys():
@@ -1540,10 +1760,10 @@ def process_with_smp(frameset: XanesFrameset,
     # Populate the queue
     for frame in frameset:
         payload = {
-            'data': frame.image_data.value,
-            'key': frame.image_data.name.split('/')[-1],
+            'data': frame.image_data,
+            'key': frame.frame_group,
             'energy': frame.energy,
-            'um_per_pixel': frame.um_per_pixel,
+            'um_per_pixel': frame.pixel_size,
             # 'labels': frame.particle_labels().value,
         }
         try:

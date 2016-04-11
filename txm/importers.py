@@ -23,16 +23,141 @@ import re
 from time import time
 
 from tqdm import format_meter
+import pandas as pd
+from PIL import Image
 
 from .xradia import XRMFile
-from .xanes_frameset import XanesFrameset
+from .xanes_frameset import XanesFrameset, energy_key
 from .frame import TXMFrame, average_frames
 from utilities import prog
 import exceptions
 
+def _prepare_hdf_group(filename: str, groupname: str, dirname: str):
+    """Check the filenames and create an hdf file as need. Throws an
+    exception if the file already exists.
 
-def import_txm_framesets(directory, hdf_filename=None, flavor='ssrl'):
-    """Import all files in the given directory and process into framesets."""
+    Returns: HDFFile
+
+    Arguments
+    ---------
+
+    - filename : name of the requested hdf file, may be None if not
+      provided, in which case the filename will be generated
+      automatically based on `dirname`.
+    """
+    # Get default filename and groupname if necessary
+    if filename is None:
+        real_name = os.path.abspath(dirname)
+        new_filename = os.path.split(real_name)[1]
+        hdf_filename = "{basename}-results.h5".format(basename=new_filename)
+    else:
+        hdf_filename = filename
+    if groupname is None:
+        groupname = os.path.split(os.path.abspath(dirname))[1]
+    # Open actual file
+    hdf_file = h5py.File(hdf_filename)
+    # Alert the user that we're overwriting this group
+    if groupname in hdf_file.keys():
+        msg = 'Group "{groupname}" exists. Overwriting.'
+        print(msg.format(groupname=groupname))
+        del hdf_file[groupname]
+        # msg += " Try using the `hdf_groupname` argument"
+        # e = exceptions.CreateGroupError(msg.format(groupname=groupname))
+        # raise e
+    new_group = hdf_file.create_group(groupname)
+    # User feedback
+    if not prog.quiet:
+        print('Saving to HDF5 file {file} in group {group}'.format(
+            file=hdf_filename,
+            group=groupname)
+        )
+    return new_group
+
+
+def import_txm_framesets(*args, **kwargs):
+    msg = "This function is ambiguous. Choose from the more specific importers."
+    raise NotImplementedError(msg)
+
+def import_ptychography_frameset(directory: str,
+                                 hdf_filename=None, hdf_groupname=None):
+    """Import a set of images as a new frameset for generating
+    ptychography chemical maps based on data collected at ALS beamline
+    5.3.2.1
+
+    Arguments
+    ---------
+
+    - results_dir : Directory where to look for results. It should
+    contain a subdirectory named "tiffs" and a file named
+    "energies.txt"
+
+    - hdf_filename : HDF File used to store computed results. If
+      omitted, the `directory` basename is used
+
+    - hdf_groupname : String to use for the hdf group of this
+    dataset. If omitted or None, the `directory` basename is
+    used. Raises an exception if the group exists.
+    """
+    CURRENT_VERSION = "0.2" # Let's file loaders deal with changes to storage
+    # Prepare some filesystem information
+    tiff_dir = os.path.join(directory, "tiffs")
+    modulus_dir = os.path.join(tiff_dir, "modulus")
+    stxm_dir = os.path.join(tiff_dir, "modulus")
+    # Prepare the HDF5 file and metadata
+    hdf_group = _prepare_hdf_group(filename=hdf_filename,
+                                   groupname=hdf_groupname,
+                                   dirname=directory)
+    hdf_group.attrs["scimap_version"] = CURRENT_VERSION
+    hdf_group.attrs["technique"] = "ptychography STXM"
+    hdf_group.attrs["beamline"] = "ALS 5.3.2.1"
+    hdf_group.attrs["original_directory"] = os.path.abspath(directory)
+    # # Load energies
+    # energies = pd.read_csv(os.path.join(directory, "energies.txt"),
+    #                        header=None)
+    # hdf_group.create_dataset("energies", data=energies)
+    # Prepare groups for data
+    imported = hdf_group.create_group("imported")
+    imported_group = imported.name
+    hdf_group["imported"].attrs["level"] = 0
+    hdf_group["imported"].attrs["parent"] = ""
+    file_re = re.compile("projection_modulus_(?P<energy>\d+\.\d+)\.tif")
+    for filename in os.listdir(modulus_dir):
+        # (assumes each image type has the same set of energies)
+        # Extract energy from filename
+        match = file_re.match(filename)
+        if match is None:
+            msg = "Could not read energy from filename {}".format(filename)
+            raise exceptions.FilenameParseError(msg)
+        energy_str = match.groupdict()['energy']
+        # All dataset names will be the energy with two decimal places
+        energy_set = imported.create_group(energy_key.format(float(energy_str)))
+        energy_set.attrs['energy'] = float(energy_str)
+        energy_set.attrs['approximate_energy'] = round(float(energy_str), 2)
+        energy_set.attrs['pixel_size'] = 4.17
+        energy_set.attrs['pixel_unit'] = "nm"
+        def add_files(name, template="projection_{name}_{energy}.tif"):
+            # Import modulus (total value)
+            filename = template.format(name=name, energy=energy_str)
+            filepath = os.path.join(tiff_dir, name, filename)
+            data = Image.open(filepath)
+            energy_set.create_dataset(name, data=data, chunks=True)
+        representations = ['modulus', 'phase', 'complex', 'intensity']
+        [add_files(name) for name in representations]
+        add_files("stxm", template="stxm_{energy}.tif")
+    # Create the frameset object
+    hdf_filename = hdf_group.file.filename
+    hdf_groupname = hdf_group.name
+    hdf_group.file.close()
+    frameset = XanesFrameset(filename=hdf_filename,
+                             groupname=hdf_groupname,
+                             edge=None)
+    frameset.latest_group = imported_group
+
+
+def import_fullfield_framesets(directory, hdf_filename=None, flavor='ssrl'):
+    """Import all files in the given directory and process into
+    framesets. Images are assumed to full-field transmission X-ray
+    micrographs."""
     format_classes = {
         '.xrm': XRMFile
     }
@@ -48,21 +173,7 @@ def import_txm_framesets(directory, hdf_filename=None, flavor='ssrl'):
             if extension in format_classes.keys():
                 file_list.append(fullpath)
     # Prepare some global data for the import process
-    if hdf_filename is None:
-        real_name = os.path.abspath(directory)
-        new_filename = os.path.split(real_name)[1]
-        hdf_filename = os.path.join(
-            directory,
-            "{basename}.hdf".format(basename=new_filename)
-        )
-    if os.path.exists(hdf_filename):
-        msg = "File {} already exists. Try using the `hdf_filename` argument"
-        raise exceptions.FileExistsError(
-            msg.format(os.path.basename(hdf_filename))
-        )
-    if not prog.quiet:
-        print('Saving to HDF5 file: {}'.format(hdf_filename))
-    hdf_file = h5py.File(hdf_filename)
+    hdf_file = _prepare_hdf_file(filename=hdf_filename, dirname=directory)
     # Find a unique name for the background frames
     formatter = "background_frames_{ctr}"
     counter = 0
@@ -134,7 +245,7 @@ def import_txm_framesets(directory, hdf_filename=None, flavor='ssrl'):
     # print(' frames: {curr}/{total} [done]'.format(curr=total_files,
     #                                                        total=total_files))
     frameset_list = list(sample_framesets.values())
-    # Apply reference collection and convert to absorbance frames
+    # Apply reference correction and convert to absorbance frames
     if not prog.quiet:
         print('Imported samples', [fs.hdf_group().name for fs in frameset_list])
     for frameset in frameset_list:

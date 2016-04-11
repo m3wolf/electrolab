@@ -64,8 +64,10 @@ from electrochem.plots import plot_rate_capacities
 # X-ray microscopy
 from txm.xradia import XRMFile
 from txm.beamlines import Zoneplate, Detector, sector8_xanes_script, ZoneplatePoint
-from txm.importers import import_txm_framesets
-from txm.xanes_frameset import XanesFrameset
+from txm.importers import (import_txm_framesets,
+                           import_fullfield_framesets,
+                           import_ptychography_frameset)
+from txm.xanes_frameset import XanesFrameset, merge_framesets
 from txm.frame import TXMFrame, calculate_particle_labels, rebin_image, position
-from xas.edges import k_edges
+from xas.edges import k_edges, l_edges
 from txm.plotter import FramesetMoviePlotter
