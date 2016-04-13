@@ -235,7 +235,8 @@ class XanesFrameset():
                 # Detect the groupname if only 1 top-level group exists
                 if groupname is None:
                     if len(hdf_file.keys()) == 1:
-                        self.frameset_group = list(hdf_file.keys())[0]
+                        new_path = os.path.join("/", list(hdf_file.keys())[0])
+                        self.frameset_group = new_path
                     else:
                         msg = "Multiple groups found, please pass `groupname`. "
                         msg += "Choices are {}".format(list(hdf_file.keys()))
@@ -247,7 +248,7 @@ class XanesFrameset():
                     raise exceptions.GroupKeyError(msg)
                 else:
                     # Valid group, save for later
-                    self.frameset_group = "/" + groupname
+                    self.frameset_group = os.path.join("/", groupname)
             self.active_group = self.latest_group
 
     def __repr__(self):
@@ -380,22 +381,39 @@ class XanesFrameset():
         self.clear_caches()
 
     def fork_group(self, name):
-        """Create a new, copy of the current active group inside the HDF
-        parent with name: `name`.
+        """Create a new copy of the current active group inside the HDF parent
+        with name: `name`. If trying to create a node that already
+        exists, this will only work if the parent groups are the same,
+        otherwise we risk breaking the tree. For performance reasons,
+        datasets are copied as links and will be not stored separately
+        until set_image_data is called.
         """
         with self.hdf_file(mode='a') as f:
             parent_group = f[self.frameset_group]
             old_group = f[self.active_group]
-            try:
-                del parent_group[name]
-            except KeyError as e:
-                # Ignore error only if group doesn't exists
-                if not e.args[0] == "Couldn't delete link (Can't delete self)":
-                    raise
-            # Copy the old data
-            parent_group.copy(source=old_group, dest=name)
+            if name in parent_group:
+                # Existing groups require some validation first
+                old_parent = parent_group[name].attrs['parent']
+                if old_parent != self.active_group:
+                    # Trying to replace an existing group from a different path
+                    # This can cause an orphaned tree branch
+                    msg = 'Cannot fork group "{target}".'
+                    msg += ' Choose a new name or switch to group "{parent}" first.'
+                    msg = msg.format(
+                        target=name,
+                        parent=os.path.basename(old_parent)
+                    )
+                    raise exceptions.GroupKeyError(msg)
+                else:
+                    del parent_group[name]
+            # Create a new group to hold the datasets
+            parent_group.copy(source=old_group, dest=name) #, shallow=True)
             new_path = parent_group[name].name
             parent_group[name].attrs['parent'] = self.active_group
+            # Delete empty datasets and copy parent datasets as links
+            # for key in old_group.keys():
+            #     del parent_group[name][key]
+            #     parent_group[name][key] = old_group[key]
         self.latest_group = new_path
         self.switch_group(name)
 
@@ -429,7 +447,6 @@ class XanesFrameset():
             if new_data.shape != frame.image_data.shape:
                 frame.image_data.resize(new_data.shape)
             frame.image_data.write_direct(new_data)
-        # self.hdf_file().close()
 
     def apply_internal_reference(self, mask=None, plot_background=True, ax=None):
         """Use a portion of each frame for internal reference correction. This
