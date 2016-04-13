@@ -170,7 +170,6 @@ class TXMFrame():
         'original_filename': Attr('original_filename'),
         'particle_labels_path': Attr(key="particle_labels_path"),
         'active_particle_idx': Attr(key="active_particle_idx"),
-
     }
 
     def __init__(self, frameset=None, groupname=None):
@@ -202,12 +201,17 @@ class TXMFrame():
 
     @image_data.setter
     def image_data(self, new_data):
+        self.set_image_data(new_data, representation="modulus")
+
+    def set_image_data(self, new_data, representation):
         with self.hdf_file(mode="a") as f:
-            ds = f[self.frame_group]['modulus']
-            if ds.shape != new_data.shape:
-                ds.resize(new_data.shape)
-            img = ds.write_direct(new_data)
-        return img
+            # try:
+            del f[self.frame_group][representation]
+            f[self.frame_group].create_dataset(representation, data=new_data)
+            # ds = f[self.frame_group]['modulus']
+            # if ds.shape != new_data.shape:
+            #     ds.resize(new_data.shape)
+            # img = ds.write_direct(new_data)
 
     def hdf_file(self, *args, **kwargs):
         return self.frameset.hdf_file(*args, **kwargs)

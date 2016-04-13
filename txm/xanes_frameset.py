@@ -407,13 +407,19 @@ class XanesFrameset():
                 else:
                     del parent_group[name]
             # Create a new group to hold the datasets
-            parent_group.copy(source=old_group, dest=name) #, shallow=True)
+            parent_group.copy(source=old_group, dest=name, shallow=True)
+            dest = parent_group[name]
             new_path = parent_group[name].name
-            parent_group[name].attrs['parent'] = self.active_group
-            # Delete empty datasets and copy parent datasets as links
-            # for key in old_group.keys():
-            #     del parent_group[name][key]
-            #     parent_group[name][key] = old_group[key]
+            parent_group[name].attrs['parent'] = old_group.name
+            # Copy links for actual datasets
+            for E_key in old_group.keys():
+                # Set a dirty bit for later copy-on-write
+                dest[E_key].attrs['_copy_on_write'] = True
+                # Copy sym links for datasets
+                for src_ds in old_group[E_key]:
+                    old_path = old_group[E_key][src_ds].name
+                    dest[E_key][str(src_ds)] = h5py.SoftLink(old_path)
+                    dest[E_key].attrs["_copy_on_write"] = True
         self.latest_group = new_path
         self.switch_group(name)
 
