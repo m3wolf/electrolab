@@ -1070,14 +1070,14 @@
                   </packing>
                 </child>
                 <child>
-                  <object class="GtkComboBoxText" id="ActiveGroupCombo">
+                  <object class="GtkComboBoxText" id="ActiveRepresentationCombo">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
                     <property name="active">0</property>
                     <items>
                       <item id="&lt;Enter ID&gt;" translatable="yes">Absorbance Frames</item>
                     </items>
-                    <signal name="changed" handler="change-active-group" swapped="no"/>
+                    <signal name="changed" handler="change-representation" swapped="no"/>
                   </object>
                   <packing>
                     <property name="expand">False</property>

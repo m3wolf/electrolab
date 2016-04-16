@@ -163,27 +163,23 @@ class GtkTxmViewer():
             selection.select_path(active_path)
         # Put the non-glade things in the window
         self.plotter.plot_xanes_spectrum()
-        # Populate the combobox with list of available HDF groups
-        self.group_combo = self.builder.get_object('ActiveGroupCombo')
-        self.group_list = Gtk.ListStore(str, str)
-        with self.frameset.hdf_file() as f:
-            groups = list(f[self.frameset.frameset_group].keys())
-        for group in groups:
+        # Populate the combobox with list of available representations
+        self.rep_combo = self.builder.get_object('ActiveRepresentationCombo')
+        self.rep_list = Gtk.ListStore(str, str)
+        reps = self.frameset.representations()
+        for rep in reps:
             uppercase = " ".join(
-                [word.capitalize() for word in group.split('_')]
+                [word.capitalize() for word in rep.split('_')]
             )
-            tree_iter = self.group_list.append([uppercase, group])
+            rep_iter = self.rep_list.append([uppercase, rep])
             # Save active group for later initialization
-            if group == self.frameset.active_group:
-                self.active_group = tree_iter
-        group_list = groups
-        # Add background frames as an option
-        bg_iter = self.group_list.append(
-            ['Background Frames', 'background_frames']
-        )
+            if rep == self.frameset.default_representation:
+                active_rep = rep_iter
         if self.frameset.is_background():
             self.active_group = bg_iter
-        self.group_combo.set_model(self.group_list)
+        self.rep_combo.set_model(self.rep_list)
+        if active_rep:
+            self.rep_combo.set_active_iter(active_rep)
         # Set event handlers
         both_windows = [self.window, self.map_window]
         handlers = {
@@ -206,6 +202,8 @@ class GtkTxmViewer():
                                                 windows=both_windows),
             'update-window': self.update_window,
             'change-active-group': WatchCursor(self.change_active_group,
+                                               windows=[self.window]),
+            'change-representation': WatchCursor(self.change_representation,
                                                windows=[self.window]),
             'launch-map-window': WatchCursor(self.launch_map_window,
                                              windows=[self.window]),
@@ -374,6 +372,15 @@ class GtkTxmViewer():
         self.active_groupname = new_group
         self.frameset.switch_group(new_group)
         # # Update UI elements
+        self.refresh_artists()
+        self.update_window()
+
+    def change_representation(self, widget, object=None):
+        """Update to a new representation of this frameset."""
+        # Load new group
+        new_rep = self.rep_list[widget.get_active_iter()][1]
+        self.plotter.active_representation = new_rep
+        # Update UI elements
         self.refresh_artists()
         self.update_window()
 

@@ -224,6 +224,8 @@ class XanesFrameset():
         'map_method': Attr('map_method'),
         'map_name': Attr('map_name'),
         'map_goodness_name': Attr('map_goodness_name'),
+        'default_representation': Attr('default_representation',
+                                       scope="subset"),
     }
 
     def __init__(self, filename, edge, groupname=None):
@@ -355,6 +357,13 @@ class XanesFrameset():
         """Prepare a particle frameset for the given particle index."""
         fs = ParticleFrameset(parent=self, particle_idx=particle_idx)
         return fs
+
+    def representations(self):
+        """Retrieve a list of valid representations for these data, such as
+        modulus or phase data for ptychography."""
+        with self.hdf_file() as f:
+            reps = list(f[self[0].frame_group].keys())
+        return reps
 
     def switch_group(self, name=""):
         """Set the frameset to retrieve image data from a different hdf
@@ -1703,12 +1712,12 @@ class XanesFrameset():
         return Normalize(global_min, global_max)
 
     @functools.lru_cache()
-    def image_normalizer(self):
+    def image_normalizer(self, representation=None):
         # Find global limits
         global_min = 99999999999
         global_max = 0
         for frame in self:
-            data = frame.image_data
+            data = frame.get_image_data(representation=representation)
             # Remove outliers temporarily
             sigma = 9
             median = np.median(data)

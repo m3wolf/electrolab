@@ -195,23 +195,32 @@ class TXMFrame():
 
     @property
     def image_data(self):
-        with self.hdf_file(mode="r") as f:
-            img = f[self.frame_group]['modulus'].value
+        img = self.get_image_data(representation=None)
         return img
 
     @image_data.setter
     def image_data(self, new_data):
         self.set_image_data(new_data, representation="modulus")
 
+    def get_image_data(self, representation):
+        """Retrieve image data with the given representation. To use the
+        default representation, pass `representation=None` or use the
+        `image_data` property.
+        """
+        with self.hdf_file(mode="a") as f:
+            # Get current representation
+            if representation is None:
+                rep = self.frameset.default_representation
+            else:
+                rep = representation
+            data = f[self.frame_group][rep].value
+        return data
+
     def set_image_data(self, new_data, representation):
         with self.hdf_file(mode="a") as f:
             # try:
             del f[self.frame_group][representation]
             f[self.frame_group].create_dataset(representation, data=new_data)
-            # ds = f[self.frame_group]['modulus']
-            # if ds.shape != new_data.shape:
-            #     ds.resize(new_data.shape)
-            # img = ds.write_direct(new_data)
 
     def hdf_file(self, *args, **kwargs):
         return self.frameset.hdf_file(*args, **kwargs)
@@ -280,13 +289,14 @@ class TXMFrame():
         return artist
 
     def plot_image(self, data=None, ax=None,
-                   show_particles=True, *args, **kwargs):
+                   show_particles=True, representation=None,
+                   *args, **kwargs):
         """Plot a frame's data image. Use frame.image_data if no data are
         given."""
         if ax is None:
             ax = plots.new_image_axes()
         if data is None:
-            data = self.image_data
+            data = self.get_image_data(representation=representation)
         extent = self.extent(img_shape=shape(*data.shape))
         im_ax = ax.imshow(data, *args, cmap='gray', extent=extent,
                           origin="lower", **kwargs)

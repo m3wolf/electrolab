@@ -42,6 +42,7 @@ class FramesetPlotter():
     matplotlib.
     """
     map_cmap = "plasma"
+    active_representation = None # Default will be used unless changed
 
     def __init__(self, frameset, map_ax=None, goodness_ax=None):
         self.map_ax = map_ax
@@ -394,11 +395,13 @@ class GtkFramesetPlotter(FramesetPlotter):
             except exceptions.RefinementError:
                 pass
         # Prepare individual frame artists
+        norm = self.frameset.image_normalizer(representation=self.active_representation)
         for frame in self.frameset:
             frame_artist = frame.plot_image(
                 ax=self.image_ax,
                 show_particles=False,
-                norm=self.frameset.image_normalizer(),
+                representation=self.active_representation,
+                norm=norm,
                 animated=True
             )
             frame_artist.set_visible(False)

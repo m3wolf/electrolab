@@ -111,15 +111,12 @@ def import_ptychography_frameset(directory: str,
     hdf_group.attrs["technique"] = "ptychography STXM"
     hdf_group.attrs["beamline"] = "ALS 5.3.2.1"
     hdf_group.attrs["original_directory"] = os.path.abspath(directory)
-    # # Load energies
-    # energies = pd.read_csv(os.path.join(directory, "energies.txt"),
-    #                        header=None)
-    # hdf_group.create_dataset("energies", data=energies)
     # Prepare groups for data
     imported = hdf_group.create_group("imported")
     imported_group = imported.name
     hdf_group["imported"].attrs["level"] = 0
     hdf_group["imported"].attrs["parent"] = ""
+    hdf_group["imported"].attrs["default_representation"] = "modulus"
     file_re = re.compile("projection_modulus_(?P<energy>\d+\.\d+)\.tif")
     for filename in os.listdir(modulus_dir):
         # (assumes each image type has the same set of energies)
