@@ -22,7 +22,7 @@ import h5py
 import re
 from time import time
 
-from tqdm import format_meter
+from tqdm import tqdm
 import pandas as pd
 from PIL import Image
 
@@ -232,10 +232,10 @@ def import_fullfield_framesets(directory, hdf_filename=None, flavor='ssrl'):
             file_list.remove(filepath)
         # Display current progress
         if not prog.quiet:
-            status = format_meter(n=total_files - len(file_list),
-                                  total=total_files,
-                                  elapsed=time() - start_time,
-                                  prefix="Importing raw frames: ")
+            status = tqdm.format_meter(n=total_files - len(file_list),
+                                       total=total_files,
+                                       elapsed=time() - start_time,
+                                       prefix="Importing raw frames: ")
             print("\r", status, end='')
     if not prog.quiet:
         print()  # Blank line to avoid over-writing status message
