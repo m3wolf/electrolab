@@ -1717,7 +1717,7 @@ class XanesFrameset():
         global_min = 99999999999
         global_max = 0
         for frame in self:
-            data = frame.get_image_data(representation=representation)
+            data = frame.image_modulus
             # Remove outliers temporarily
             sigma = 9
             median = np.median(data)

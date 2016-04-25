@@ -195,12 +195,17 @@ class TXMFrame():
 
     @property
     def image_data(self):
-        img = self.get_image_data(representation=None)
-        return img
+        data = self.get_image_data(representation="ptychography")
+        return data
 
     @image_data.setter
     def image_data(self, new_data):
-        self.set_image_data(new_data, representation="modulus")
+        self.set_image_data(new_data, representation="ptychography")
+
+    @property
+    def image_modulus(self):
+        img = np.abs(self.image_data)
+        return img
 
     def get_image_data(self, representation):
         """Retrieve image data with the given representation. To use the
@@ -296,7 +301,12 @@ class TXMFrame():
         if ax is None:
             ax = plots.new_image_axes()
         if data is None:
-            data = self.get_image_data(representation=representation)
+            if representation is None:
+                rep = self.frameset.default_representation
+            else:
+                rep = representation
+            data = self.get_image_data(representation=rep)
+            data = np.sqrt(data.real**2 + data.imag**2)
         extent = self.extent(img_shape=shape(*data.shape))
         im_ax = ax.imshow(data, *args, cmap='gray', extent=extent,
                           origin="lower", **kwargs)
