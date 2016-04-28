@@ -113,6 +113,7 @@ def import_ptychography_frameset(directory: str,
     hdf_group.attrs["original_directory"] = os.path.abspath(directory)
     # Prepare groups for data
     imported = hdf_group.create_group("imported")
+    hdf_group.attrs["active_group"] = "imported"
     imported_group = imported.name
     hdf_group["imported"].attrs["level"] = 0
     hdf_group["imported"].attrs["parent"] = ""

@@ -467,8 +467,9 @@ class XanesFrameset():
     def apply_internal_reference(self, mask=None, plot_background=True, ax=None):
         """Use a portion of each frame for internal reference correction. This
         converts frames from intensity to absorbance. The median of
-        unmasked pixels is used as I_0. The absorbance of each frame
-        is taken as the log_10(I_0/I) for each pixel intensity I.
+        unmasked pixels is used as I_0. If a mask is not provided, one
+        is calculated by thresholding. The absorbance of each frame is
+        taken as the log_10(I_0/I) for each pixel intensity I.
 
         Arguments
         ---------
@@ -481,9 +482,10 @@ class XanesFrameset():
 
         ax : The axes to use for plotting if `plot_background` is
           truthy.
+
         """
         self.fork_group("reference_corrected")
-        # Prepare mask by converting to greyscale only
+        # Convert the supplied mask to grayscale
         if mask is not None:
             graymask = color.rgb2gray(mask)
         # Array for holding background correction for plotting
@@ -492,12 +494,15 @@ class XanesFrameset():
             I_0s = []
         # Step through each frame and apply reference correction
         for frame in prog(self, "Reference correction"):
-            if mask is not None:
+            if mask is None:
+                # Calculate background intensity using thresholding
+                img = frame.image_data
+                threshold = filters.threshold_yen(img)
+                background = img[img > threshold]
+                I_0 = np.median(background)
+            else:
                 data = np.ma.array(frame.image_data, mask=graymask)
                 I_0 = np.ma.median(data)
-            else:
-                data = frame.image_data
-                I_0 = np.median(data)
             # Save values for plotting
             if plot_background:
                 Es.append(frame.energy)
