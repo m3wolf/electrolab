@@ -225,7 +225,8 @@ class XanesFrameset():
         'map_name': Attr('map_name'),
         'map_goodness_name': Attr('map_goodness_name'),
         'default_representation': Attr('default_representation',
-                                       scope="subset"),
+                                       scope="subset",
+                                       default="modulus"),
     }
 
     def __init__(self, filename, edge, groupname=None):

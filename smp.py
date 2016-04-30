@@ -24,7 +24,7 @@ from queue import Empty
 import multiprocessing as mp
 from time import time
 
-from tqdm import format_meter
+from tqdm import tqdm
 
 from utilities import prog
 
@@ -120,10 +120,10 @@ class Queue():
         curr = self.totalsize - self.results_left
         # Prepare a status bar
         if not prog.quiet:
-            status = format_meter(n=curr,
-                                  total=self.totalsize,
-                                  elapsed=time() - self.start_time,
-                                  prefix=self.description + ": ")
+            status = tqdm.format_meter(n=curr,
+                                       total=self.totalsize,
+                                       elapsed=time() - self.start_time,
+                                       prefix=self.description + ": ")
             print("\r" + status, end='')
         return ret
 
@@ -163,10 +163,10 @@ class MockQueue(Queue):
         if self.result_callback:
             self.result_callback(result)
         if not prog.quiet:
-            status = format_meter(n=self._counter,
-                                  total=self.totalsize,
-                                  elapsed=time() - self.start_time,
-                                  prefix=self.description + ": ")
+            status = tqdm.format_meter(n=self._counter,
+                                       total=self.totalsize,
+                                       elapsed=time() - self.start_time,
+                                       prefix=self.description + ": ")
             print('\r', status, end='')
         self._counter += 1
 
