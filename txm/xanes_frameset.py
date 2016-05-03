@@ -525,7 +525,9 @@ class XanesFrameset():
         As the X-ray energy increases, the focal length of the zone
         plate changes and so the image is zoomed-out at higher
         energies. This method applies a correction to each frame to
-        make the magnification similar to that of the first frame.
+        make the magnification similar to that of the first
+        frame. Some beamlines correct for this automatically during
+        acquisition: APS 8-BM-B
         """
         ref_um_per_pixel = self[0].um_per_pixel
         # Prepare multiprocessing objects
@@ -872,7 +874,6 @@ class XanesFrameset():
             }
 
             def process_result(payload):
-                # import pdb; pdb.set_trace()
                 key = payload['key']
                 shift = payload.pop('shift')
                 # Check if these shifts set new cropping limits

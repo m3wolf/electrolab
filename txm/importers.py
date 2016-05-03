@@ -21,20 +21,28 @@ import os
 import h5py
 import re
 from time import time
+from collections import namedtuple
 
 from tqdm import tqdm
 import pandas as pd
+import numpy as np
 from PIL import Image
 
-from .xradia import XRMFile
+from .xradia import XRMFile, decode_ssrl_params
 from .xanes_frameset import XanesFrameset, energy_key
-from .frame import TXMFrame, average_frames
+from .frame import TXMFrame
 from utilities import prog
 import exceptions
 
+
+format_classes = {
+    '.xrm': XRMFile
+}
+
+
 def _prepare_hdf_group(filename: str, groupname: str, dirname: str):
-    """Check the filenames and create an hdf file as need. Throws an
-    exception if the file already exists.
+    """Check the filenames and create an hdf file as needed. Will
+    overwrite the group if it already exists.
 
     Returns: HDFFile
 
@@ -44,6 +52,11 @@ def _prepare_hdf_group(filename: str, groupname: str, dirname: str):
     - filename : name of the requested hdf file, may be None if not
       provided, in which case the filename will be generated
       automatically based on `dirname`.
+
+    - groupname : Requested groupname for these data.
+
+    - dirname : Used to derive a default filename if None is passed
+      for `filename` attribute.
     """
     # Get default filename and groupname if necessary
     if filename is None:
@@ -74,9 +87,25 @@ def _prepare_hdf_group(filename: str, groupname: str, dirname: str):
     return new_group
 
 
+def _average_frames(*frames):
+    """Accept several frames and return the first frame with new image
+    data. Assumes metadata from first frame in list."""
+    new_image = np.zeros_like(frames[0].image_data(), dtype=np.float)
+    # Sum all images
+    for frame in frames:
+        new_image += frame.image_data()
+    # Divide to get average
+    new_image = new_image / len(frames)
+    # Return average data as a txm frame
+    new_frame = frames[0]
+    new_frame.image_data = new_image
+    return new_frame
+
+
 def import_txm_framesets(*args, **kwargs):
     msg = "This function is ambiguous. Choose from the more specific importers."
     raise NotImplementedError(msg)
+
 
 def import_ptychography_frameset(directory: str,
                                  hdf_filename=None, hdf_groupname=None):
@@ -152,156 +181,144 @@ def import_ptychography_frameset(directory: str,
     frameset.latest_group = imported_group
 
 
-def import_fullfield_framesets(directory, hdf_filename=None, flavor='ssrl'):
-    """Import all files in the given directory and process into
-    framesets. Images are assumed to full-field transmission X-ray
-    micrographs."""
-    format_classes = {
-        '.xrm': XRMFile
-    }
+_SsrlResponse = namedtuple("_SsrlResponse", ("data", "starttime", "endtime"))
+
+def _average_ssrl_files(files):
+    starttimes = []
+    endtimes = []
+    arrays = []
+    # Average sample frames
+    for filename in files:
+        name, extension = os.path.splitext(filename)
+        Importer = format_classes[extension]
+        with Importer(filename=filename, flavor="ssrl") as txmfile:
+            starttimes.append(txmfile.starttime())
+            endtimes.append(txmfile.endtime())
+            # Append to the running total array (create if first frame)
+            arrays.append(txmfile.image_data())
+    # Prepare the result tuple
+    response = _SsrlResponse(
+        data=np.mean(arrays, axis=0),
+        starttime=min(starttimes),
+        endtime=max(endtimes)
+    )
+    return response
+
+
+def import_ssrl_frameset(directory, hdf_filename=None):
+    """Import all files in the given directory collected at SSRL beamline
+    6-2c and process into framesets. Images are assumed to full-field
+    transmission X-ray micrographs and repetitions will be averaged.
+    """
     # Prepare list of dataframes to be imported
-    file_list = []
+    samples = {}
+    references = {}
     start_time = time()
+    total_files = 0 # Counter for progress meter
+    curr_file = 0
+    # Prepare a dictionary of samples, each sample is a dictionary of
+    # energies, which contains a list of filenames to be imported
     for filename in os.listdir(directory):
         # Make sure it's a file
         fullpath = os.path.join(directory, filename)
         if os.path.isfile(fullpath):
-            # Import the file if the extension is known
+            # Queue the file for import if the extension is known
             name, extension = os.path.splitext(filename)
             if extension in format_classes.keys():
-                file_list.append(fullpath)
-    # Prepare some global data for the import process
-    hdf_file = _prepare_hdf_file(filename=hdf_filename, dirname=directory)
-    # Find a unique name for the background frames
-    formatter = "background_frames_{ctr}"
-    counter = 0
-    bg_groupname = formatter.format(ctr=counter)
-    while bg_groupname in hdf_file.keys():
-        counter += 1
-        bg_groupname = formatter.format(ctr=counter)
-    hdf_file.create_group(bg_groupname)
-    if not prog.quiet:
-        print('\rCreated background group {}'.format(bg_groupname))
-    bg_frameset = XanesFrameset(filename=hdf_filename, groupname=bg_groupname)
-    sample_framesets = {}
-    # Now do the importing
-    total_files = len(file_list)
-    while(len(file_list) > 0):
-        current_file = file_list[0]
-        name, extension = os.path.splitext(current_file)
-        # Arrays to keep track of the timestamps in this averaged frame
-        starttimes = []
-        endtimes = []
-        # Average multiple frames together if necessary
-        files_to_average = find_average_scans(current_file, file_list, flavor=flavor)
-        # Convert to Frame() objects
-
-        def convert_to_frame(file_list):
-            frames_to_average = []
-            for filepath in file_list:
-                Importer = format_classes[extension]
-                with Importer(filepath, flavor=flavor) as txm_file:
-                    starttimes.append(txm_file.starttime())
-                    endtimes.append(txm_file.endtime())
-                    frame = TXMFrame(file=txm_file)
-                    frames_to_average.append(frame)
-            # Average scans
-            averaged_frame = average_frames(*frames_to_average)
-            return averaged_frame
-        averaged_frame = convert_to_frame(files_to_average)
-        # Set beginning and end timestamps
-        averaged_frame.starttime = min(starttimes)
-        averaged_frame.endtime = max(endtimes)
-        if averaged_frame.is_background:
-            bg_frameset.add_frame(averaged_frame)
-        else:
-            # Determine which frameset to use or create a new one
-            if flavor == 'aps':
-                identifier = "{}_{}".format(averaged_frame.sample_name,
-                                            averaged_frame.position_name)
-            elif flavor == 'ssrl':
-                identifier = averaged_frame.sample_name
-            if identifier not in sample_framesets.keys():
-                # First time seeing this frameset location
-                new_frameset = XanesFrameset(filename=hdf_filename,
-                                             groupname=identifier)
-                new_frameset.active_groupname = 'raw_frames'
-                sample_framesets[identifier] = new_frameset
-            # Add this frame to the appropriate group
-            sample_framesets[identifier].add_frame(averaged_frame)
-        for filepath in files_to_average:
-            file_list.remove(filepath)
-        # Display current progress
-        if not prog.quiet:
-            status = tqdm.format_meter(n=total_files - len(file_list),
-                                       total=total_files,
-                                       elapsed=time() - start_time,
-                                       prefix="Importing raw frames: ")
-            print("\r", status, end='')
+                metadata = decode_ssrl_params(filename)
+                framesetname = metadata['sample_name'] + metadata['position_name']
+                if metadata['is_background']:
+                    root = references
+                else:
+                    root = samples
+                energies = root.get(framesetname, {})
+                replicates = energies.get(metadata['energy'], [])
+                # Update the stored tree
+                root[framesetname] = energies
+                replicates.append(fullpath)
+                energies[metadata['energy']] = replicates
+                total_files += 1
+    # Check that in the ssrl flavor, each sample has a reference set
+    if not samples.keys() == references.keys():
+        msg = "SSRL data should have 1-to-1 sample to reference: {} and {}"
+        raise exceptions.DataFormatError(msg.format(list(samples.keys()),
+                                                    list(references.keys())))
+    # Go through each sample and import
+    for sample_name, sample in samples.items():
+        sample_group = _prepare_hdf_group(filename=hdf_filename,
+                                          groupname=sample_name,
+                                          dirname=directory)
+        imported = sample_group.create_group("imported")
+        imported.attrs['default_representation'] = 'image_data'
+        imported.attrs['parent'] = ""
+        reference = sample_group.create_group("reference")
+        reference.attrs['default_representation'] = 'image_data'
+        reference.attrs['parent'] = ""
+        absorbance = sample_group.create_group("reference_corrected")
+        absorbance.attrs['default_representation'] = 'image_data'
+        absorbance.attrs['parent'] = imported.name
+        # Average data for each energy
+        for energy in sample:
+            intensity = _average_ssrl_files(sample[energy])
+            key = energy_key.format(float(energy))
+            intensity_group = imported.create_group(key)
+            intensity_group.create_dataset(name="image_data", data=intensity.data)
+            # Set some metadata attributes
+            intensity_group.attrs['starttime'] = intensity.starttime.isoformat()
+            intensity_group.attrs['endtime'] = intensity.endtime.isoformat()
+            file1 = sample[energy][0]
+            name, extension = os.path.splitext(file1)
+            Importer = format_classes[extension]
+            with Importer(file1, flavor='ssrl') as first_file:
+                intensity_group.attrs['pixel_size_value'] = first_file.um_per_pixel()
+                intensity_group.attrs['pixel_size_unit'] = 'um'
+                actual_energy = first_file.energy()
+                intensity_group.attrs['energy'] = actual_energy
+                intensity_group.attrs['approximate_energy'] = round(actual_energy, 1)
+                intensity_group.attrs['sample_position'] = first_file.sample_position()
+                intensity_group.attrs['original_filename'] = file1
+            # Increment counter
+            curr_file += len(sample[energy])
+            # Display progress meter
+            if not prog.quiet:
+                status = tqdm.format_meter(n=curr_file,
+                                           total=total_files,
+                                           elapsed=time() - start_time,
+                                           prefix="Importing frames: ")
+                print("\r", status, end='')
+            # Average reference frames
+            ref = _average_ssrl_files(references[sample_name][energy])
+            ref_group = reference.create_group(key)
+            ref_group.create_dataset(name="image_data", data=ref.data)
+            # Apply reference correction to get absorbance data
+            abs_data = np.log(ref.data / intensity.data)
+            abs_group = absorbance.create_group(key)
+            abs_group.create_dataset(name="image_data", data=abs_data)
+            # Copy attrs
+            for key in intensity_group.attrs.keys():
+                ref_group.attrs[key] = intensity_group.attrs[key]
+                abs_group.attrs[key] = intensity_group.attrs[key]
+            # Increment counter
+            curr_file += len(references[sample_name][energy])
+            # Display progress meter
+            if not prog.quiet:
+                status = tqdm.format_meter(n=curr_file,
+                                           total=total_files,
+                                           elapsed=time() - start_time,
+                                           prefix="Importing frames: ")
+                print("\r", status, end='')
+        sample_group.file.close()
     if not prog.quiet:
         print()  # Blank line to avoid over-writing status message
-    # print(' frames: {curr}/{total} [done]'.format(curr=total_files,
-    #                                                        total=total_files))
-    frameset_list = list(sample_framesets.values())
-    # Apply reference correction and convert to absorbance frames
-    if not prog.quiet:
-        print('Imported samples', [fs.hdf_group().name for fs in frameset_list])
-    for frameset in frameset_list:
-        frameset.apply_references(bg_groupname=bg_groupname)
-    # Apply magnification (zoom) correction
-    if flavor in ['ssrl']:
-        for frameset in frameset_list:
-            frameset.correct_magnification()
-    else:
-        print('Skipped magnification correction')
-    # Remove dead or hot pixels
-    if flavor in ['aps']:
-        sigma = 9
-        for fs in frameset_list:
-            for frame in prog(fs, 'Removing pixels beyond {}σ'.format(sigma)):
-                frame.remove_outliers(sigma=sigma)
-    return frameset_list
+        print("Remember to run XanesFrameset.correct_magnification()")
 
 
-def find_average_scans(filename, file_list, flavor='ssrl'):
-    """Scan the filenames in `file_list` and see if there are multiple
-    subframes per frame."""
-    basename = os.path.basename(filename)
-    dirname = os.path.dirname(filename)
-    if flavor == 'ssrl':
-        avg_regex = re.compile(r"(\d+)of(\d+)")
-        # Since this regex will be passed to sub later,
-        # we must use it as a template first
-        serial_template = "_{fmt}{length}_ref_"
-        serial_string = serial_template.format(fmt="\d", length="{6}")
-        assert serial_string == "_\d{6}_ref_"
-        serial_regex = re.compile(serial_string)
-        # Look for average scans
-        re_result = avg_regex.search(basename)
-        if re_result:
-            # Use regular expressions to determine the other files
-            total = int(re_result.group(2))
-            current_files = []
-            for current in range(1, total + 1):
-                new_regex = r"0*{current}of0*{total}".format(
-                    current=current, total=total)
-                filename_restring = avg_regex.sub(new_regex, basename)
-                # Replace serial number if necessary (reference frames only)
-                filename_restring = serial_regex.sub(serial_template,
-                                                     filename_restring)
-                filename_restring = filename_restring.format(fmt="\d",
-                                                             length="{6}")
-                # Find the matching filenames in the list
-                filepath_regex = re.compile(os.path.join(dirname, filename_restring))
-                for filepath in file_list:
-                    if filepath_regex.match(filepath):
-                        current_files.append(filepath)
-                        break
-            if not len(current_files) == total:
-                msg = "Could not find all all files to average, only found {}"
-                raise exceptions.FrameFileNotFound(msg.format(current_files))
-        else:
-            current_files = [filename]
-    elif flavor == "aps":
-        current_files = [filename]
-    return current_files
+def import_aps_8BM_frameset(directory, hdf_filename=None):
+    raise NotImplementedError
+    # # Remove dead or hot pixels
+    # if flavor in ['aps']:
+    #     sigma = 9
+    #     for fs in frameset_list:
+    #         for frame in prog(fs, 'Removing pixels beyond {}σ'.format(sigma)):
+    #             frame.remove_outliers(sigma=sigma)
+    # return frameset_list

@@ -131,20 +131,6 @@ def pixel_to_xy(pixel, extent, shape):
     return xycoord(x=x, y=y)
 
 
-def average_frames(*frames):
-    """Accept several frames and return the first frame with new image
-    data. Assumes metadata from first frame in list."""
-    new_image = np.zeros_like(frames[0].image_data, dtype=np.float)
-    # Sum all images
-    for frame in frames:
-        new_image += frame.image_data
-    # Divide to get average
-    new_image = new_image / len(frames)
-    # Return average data as a txm frame
-    new_frame = frames[0]
-    new_frame.image_data = new_image
-    return new_frame
-
 @hdf_attrs
 class TXMFrame():
     """A single microscopy image at a certain energy."""
@@ -154,7 +140,6 @@ class TXMFrame():
     hdfattrs = {
         'energy': Attr(key='energy'),
         'approximate_energy': Attr('approximate_energy', default=0.0),
-        'is_background': Attr(key='is_background', default=False),
         '_starttime': Attr('starttime'),
         '_endtime': Attr('endtime'),
         'pixel_size_value': Attr(key="pixel_size", default=1),

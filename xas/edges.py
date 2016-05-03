@@ -218,7 +218,24 @@ class NCANickelLEdge(KEdge):
         ax.axvline(x=self._peak2, linestyle='-', color="0.55", alpha=0.4)
 
 
-class NickelKEdge(KEdge):
+# class NickelKEdge(KEdge):
+#     E_0 = 8333
+#     regions = [
+#         (8250, 8310, 20),
+#         (8324, 8344, 2),
+#         (8344, 8356, 1),
+#         (8356, 8360, 2),
+#         (8360, 8400, 4),
+#         (8400, 8440, 8),
+#         (8440, 8640, 50),
+#     ]
+#     # pre_edge = (8250, 8325)
+#     pre_edge = (8250, 8290)
+#     # post_edge = (8352, 8640)
+#     post_edge = (8440, 8640)
+#     map_range = (8341, 8358)
+
+class NCANickelKEdge(KEdge):
     E_0 = 8333
     regions = [
         (8250, 8310, 20),
@@ -235,9 +252,16 @@ class NickelKEdge(KEdge):
     post_edge = (8440, 8640)
     map_range = (8341, 8358)
 
+    def map_normalizer(self, method="direct"):
+        return Normalize(0, 1)
+
+    def annotate_spectrum(self, ax):
+        ax.axvline(x=self.pre_edge[1], linestyle='-', color="0.55", alpha=0.4)
+        ax.axvline(x=self.post_edge[0], linestyle='-', color="0.55", alpha=0.4)
+
 # Dictionaries make it more intuitive to access these edges by element
 k_edges = {
-    'Ni': NickelKEdge,
+    'Ni_NCA': NCANickelKEdge,
 }
 
 l_edges = {
