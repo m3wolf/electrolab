@@ -35,7 +35,7 @@ from units import unit, predefined
 
 import exceptions
 import plots
-from hdf import Attr, hdf_attrs, HDFAttribute
+from hdf import Attr, hdf_attrs
 from utilities import xycoord, Pixel, shape
 from .particle import Particle
 
@@ -142,8 +142,8 @@ class TXMFrame():
         'approximate_energy': Attr('approximate_energy', default=0.0),
         '_starttime': Attr('starttime'),
         '_endtime': Attr('endtime'),
-        'pixel_size_value': Attr(key="pixel_size", default=1),
-        'pixel_size_unit': Attr(key="pixel_unit",  default="px"),
+        '_pixel_size_value': Attr(key="pixel_size_value", default=1),
+        '_pixel_size_unit': Attr(key="pixel_size_unit",  default="px"),
         'position_unit': Attr(key="position_unit", default="m", wrapper=unit),
         'relative_position': Attr(key="relative_position",
                                   default=position(0, 0, 0),
@@ -185,7 +185,7 @@ class TXMFrame():
 
     @image_data.setter
     def image_data(self, new_data):
-        self.set_image_data(new_data, representation="modulus")
+        self.set_image_data(new_data, representation="image_data")
 
     def get_image_data(self, representation):
         """Retrieve image data with the given representation. To use the
@@ -203,8 +203,10 @@ class TXMFrame():
 
     def set_image_data(self, new_data, representation):
         with self.hdf_file(mode="a") as f:
-            # try:
-            del f[self.frame_group][representation]
+            try:
+                del f[self.frame_group][representation]
+            except KeyError:
+                pass
             f[self.frame_group].create_dataset(representation, data=new_data)
 
     def hdf_file(self, *args, **kwargs):
@@ -252,7 +254,7 @@ class TXMFrame():
             img_shape = shape(*self.image_data.shape)
         else:
             img_shape = shape(*img_shape)
-        pixel_size = self.pixel_size()
+        pixel_size = self.pixel_size
         center = self.relative_position
         width = img_shape.columns * pixel_size
         height = img_shape.rows * pixel_size
@@ -289,7 +291,7 @@ class TXMFrame():
         if show_particles:
             self.plot_particle_labels(ax=im_ax.axes, extent=extent)
         # Set labels, etc
-        unit = self.pixel_size().unit
+        unit = self.pixel_size.unit
         ax.set_xlabel(unit)
         ax.set_ylabel(unit)
         im_ax.set_extent(extent)
@@ -436,10 +438,17 @@ class TXMFrame():
         self.um_per_pixel = new_px_size
         return new_data
 
+    @property
     def pixel_size(self):
-        px_unit = unit(self.pixel_size_unit)
-        px_size = px_unit(self.pixel_size_value)
+        px_unit = unit(self._pixel_size_unit)
+        px_size = px_unit(self._pixel_size_value)
         return px_size
+
+    @pixel_size.setter
+    def pixel_size(self, value):
+        self._pixel_size_value = value.num
+        self._pixel_size_unit = str(value.unit)
+        # print("Saved", value.num, self._pixel_size_value)
 
     def create_dataset(self, setname, hdf_group):
         """Save data and metadata to an HDF dataset."""

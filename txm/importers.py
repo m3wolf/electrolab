@@ -160,8 +160,8 @@ def import_ptychography_frameset(directory: str,
         energy_set = imported.create_group(energy_key.format(float(energy_str)))
         energy_set.attrs['energy'] = float(energy_str)
         energy_set.attrs['approximate_energy'] = round(float(energy_str), 2)
-        energy_set.attrs['pixel_size'] = 4.17
-        energy_set.attrs['pixel_unit'] = "nm"
+        energy_set.attrs['pixel_size_value'] = 4.17
+        energy_set.attrs['pixel_size_unit'] = "nm"
         def add_files(name, template="projection_{name}_{energy}.tif"):
             # Import modulus (total value)
             filename = template.format(name=name, energy=energy_str)
@@ -257,6 +257,7 @@ def import_ssrl_frameset(directory, hdf_filename=None):
         absorbance = sample_group.create_group("reference_corrected")
         absorbance.attrs['default_representation'] = 'image_data'
         absorbance.attrs['parent'] = imported.name
+        sample_group.attrs['latest_group'] = absorbance.name
         # Average data for each energy
         for energy in sample:
             intensity = _average_ssrl_files(sample[energy])

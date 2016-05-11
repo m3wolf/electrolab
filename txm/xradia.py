@@ -165,11 +165,8 @@ class XRMFile():
             field_size = 36.39296 * energy / 9000
         else:
             field_size = 40
-        img_shape = shape(*self.image_data().shape)
-        pixel_size = Pixel(
-            vertical=(field_size / img_shape.rows),
-            horizontal=(field_size / img_shape.columns)
-        )
+        num_pixels = max(self.image_data().shape)
+        pixel_size = field_size / num_pixels
         return pixel_size
 
     def ole_value(self, stream, fmt=None):

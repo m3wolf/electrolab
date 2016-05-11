@@ -32,6 +32,7 @@ import numpy as np
 from skimage import morphology, filters, feature, transform, exposure, color
 from sklearn import linear_model
 from sklearn.utils import validation
+from units import unit, predefined
 
 from utilities import prog, xycoord, Pixel, shape
 from peakfitting import Peak
@@ -42,9 +43,10 @@ from .plotter import FramesetPlotter, FramesetMoviePlotter
 from plots import new_axes, new_image_axes
 import exceptions
 import hdf
-from hdf import HDFAttribute, Attr, hdf_attrs
+from hdf import Attr, hdf_attrs
 import smp
 
+predefined.define_units()
 
 # So all modules can use the same HDF indices
 energy_key = "{:.2f}_eV"
@@ -519,7 +521,6 @@ class XanesFrameset():
             ax.set_ylabel("$I_0$")
 
     def correct_magnification(self):
-
         """Correct for changes in magnification at different energies.
 
         As the X-ray energy increases, the focal length of the zone
@@ -529,26 +530,24 @@ class XanesFrameset():
         frame. Some beamlines correct for this automatically during
         acquisition: APS 8-BM-B
         """
-        ref_um_per_pixel = self[0].um_per_pixel
+        ref_pixel_size = self[0].pixel_size
         # Prepare multiprocessing objects
         def worker(payload):
             key = payload['key']
             energy = payload['energy']
             data = payload['data']
             # Determine degree of magnification required
-            um_per_pixel = payload['um_per_pixel']
-            magnification = Pixel(
-                vertical=(ref_um_per_pixel.vertical / um_per_pixel.vertical),
-                horizontal=(ref_um_per_pixel.horizontal / um_per_pixel.horizontal),
-            )
+            px_unit = unit(payload['pixel_size_unit'])
+            pixel_size = px_unit(payload['pixel_size_value'])
+            magnification = ref_pixel_size / pixel_size
             original_shape = xycoord(x=data.shape[1], y=data.shape[0])
             # Expand the image by magnification degree and re-center
             translation = xycoord(
-                x=original_shape.x / 2 * (1 - magnification.horizontal),
-                y=original_shape.y / 2 * (1 - magnification.vertical),
+                x=original_shape.x / 2 * (1 - magnification),
+                y=original_shape.y / 2 * (1 - magnification),
             )
             transformation = transform.SimilarityTransform(
-                scale=max(magnification),
+                scale=magnification,
                 translation=translation
             )
             # Apply the transformation
@@ -557,7 +556,8 @@ class XanesFrameset():
                 'key': key,
                 'energy': energy,
                 'data': new_data,
-                'um_per_pixel': ref_um_per_pixel,
+                'pixel_size_value': ref_pixel_size.num,
+                'pixel_size_unit': str(ref_pixel_size.unit),
             }
             return result
         # Launch multiprocessing queue
@@ -1789,8 +1789,10 @@ def process_with_smp(frameset: XanesFrameset,
             frame.image_data = payload['data']
         if 'labels' in payload.keys():
             frame.particle_labels().write_direct(payload['labels'])
-        if 'um_per_pixel' in payload.keys():
-            frame.um_per_pixel = payload['um_per_pixel']
+        if 'pixel_size_value' in payload.keys():
+            px_unit = unit(payload['pixel_size_unit'])
+            px_size = px_unit(payload['pixel_size_value'])
+            frame.pixel_size = px_size
     queue = smp.Queue(worker=worker,
                       totalsize=len(frameset),
                       result_callback=result_callback,
@@ -1802,8 +1804,8 @@ def process_with_smp(frameset: XanesFrameset,
             'data': frame.image_data,
             'key': frame.frame_group,
             'energy': frame.energy,
-            'um_per_pixel': frame.pixel_size,
-            # 'labels': frame.particle_labels().value,
+            'pixel_size_value': frame.pixel_size.num,
+            'pixel_size_unit': str(frame.pixel_size.unit),
         }
         try:
             labels = frame.particle_labels().value
