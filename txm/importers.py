@@ -27,7 +27,9 @@ from tqdm import tqdm
 import pandas as pd
 import numpy as np
 from PIL import Image
+from scipy.constants import physical_constants
 
+import default_units
 from .xradia import XRMFile, decode_ssrl_params
 from .xanes_frameset import XanesFrameset, energy_key
 from .frame import TXMFrame
@@ -146,9 +148,32 @@ def import_ptychography_frameset(directory: str,
     imported_group = imported.name
     hdf_group["imported"].attrs["level"] = 0
     hdf_group["imported"].attrs["parent"] = ""
-    hdf_group["imported"].attrs["default_representation"] = "modulus"
+    hdf_group["imported"].attrs["default_representation"] = "ptychography"
     file_re = re.compile("projection_modulus_(?P<energy>\d+\.\d+)\.tif")
-    for filename in os.listdir(modulus_dir):
+    # Look in each directory for cxi files
+    cxifiles = []
+    for root, dirs, files in os.walk(directory):
+        for file in files:
+            if file.endswith(".cxi"):
+                cxifiles.append(os.path.join(root, file))
+    for filename in cxifiles:
+        with h5py.File(filename, mode='r') as f:
+            # Extract energy in Joules and convert to eV
+            energy = f['/entry_1/instrument_1/source_1/energy'].value
+            energy = energy / physical_constants['electron volt'][0]
+            # All dataset names will be the energy with two decimal places
+            energy_set = imported.create_group(energy_key.format(energy))
+            energy_set.attrs['energy'] = energy
+            energy_set.attrs['approximate_energy'] = round(energy, 2)
+            energy_set.attrs['pixel_size'] = 4.17
+            energy_set.attrs['pixel_unit'] = "nm"
+            # Save dataset
+            data = f['/entry_1/image_1/data'].value
+            energy_set.create_dataset('ptychography', data=data, chunks=True)
+            # Import STXM interpretation
+            data = f['entry_1/instrument_1/detector_1/STXM'].value
+            energy_set.create_dataset('stxm', data=data, chunks=True)
+    for filename in []:#os.listdir(modulus_dir):
         # (assumes each image type has the same set of energies)
         # Extract energy from filename
         match = file_re.match(filename)

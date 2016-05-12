@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 #
 # Copyright © 2016 Mark Wolf
 #
@@ -28,7 +28,7 @@ import numpy as np
 # May not import if not installed
 try:
     from matplotlib.backends.backend_gtk3agg import FigureCanvasGTK3Agg
-except TypeError:
+except (TypeError, ImportError):
     pass
 
 import exceptions

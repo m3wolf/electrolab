@@ -209,6 +209,11 @@ class TXMFrame():
         self.set_data(name="image_data", data=new_data)
 
     @property
+    def image_modulus(self):
+        img = np.abs(self.image_data)
+        return img
+
+    @property
     def particle_labels(self):
         img = self.get_data(name="particle_labels")
         return img
