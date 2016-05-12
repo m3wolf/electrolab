@@ -701,7 +701,8 @@ class XanesFrameset():
                      passes: int=1,
                      method: str="cross_correlation",
                      methods=[],
-                     template=None):
+                     template=None,
+                     crop=True):
         """Use phase correlation algorithm to line up the frames. All frames
         have their sample position set set to (0, 0) since we don't
         know which one is the real position. This operation will
@@ -717,6 +718,7 @@ class XanesFrameset():
           which all other frames should be aligned. If None, the frame
           of highest intensity will be used. If "mean" (default) or
           "median", the average or median of all frames will be
+          used. If "max", the frame with highest absorbance is
           used. This attribute has no effect if template matching is
           used.
 
@@ -724,7 +726,7 @@ class XanesFrameset():
           narrow in on no jitter (default 1). Subsequent passes will use
           higher oversampling rates.
 
-        blur  : A type of filter to apply to each frame of the data
+        blur : A type of filter to apply to each frame of the data
           before attempting registration. Choices are "median" or None
 
         method : Which technique to use to calculate the translation
@@ -740,6 +742,10 @@ class XanesFrameset():
         template : Image data that should be matched if the
           `template_match` method is used. If omitted, the middle 80% of
           the image will be used.
+
+        crop : If truthy (default), any excess image will be cut off, otherwise
+          it will wrap around, which can be useful for diagnosing
+          overzealous cropping.
 
         """
         # Check for valid attributes
@@ -762,7 +768,7 @@ class XanesFrameset():
             msg = "`methods` must be same length as `passes`: {}".format(methods)
             raise ValueError(msg)
         # Guess best reference frame to use
-        if reference_frame is None:
+        if reference_frame is "max":
             spectrum = self.xanes_spectrum()
             reference_frame = np.argmax(spectrum.values)
         # Keep track of how many passes and where we started
@@ -770,6 +776,7 @@ class XanesFrameset():
         shifts = {} # Keeps track of shifts for final translation
         all_crops = [] # Keeps track of how to crop the original image
         original_group = self.active_group
+        out_range = (0, 1) # For rescaling intensities
         self.fork_group(new_name)
         if self.active_labels_groupname:
             self.fork_labels(new_name + "_labels")
@@ -779,14 +786,19 @@ class XanesFrameset():
             # Retrieve reference frame
             if reference_frame == "mean":
                 reference_image = self.mean_image()
+                reference_image = exposure.rescale_intensity(
+                    reference_image, out_range=out_range)
             elif reference_frame == "median":
                 reference_image = self.median_image()
+                reference_image = exposure.rescale_intensity(
+                    reference_image, out_range=out_range)
             else:
                 reference_image = self[reference_frame].image_data
+                reference_image = exposure.rescale_intensity(
+                    reference_image, out_range=out_range)
                 if blur == "median":
-                    reference_image = exposure.rescale_intensity(self[reference_frame].image_data,
-                                                                 out_range=(-1, 1))
-                    reference_image = filters.median(reference_image, morphology.disk(20))
+                    reference_image = filters.median(reference_image,
+                                                     morphology.disk(20))
             original_shape = shape(*reference_image.shape)
             if current_method == "cross_correlation":
                 # Higher passes receive more oversampling
@@ -812,15 +824,12 @@ class XanesFrameset():
                 key = payload['key']
                 data = payload['data']
                 # Temporarily rescale the data to be between -1 and 1
-                in_range = (data.min(), data.max())
-                out_range = (-1, 1)
-                data = exposure.rescale_intensity(data,
-                                                  in_range=in_range,
-                                                  out_range=out_range)
+                scaled_data = exposure.rescale_intensity(data,
+                                                         out_range=out_range)
                 if blur == "median":
-                    blurred_data = filters.median(data, morphology.disk(20))
+                    blurred_data = filters.median(scaled_data, morphology.disk(20))
                 elif blur is None:
-                    blurred_data = np.copy(data)
+                    blurred_data = np.copy(scaled_data)
                 labels = payload.get('labels', None)
                 if current_method == "cross_correlation":
                     # Determine what the new translation should be
@@ -831,11 +840,10 @@ class XanesFrameset():
                     shift = xycoord(-shift[1], -shift[0])
                 elif current_method == "template_match":
                     # Determine what the new translation should be
-                    match = feature.match_template(data,
+                    match = feature.match_template(scaled_data,
                                                    reference_target,
                                                    pad_input=True)
                     center = np.unravel_index(match.argmax(), match.shape)
-
                     center = Pixel(vertical=center[0], horizontal=center[1])
                     # Determine the net translation necessary to align to reference frame
                     shift = xycoord(
@@ -846,10 +854,10 @@ class XanesFrameset():
                 transformation = transform.SimilarityTransform(translation=shift)
                 new_data = transform.warp(data, transformation,
                                           order=3, mode="wrap")
-                # Reset intensities of original values
-                new_data = exposure.rescale_intensity(new_data,
-                                                      in_range=out_range,
-                                                      out_range=in_range)
+                # # Reset intensities of original values
+                # new_data = exposure.rescale_intensity(new_data,
+                #                                       in_range=out_range,
+                #                                       out_range=in_range)
                 result = {
                     'key': key,
                     'energy': payload['energy'],
@@ -904,16 +912,18 @@ class XanesFrameset():
             for frame in self:
                 frame.sample_position = position(0, 0, frame.sample_position.z)
             # Crop frames and save for later
-            bottom = math.ceil(abs(limits['top']))
-            top = math.floor(original_shape.rows - abs(limits['bottom']))
-            left = math.ceil(abs(limits['left']))
-            right = math.floor(original_shape.columns - abs(limits['right']))
-            for frame in prog(self, "Cropping frames"):
-                frame.crop(bottom=bottom, left=left, top=top, right=right)
-            # Save cropping dimensions for final crop after last pass
-            all_crops.append(
-                Crop(top=top, left=left, bottom=bottom, right=right)
-            )
+            if crop:
+                bottom = math.ceil(abs(limits['top']))
+                top = math.floor(original_shape.rows - abs(limits['bottom']))
+                left = math.ceil(abs(limits['left']))
+                right = math.floor(original_shape.columns - abs(limits['right']))
+                for frame in prog(self, "Cropping frames"):
+                    frame.crop(bottom=bottom, left=left, top=top, right=right)
+                # Save cropping dimensions for final crop after last pass
+                all_crops.append(
+                    Crop(top=top, left=left, bottom=bottom, right=right)
+                )
+            # Increment counter to keep track of current position
             current_pass += 1
 
         # Perform a final, complete translation and cropping if necessary
@@ -971,18 +981,19 @@ class XanesFrameset():
                              worker=worker,
                              description="Final alignment")
             # Calculate smallest cropping size
-            top, bottom, left, right = (0, 0, 0, 0)
-            for crop in all_crops:
-                bottom += crop.bottom
-                left += crop.left
-            last_crop = all_crops[-1]
-            right = left + last_crop.right - last_crop.left
-            top = bottom + last_crop.top - last_crop.bottom
-            crop = Crop(top=top, left=left, bottom=bottom, right=right)
-            # Crop frames down to size
-            for frame in prog(self, "Final crop"):
-                frame.crop(left=crop.left, bottom=crop.bottom,
-                           right=crop.right, top=crop.top)
+            if crop:
+                top, bottom, left, right = (0, 0, 0, 0)
+                for crop in all_crops:
+                    bottom += crop.bottom
+                    left += crop.left
+                last_crop = all_crops[-1]
+                right = left + last_crop.right - last_crop.left
+                top = bottom + last_crop.top - last_crop.bottom
+                crop = Crop(top=top, left=left, bottom=bottom, right=right)
+                # Crop frames down to size
+                for frame in prog(self, "Final crop"):
+                    frame.crop(left=crop.left, bottom=crop.bottom,
+                               right=crop.right, top=crop.top)
 
     def align_to_particle(self, loc, new_name, reference_frame=None):
         """Use template matching algorithm to line up the frames. Similar to
@@ -1068,15 +1079,23 @@ class XanesFrameset():
             frame.sample_position = position(0, 0, frame.sample_position.z)
         return reference_match
 
-    def crop_to_particle(self, new_name='cropped_particle', loc=None):
-        """Reduce the image size to just show the particle in question."""
-        # Make sure particles have been labeled
-        if not self.active_labels_groupname:
-            msg = "No particles found, please run {cls}.label_particles() method first"
-            raise exceptions.NoParticleError(msg.format(cls=self))
-        # Create new HDF5 groups
+    def crop_to_particle(self, loc=None, new_name='cropped_particle'):
+        """Reduce the image size to just show the particle in
+        question. Requires that particles be already labeled using the
+        `label_particles()` method. Can either find the right particle
+        using the `loc` argument, or using each frame's
+        `active_particle_idx` attribute, allowing for more
+        fine-grained control.  particles based on location.
+
+        Arguments
+        ---------
+        - loc : 2-tuple of relative (x, y) position indicated the
+          point to search from. If omitted or None, each frame's
+          `active_particle_idx` attribute will be used.
+        - new_name : Name to give the new group.
+        """
+        # Create a copy of the data group
         self.fork_group(new_name)
-        self.fork_labels(new_name + '_labels')
         # Activate particle if necessary
         if loc is not None:
             for frame in prog(self, 'Idetifying closest particle'):
@@ -1084,8 +1103,8 @@ class XanesFrameset():
         # Make sure an active particle is assigned to all frames
         for frame in self:
             if frame.active_particle_idx is None:
-                msg = "Frame {} has no particle assigned".format(frame)
-                raise exceptions.NoParticleError(msg)
+                msg = "Frame {idx} has no particle assigned. Try {cls}.label_particles()"
+                raise exceptions.NoParticleError(msg.format(idx=frame, cls=frame))
         # Determine largest bounding box based on all energies
         boxes = [frame.particles()[frame.active_particle_idx].bbox()
                  for frame in self]
@@ -1121,45 +1140,46 @@ class XanesFrameset():
             # Set the new relative position for this frames position in the image
             frame.relative_position = position(*loc, z=frame.sample_position.z)
 
-    def align_frame_positions(self):
-        """Correct for inaccurate motion in the sample motors."""
-        self.fork_group('aligned_frames')
-        self.fork_labels('aligned_labels')
-        # Determine average positions
-        total_x = 0
-        total_y = 0
-        n = 0
-        for frame in prog(self, 'Computing true center'):
-            n += 1
-            total_x += frame.sample_position.x
-            total_y += frame.sample_position.y
-        global_x = total_x / n
-        global_y = total_y / n
-        for frame in prog(self, 'Aligning frames'):
-            um_per_pixel_x = 40 / frame.image_data.shape[1]
-            um_per_pixel_y = 40 / frame.image_data.shape[0]
-            offset_x = int(round(
-                (global_x - frame.sample_position.x) / um_per_pixel_x
-            ))
-            offset_y = int(round(
-                (global_y - frame.sample_position.y) / um_per_pixel_y
-            ))
-            frame.shift_data(x_offset=offset_x, y_offset=offset_y)
-            # Store updated position info
-            new_position = (
-                frame.sample_position.x + offset_x * um_per_pixel_x,
-                frame.sample_position.y + offset_y * um_per_pixel_y,
-                frame.sample_position.z
-            )
-            frame.sample_position = new_position
+    # def align_frame_positions(self):
+    #     """Correct for inaccurate motion in the sample motors."""
+    #     self.fork_group('aligned_frames')
+    #     self.fork_labels('aligned_labels')
+    #     # Determine average positions
+    #     total_x = 0
+    #     total_y = 0
+    #     n = 0
+    #     for frame in prog(self, 'Computing true center'):
+    #         n += 1
+    #         total_x += frame.sample_position.x
+    #         total_y += frame.sample_position.y
+    #     global_x = total_x / n
+    #     global_y = total_y / n
+    #     for frame in prog(self, 'Aligning frames'):
+    #         um_per_pixel_x = 40 / frame.image_data.shape[1]
+    #         um_per_pixel_y = 40 / frame.image_data.shape[0]
+    #         offset_x = int(round(
+    #             (global_x - frame.sample_position.x) / um_per_pixel_x
+    #         ))
+    #         offset_y = int(round(
+    #             (global_y - frame.sample_position.y) / um_per_pixel_y
+    #         ))
+    #         frame.shift_data(x_offset=offset_x, y_offset=offset_y)
+    #         # Store updated position info
+    #         new_position = (
+    #             frame.sample_position.x + offset_x * um_per_pixel_x,
+    #             frame.sample_position.y + offset_y * um_per_pixel_y,
+    #             frame.sample_position.z
+    #         )
+    #         frame.sample_position = new_position
 
     def label_particles(self):
-        labels_groupname = self.active_group + "_labels"
-        if labels_groupname in self.hdf_group().keys():
-            del self.hdf_group()[labels_groupname]
-        self.active_labels_groupname = labels_groupname
+        """Use watershed segmentation to identify particles."""
+        # labels_groupname = self.active_group + "_labels"
+        # if labels_groupname in self.hdf_group().keys():
+        #     del self.hdf_group()[labels_groupname]
+        # self.active_labels_groupname = labels_groupname
         # Create a new group
-        labels_group = self.hdf_group().create_group(labels_groupname)
+        # labels_group = self.hdf_group().create_group(labels_groupname)
 
         # Callables for determining particle labels
         def worker(payload):
@@ -1174,11 +1194,10 @@ class XanesFrameset():
             # Save the calculated data
             key = payload['key']
             data = payload['data']
-            labels = self.hdf_group()[labels_groupname]
-            labels.create_dataset(key, data=data, compression='gzip')
+            # labels.create_dataset(key, data=data, compression='gzip')
             # Write path to saved particle labels
-            frame = self[key]
-            frame.particle_labels_path = labels_group.name + "/" + key
+            frame = TXMFrame(frameset=self, groupname=payload['key'])
+            frame.particle_labels = data
             # Return a shell of the original dictionary so smp handler
             # does not over-right real image data with labels
             ret = {
@@ -1719,12 +1738,12 @@ class XanesFrameset():
         return Normalize(global_min, global_max)
 
     @functools.lru_cache()
-    def image_normalizer(self, representation=None):
+    def image_normalizer(self, representation):
         # Find global limits
         global_min = 99999999999
         global_max = 0
         for frame in self:
-            data = frame.get_image_data(representation=representation)
+            data = frame.get_data(name=representation)
             # Remove outliers temporarily
             sigma = 9
             median = np.median(data)
@@ -1788,7 +1807,7 @@ def process_with_smp(frameset: XanesFrameset,
         if 'data' in payload.keys():
             frame.image_data = payload['data']
         if 'labels' in payload.keys():
-            frame.particle_labels().write_direct(payload['labels'])
+            frame.particle_labels = payload['labels']
         if 'pixel_size_value' in payload.keys():
             px_unit = unit(payload['pixel_size_unit'])
             px_size = px_unit(payload['pixel_size_value'])
@@ -1807,13 +1826,8 @@ def process_with_smp(frameset: XanesFrameset,
             'pixel_size_value': frame.pixel_size.num,
             'pixel_size_unit': str(frame.pixel_size.unit),
         }
-        try:
-            labels = frame.particle_labels().value
-        except exceptions.NoParticleError:
-            pass
-        except exceptions.FrameFileNotFound:
-            pass
-        else:
+        labels = frame.particle_labels
+        if labels is not None:
             payload['labels'] = labels
         queue.put(payload)
     # Join the queue and wait for all processes to complete

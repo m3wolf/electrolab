@@ -472,9 +472,10 @@ class GtkTxmViewer():
             shape_label = self.builder.get_object('ShapeLabel')
             shape_label.set_text(str(current_frame.image_data.shape))
             norm_label = self.builder.get_object('NormLabel')
+            norm = self.frameset.image_normalizer(self.plotter.active_representation)
             norm_text = '[{}, {}]'.format(
-                round(self.frameset.image_normalizer().vmin, 2),
-                round(self.frameset.image_normalizer().vmax, 2)
+                round(norm.vmin, 2),
+                round(norm.vmax, 2)
             )
             norm_label.set_text(norm_text)
             # Check if the "show map" button should be active

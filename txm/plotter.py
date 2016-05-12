@@ -42,7 +42,7 @@ class FramesetPlotter():
     matplotlib.
     """
     map_cmap = "plasma"
-    active_representation = None # Default will be used unless changed
+    active_representation = "image_data" # Default will be used unless changed
 
     def __init__(self, frameset, map_ax=None, goodness_ax=None):
         self.map_ax = map_ax

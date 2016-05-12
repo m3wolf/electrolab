@@ -49,10 +49,11 @@ class Particle():
                                  self.frame.image_data.shape[1] / 2)
         pixel_distance_h = self.centroid().horizontal - frame_center_pix.horizontal
         pixel_distance_v = self.centroid().vertical - frame_center_pix.vertical
-        um_per_pixel = self.frame.um_per_pixel
+        px_size = self.frame.pixel_size
+        px_unit = px_size.unit
         new_center = xycoord(
-            x=frame_center_pos.x + pixel_distance_h * um_per_pixel.horizontal,
-            y=frame_center_pos.y + pixel_distance_v * um_per_pixel.vertical
+            x=px_unit(frame_center_pos.x) + pixel_distance_h * px_size,
+            y=px_unit(frame_center_pos.y) + pixel_distance_v * px_size
         )
         return new_center
 

@@ -178,36 +178,44 @@ class TXMFrame():
     # def sample_position(self, new_position):
     #     self._sample_position = new_position
 
+    def get_data(self, name):
+        """Retrieve image data with the given name."""
+        with self.hdf_file(mode="a") as f:
+            # Get current representation
+            try:
+                data = f[self.frame_group][name].value
+            except (KeyError, TypeError):
+                msg = 'Could not load group "{}"'.format(name)
+                raise exceptions.GroupKeyError(msg) from None
+        return data
+
+    def set_data(self, name, data):
+        """Save image data as as a dataset whose name is the given
+        representation."""
+        with self.hdf_file(mode="a") as f:
+            try:
+                del f[self.frame_group][name]
+            except KeyError:
+                pass
+            f[self.frame_group].create_dataset(name, data=data)
+
     @property
     def image_data(self):
-        img = self.get_image_data(representation=None)
+        img = self.get_data(name="image_data")
         return img
 
     @image_data.setter
     def image_data(self, new_data):
-        self.set_image_data(new_data, representation="image_data")
+        self.set_data(name="image_data", data=new_data)
 
-    def get_image_data(self, representation):
-        """Retrieve image data with the given representation. To use the
-        default representation, pass `representation=None` or use the
-        `image_data` property.
-        """
-        with self.hdf_file(mode="a") as f:
-            # Get current representation
-            if representation is None:
-                rep = self.frameset.default_representation
-            else:
-                rep = representation
-            data = f[self.frame_group][rep].value
-        return data
+    @property
+    def particle_labels(self):
+        img = self.get_data(name="particle_labels")
+        return img
 
-    def set_image_data(self, new_data, representation):
-        with self.hdf_file(mode="a") as f:
-            try:
-                del f[self.frame_group][representation]
-            except KeyError:
-                pass
-            f[self.frame_group].create_dataset(representation, data=new_data)
+    @particle_labels.setter
+    def particle_labels(self, new_data):
+        self.set_data(name="particle_labels", data=new_data)
 
     def hdf_file(self, *args, **kwargs):
         return self.frameset.hdf_file(*args, **kwargs)
@@ -283,7 +291,7 @@ class TXMFrame():
         if ax is None:
             ax = plots.new_image_axes()
         if data is None:
-            data = self.get_image_data(representation=representation)
+            data = self.get_data(name=representation)
         extent = self.extent(img_shape=shape(*data.shape))
         im_ax = ax.imshow(data, *args, cmap='gray', extent=extent,
                           origin="lower", **kwargs)
@@ -308,7 +316,7 @@ class TXMFrame():
         else:
             opacity = 0.3
         if self.particle_labels_path:
-            data = self.particle_labels()
+            data = self.particle_labels
             # Mask out anything not labeled (ie. set to zero)
             mask = np.logical_not(data.value.astype(np.bool))
             masked_data = np.ma.array(data, mask=mask)
@@ -339,25 +347,46 @@ class TXMFrame():
 
     def crop(self, bottom, left, top, right):
         """Reduce the image size to given box (in pixels)."""
-        # Move particle and labels to top left
-        self.shift_data(x_offset=-left, y_offset=-bottom)
-        # Shrink images to bounding box size
-        new_shape = shape(rows=(top - bottom), columns=(right - left))
-        data = self.image_data
-        data = np.array(data[0:new_shape[0],
-                             0:new_shape[1]])
+        # Move image data to top left
+        xoffset = -left
+        yoffset = -bottom
+        new_img = self.shift_data(x_offset=xoffset,
+                                  y_offset=yoffset,
+                                  data=self.image_data)
+        # Shrink image to bounding box size
+        new_shape = shape(rows=int((top - bottom)),
+                          columns=int((right - left)))
+        data = np.array(new_img[0:new_shape[0],
+                                0:new_shape[1]])
         self.image_data = data
+        # Repeat for particle labels
         try:
-            labels = self.particle_labels()
+            labels = self.particle_labels
         except exceptions.NoParticleError:
             pass
         else:
-            self.shift_data(x_offset=-left, y_offset=-bottom,
-                            dataset=self.particle_labels())
-            labels.resize(new_shape)
+            new_labels = self.shift_data(x_offset=xoffset,
+                                         y_offset=yoffset,
+                                         data=self.particle_labels)
+            new_labels = np.array(new_labels[0:new_shape[0],
+                                             0:new_shape[1]])
+            self.particle_labels = new_labels
+        # Update stored position information
+        pixel_size = self.pixel_size
+        px_unit = pixel_size.unit
+        pos_unit = self.position_unit
+        sample_position = position(*[px_unit(pos_unit(c))
+                                     for c in self.sample_position])
+        new_position = position(
+            x=sample_position.x + xoffset * pixel_size,
+            y=sample_position.y + yoffset * pixel_size,
+            z=sample_position.z
+        )
+        self.sample_position = [c.num for c in new_position]
 
-    def shift_data(self, x_offset, y_offset, dataset=None):
-        """Move the image within the view field by the given offsets in
+    @staticmethod
+    def shift_data(x_offset, y_offset, data):
+        """Move the image data within the view field by the given offsets in
         pixels.  New values are rolled around to the other side.
 
         Arguments
@@ -370,26 +399,10 @@ class TXMFrame():
             Optional dataset to manipulate . If None, self.image_data
             will be used (default None)
         """
-        if dataset is None:
-            dataset = self.image_data
         # Roll along x axis
-        new_data = np.roll(dataset, int(x_offset), axis=1)
+        new_data = np.roll(data, int(x_offset), axis=1)
         # Roll along y axis
         new_data = np.roll(new_data, int(y_offset), axis=0)
-        # Commit shift image
-        self.image_data = new_data
-        # Update stored position information
-        um_per_pixel = self.pixel_size()
-        px_unit = um_per_pixel.unit
-        pos_unit = self.position_unit
-        sample_position = position(*[px_unit(pos_unit(c))
-                                     for c in self.sample_position])
-        new_position = position(
-            x=sample_position.x + x_offset * um_per_pixel,
-            y=sample_position.y + y_offset * um_per_pixel,
-            z=sample_position.z
-        )
-        self.sample_position = [c.num for c in new_position]
         return new_data
 
     def rebin(self, new_shape=None, factor=None):
@@ -473,34 +486,38 @@ class TXMFrame():
         new_frame.image_data = dataset
         return new_frame
 
-    def particle_labels(self):
-        if self.particle_labels_path is None:
-            raise exceptions.NoParticleError
-        elif not self.particle_labels_path in self.image_data.file:
-            msg = "Could not load {}".format(self.particle_labels_path)
-            raise exceptions.FrameFileNotFound(msg)
-        else:
-            labels = self.image_data.file[self.particle_labels_path]
-        return labels
+    # def particle_labels(self):
+    #     if self.particle_labels_path is None:
+    #         raise exceptions.NoParticleError
+    #     elif not self.particle_labels_path in self.image_data.file:
+    #         msg = "Could not load {}".format(self.particle_labels_path)
+    #         raise exceptions.FrameFileNotFound(msg)
+    #     else:
+    #         labels = self.image_data.file[self.particle_labels_path]
+    #     return labels
 
     def activate_closest_particle(self, loc):
         """Get a particle that's closest to frame location and save for future
         reference."""
-        if loc:  # Some calling routines may pass `None`
+        if loc is not None:  # Some calling routines may pass `None`
             self.active_particle_idx = self.closest_particle_idx(loc)
             return self.particles()[self.active_particle_idx]
         else:
             return None
 
     def closest_particle_idx(self, loc):
-        """Get a particle that's closest to frame location."""
+        """Get the particle that's closest to frame location. Returns None if no
+        particles are found.
+        """
         particles = self.particles()
         current_min = 999999
-        current_idx = None
+        current_idx = None # (default if no particle found)
+        # Include units on location tuple
+        target = xycoord(*(self.pixel_size.unit(l) for l in loc))
         for idx, particle in enumerate(particles):
             center = particle.relative_position()
             distance = math.sqrt(
-                (loc[0] - center[0])**2 + (loc[1] - center[1])**2
+                (target.x - center.x)**2 + (target.y - center.y)**2
             )
             if distance < current_min:
                 # New closest match
@@ -509,7 +526,7 @@ class TXMFrame():
         return current_idx
 
     def particles(self):
-        labels = self.particle_labels()
+        labels = self.particle_labels
         props = regionprops(labels, intensity_image=self.image_data)
         particles = []
         for prop in props:
