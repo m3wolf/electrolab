@@ -144,6 +144,33 @@ class KEdge(Edge):
         goodness = peak.goodness(subset)
         return (peak, goodness)
 
+    def calculate_direct_whiteline(self, imagestack, energies, *args, **kwargs):
+        """Calculates the whiteline position of the absorption edge data
+        contained in `data`. This method uses the energy of maximum
+        absorbance and is a faster alternative to `calculate_whiteline`.
+        The "whiteline" for an absorption K-edge is the energy at which
+        the specimin has its highest absorbance. This function will return
+        an 2 arrays with the same shape as each entry in the data
+        series. 1st array gives the energy of the highest absorbance and
+        2nd array contains a mock array of goodness of fits (all values
+        are 1).
+
+        Arguments
+        ---------
+        data - The X-ray absorbance data. Should be similar to a pandas
+        Series. Assumes that the index is energy. This can be a Series of
+        numpy arrays, which allows calculation of image frames, etc.
+
+        """
+        # Calculate the indices of the whiteline
+        whiteline_indices = np.argmax(imagestack, axis=0)
+        # Convert indices to energy
+        map_energy = np.vectorize(lambda idx: energies[idx],
+                                  otypes=[np.float])
+        whiteline_energies = map_energy(whiteline_indices)
+        goodness = np.ones_like(whiteline_energies)
+        return (whiteline_energies, goodness)
+
     def normalize(self, spectrum: Series) -> Series:
         """Adjust the given spectrum so that the pre-edge is around 0 and the
         post-edge is around 1. The `fit()` method should have been
@@ -200,7 +227,7 @@ class NCANickelLEdge(KEdge):
     _peak2 = 853
 
     def calculate_direct_map(self, imagestack, energies):
-        """Return a map with the ratios of intensitie ast 851 and 853 eV."""
+        """Return a map with the ratios of intensities at 851 and 853 eV."""
         idx1 = energies.index(self._peak1)
         idx2 = energies.index(self._peak2)
         # Now calculate the peak ratio
@@ -253,11 +280,15 @@ class NCANickelKEdge(KEdge):
     map_range = (8341, 8358)
 
     def map_normalizer(self, method="direct"):
-        return Normalize(0, 1)
+        return Normalize(*self.map_range)
 
     def annotate_spectrum(self, ax):
         ax.axvline(x=self.pre_edge[1], linestyle='-', color="0.55", alpha=0.4)
         ax.axvline(x=self.post_edge[0], linestyle='-', color="0.55", alpha=0.4)
+
+    def calculate_direct_map(self, imagestack, energies):
+        return self.calculate_direct_whiteline(imagestack, energies)
+
 
 # Dictionaries make it more intuitive to access these edges by element
 k_edges = {

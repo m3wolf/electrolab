@@ -1513,10 +1513,16 @@ class XanesFrameset():
           the actual threshold.
         """
         goodness = self.goodness_filter()
-        threshold = filters.threshold_otsu(goodness)
-        mask = goodness > (sensitivity * threshold)
-        mask = morphology.dilation(mask)
-        mask = np.logical_not(mask)
+        try:
+            threshold = filters.threshold_otsu(goodness)
+        except TypeError:
+            mask = np.zeros_like(goodness)
+            # If thresholding failed, just show everything
+        else:
+            # If thresholding succeeded make a mask
+            mask = goodness > (sensitivity * threshold)
+            mask = morphology.dilation(mask)
+            mask = np.logical_not(mask)
         return mask
 
     def calculate_map(self, new_name=None, *args, **kwargs):
