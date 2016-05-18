@@ -44,6 +44,17 @@ position = namedtuple('position', ('x', 'y', 'z'))
 Extent = namedtuple('extent', ('left', 'right', 'bottom', 'top'))
 
 
+def remove_outliers(data, sigma):
+    """Mark as invalid any pixels more that `sigma` standard deviations
+    away from the median."""
+    median = np.median(data)
+    d = np.abs(data - median)
+    sdev = np.std(data)
+    s = d / sdev if sdev else 0.
+    data[s >= sigma] = median
+    return data
+
+
 def rebin_image(data, new_shape):
     """Resample image into new shape, but only if the new dimensions are
     smaller than the old. This is not meant to apply zoom corrections,
@@ -186,7 +197,7 @@ class TXMFrame():
                 data = f[self.frame_group][name].value
             except (KeyError, TypeError):
                 msg = 'Could not load group "{}"'.format(name)
-                raise exceptions.GroupKeyError(msg) from None
+                raise exceptions.GroupKeyError(msg)
         return data
 
     def set_data(self, name, data):
@@ -197,7 +208,7 @@ class TXMFrame():
                 del f[self.frame_group][name]
             except KeyError:
                 pass
-            f[self.frame_group].create_dataset(name, data=data)
+            f[self.frame_group].create_dataset(name, data=data, compression="gzip")
 
     @property
     def image_data(self):
@@ -215,7 +226,10 @@ class TXMFrame():
 
     @property
     def particle_labels(self):
-        img = self.get_data(name="particle_labels")
+        try:
+            img = self.get_data(name="particle_labels")
+        except exceptions.GroupKeyError:
+            img = None
         return img
 
     @particle_labels.setter
@@ -341,14 +355,14 @@ class TXMFrame():
                 artists.append(txt)
         return artists
 
-    def remove_outliers(self, sigma):
-        """Mark as invalid any pixels more that `sigma` standard deviations
-        away from the median."""
-        d = np.abs(self.image_data - np.median(self.image_data))
-        sdev = np.std(self.image_data)
-        # mdev = np.median(d)
-        s = d / sdev if sdev else 0.
-        self.image_data[s >= sigma] = 0
+    # def remove_outliers(self, sigma):
+    #     """Mark as invalid any pixels more that `sigma` standard deviations
+    #     away from the median."""
+    #     d = np.abs(self.image_data - np.median(self.image_data))
+    #     sdev = np.std(self.image_data)
+    #     # mdev = np.median(d)
+    #     s = d / sdev if sdev else 0.
+    #     self.image_data[s >= sigma] = 0
 
     def crop(self, bottom, left, top, right):
         """Reduce the image size to given box (in pixels)."""
@@ -365,14 +379,11 @@ class TXMFrame():
                                 0:new_shape[1]])
         self.image_data = data
         # Repeat for particle labels
-        try:
-            labels = self.particle_labels
-        except exceptions.NoParticleError:
-            pass
-        else:
+        labels = self.particle_labels
+        if labels is not None:
             new_labels = self.shift_data(x_offset=xoffset,
                                          y_offset=yoffset,
-                                         data=self.particle_labels)
+                                         data=labels)
             new_labels = np.array(new_labels[0:new_shape[0],
                                              0:new_shape[1]])
             self.particle_labels = new_labels

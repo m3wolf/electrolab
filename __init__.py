@@ -66,7 +66,8 @@ from txm.xradia import XRMFile
 from txm.beamlines import Zoneplate, Detector, sector8_xanes_script, ZoneplatePoint
 from txm.importers import (import_txm_framesets,
                            import_ssrl_frameset,
-                           import_ptychography_frameset)
+                           import_ptychography_frameset,
+                           import_aps_8BM_frameset)
 from txm.xanes_frameset import XanesFrameset, merge_framesets
 from txm.frame import TXMFrame, calculate_particle_labels, rebin_image, position
 from xas.edges import k_edges, l_edges

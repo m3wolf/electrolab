@@ -217,15 +217,15 @@ class XanesFrameset():
     frameset. This argument is only required if there is more than one
     top-level group.
     """
-    active_group = None
+    active_group = ''
     cmap = 'plasma'
     hdf_default_scope = "frameset"
     hdfattrs = {
-        'reference_group': Attr('reference_group', default='hello'),
-        'latest_group': Attr('latest_group'),
-        'map_method': Attr('map_method'),
-        'map_name': Attr('map_name'),
-        'map_goodness_name': Attr('map_goodness_name'),
+        'reference_group': Attr('reference_group', default="default"),
+        'latest_group': Attr('latest_group', default="default"),
+        'map_method': Attr('map_method', scope="subset"),
+        'map_name': Attr('map_name', scope="subset"),
+        'map_goodness_name': Attr('map_goodness_name', scope="subset"),
         'default_representation': Attr('default_representation',
                                        scope="subset",
                                        default="modulus"),
@@ -1221,7 +1221,7 @@ class XanesFrameset():
         for frame in prog(self, "Rebinning"):
             frame.rebin(new_shape=new_shape, factor=factor)
 
-    def normalize(self, plot_fit=False):
+    def normalize(self, plot_fit=False, new_name='normalized'):
         """Correct for background material not absorbing at this edge. Uses
         method described in DOI 10.1038/ncomms7883: fit line against
         material that fails edge_jump_filter and use this line to
@@ -1232,7 +1232,7 @@ class XanesFrameset():
         - plot_fit: If True, will plot the background spectrum and the
         best-fit line.
         """
-        self.fork_group('normalized')
+        self.fork_group(new_name)
         # Linear regression on "background" materials
         spectrum = self.xanes_spectrum(edge_jump_filter="inverse")
         regression = linear_model.LinearRegression()
@@ -1548,8 +1548,8 @@ class XanesFrameset():
             except KeyError:
                 pass
             # Save new datasets
-            f.create_dataset(new_name, data=map_data)
-            f.create_dataset(goodness_name, data=goodness)
+            f.create_dataset(new_name, data=map_data, compression="gzip")
+            f.create_dataset(goodness_name, data=goodness, compression="gzip")
         self.map_name = new_name
         self.map_goodness_name = goodness_name
         return map_data, goodness
@@ -1719,7 +1719,9 @@ class XanesFrameset():
             energy=frame.approximate_energy,
         )
         # Name found, so create the actual dataset
-        frame.create_dataset(setname=setname, hdf_group=frames_group)
+        frame.create_dataset(setname=setname,
+                             hdf_group=frames_group,
+                             compression="gzip")
         return setname
 
     def drop_frame(self, index):

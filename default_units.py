@@ -42,4 +42,3 @@ cm = units.unit('cm')
 electrode_loading = units.unit('mg') / (cm * cm)
 # Beam energy
 energy = units.unit('eV')
-print(energy)

@@ -30,9 +30,9 @@ from PIL import Image
 from scipy.constants import physical_constants
 
 import default_units
-from .xradia import XRMFile, decode_ssrl_params
+from .xradia import XRMFile, decode_ssrl_params, decode_aps_params
 from .xanes_frameset import XanesFrameset, energy_key
-from .frame import TXMFrame
+from .frame import TXMFrame, remove_outliers
 from utilities import prog
 import exceptions
 
@@ -76,9 +76,6 @@ def _prepare_hdf_group(filename: str, groupname: str, dirname: str):
         msg = 'Group "{groupname}" exists. Overwriting.'
         print(msg.format(groupname=groupname))
         del hdf_file[groupname]
-        # msg += " Try using the `hdf_groupname` argument"
-        # e = exceptions.CreateGroupError(msg.format(groupname=groupname))
-        # raise e
     new_group = hdf_file.create_group(groupname)
     # User feedback
     if not prog.quiet:
@@ -169,10 +166,16 @@ def import_ptychography_frameset(directory: str,
             energy_set.attrs['pixel_unit'] = "nm"
             # Save dataset
             data = f['/entry_1/image_1/data'].value
-            energy_set.create_dataset('ptychography', data=data, chunks=True)
+            energy_set.create_dataset('ptychography',
+                                      data=data,
+                                      chunks=True,
+                                      compression="gzip")
             # Import STXM interpretation
             data = f['entry_1/instrument_1/detector_1/STXM'].value
-            energy_set.create_dataset('stxm', data=data, chunks=True)
+            energy_set.create_dataset('stxm',
+                                      data=data,
+                                      chunks=True,
+                                      compression="gzip")
     for filename in []:#os.listdir(modulus_dir):
         # (assumes each image type has the same set of energies)
         # Extract energy from filename
@@ -192,7 +195,10 @@ def import_ptychography_frameset(directory: str,
             filename = template.format(name=name, energy=energy_str)
             filepath = os.path.join(tiff_dir, name, filename)
             data = Image.open(filepath)
-            energy_set.create_dataset(name, data=data, chunks=True)
+            energy_set.create_dataset(name,
+                                      data=data,
+                                      chunks=True,
+                                      compression="gzip")
         representations = ['modulus', 'phase', 'complex', 'intensity']
         [add_files(name) for name in representations]
         add_files("stxm", template="stxm_{energy}.tif")
@@ -288,7 +294,9 @@ def import_ssrl_frameset(directory, hdf_filename=None):
             intensity = _average_ssrl_files(sample[energy])
             key = energy_key.format(float(energy))
             intensity_group = imported.create_group(key)
-            intensity_group.create_dataset(name="image_data", data=intensity.data)
+            intensity_group.create_dataset(name="image_data",
+                                           data=intensity.data,
+                                           compression="gzip")
             # Set some metadata attributes
             intensity_group.attrs['starttime'] = intensity.starttime.isoformat()
             intensity_group.attrs['endtime'] = intensity.endtime.isoformat()
@@ -315,11 +323,15 @@ def import_ssrl_frameset(directory, hdf_filename=None):
             # Average reference frames
             ref = _average_ssrl_files(references[sample_name][energy])
             ref_group = reference.create_group(key)
-            ref_group.create_dataset(name="image_data", data=ref.data)
+            ref_group.create_dataset(name="image_data",
+                                     data=ref.data,
+                                     compression="gzip")
             # Apply reference correction to get absorbance data
             abs_data = np.log(ref.data / intensity.data)
             abs_group = absorbance.create_group(key)
-            abs_group.create_dataset(name="image_data", data=abs_data)
+            abs_group.create_dataset(name="image_data",
+                                     data=abs_data,
+                                     compression="gzip")
             # Copy attrs
             for key in intensity_group.attrs.keys():
                 ref_group.attrs[key] = intensity_group.attrs[key]
@@ -340,11 +352,91 @@ def import_ssrl_frameset(directory, hdf_filename=None):
 
 
 def import_aps_8BM_frameset(directory, hdf_filename=None):
-    raise NotImplementedError
-    # # Remove dead or hot pixels
-    # if flavor in ['aps']:
-    #     sigma = 9
-    #     for fs in frameset_list:
-    #         for frame in prog(fs, 'Removing pixels beyond {}σ'.format(sigma)):
-    #             frame.remove_outliers(sigma=sigma)
-    # return frameset_list
+    """Import all files in the given directory collected at APS beamline
+    8-BM-B and process into framesets. Images are assumed to
+    full-field transmission X-ray micrographs. This beamline does not
+    produce the flux to warrant averaging.
+    """
+    files = os.listdir(directory)
+    # Determine sample name from first file
+    metadata = decode_aps_params(files[0])
+    # Create HDF groups
+    sample_group = _prepare_hdf_group(filename=hdf_filename,
+                                      groupname=metadata['sample_name'],
+                                      dirname=directory)
+    ref_name = "reference"
+    reference = sample_group.create_group(ref_name)
+    reference.attrs['default_representation'] = 'image_data'
+    reference.attrs['parent'] = ""
+    # absorbance = sample_group.create_group("reference_corrected")
+    # absorbance.attrs['default_representation'] = 'image_data'
+    # absorbance.attrs['parent'] = imported.name
+    # Go through each file and import it to the correct position group
+    position_groups = {}
+    for filename in prog(files, 'Importing frames'):
+        # Make sure it's a file
+        fullpath = os.path.join(directory, filename)
+        # Determine what group to put it in
+        metadata = decode_aps_params(filename)
+        pos_name = metadata['position_name'] + '_imported'
+        if metadata['is_background']:
+            fs_group = reference
+        elif pos_name not in sample_group.keys():
+            fs_group = sample_group.create_group(pos_name)
+            fs_group.attrs['default_representation'] = 'image_data'
+            fs_group.attrs['parent'] = ""
+            sample_group.attrs['latest_group'] = fs_group.name
+            # Save for later manipulation (reference correction, etc)
+            position_groups[metadata['position_name']] = fs_group
+        else:
+            fs_group = sample_group[pos_name]
+        basename, extension = os.path.splitext(filename)
+        Importer = format_classes[extension]
+        with Importer(fullpath, flavor='aps') as f:
+            # Determine reasonable energy string
+            actual_energy = f.energy()
+            approximate_energy = round(float(actual_energy), 1)
+            key = energy_key.format(approximate_energy)
+            # Remove dead or hot pixels
+            sigma = 9
+            data = remove_outliers(data=f.image_data(), sigma=sigma)
+            # Save image data
+            intensity_group = fs_group.create_group(key)
+            intensity_group.create_dataset(name="image_data",
+                                           data=data,
+                                           compression="gzip")
+            # Set metadata attributes
+            intensity_group.attrs['starttime'] = f.starttime().isoformat()
+            intensity_group.attrs['endtime'] = f.endtime().isoformat()
+            intensity_group.attrs['pixel_size_value'] = f.um_per_pixel()
+            intensity_group.attrs['pixel_size_unit'] = 'um'
+            intensity_group.attrs['energy'] = actual_energy
+            intensity_group.attrs['approximate_energy'] = approximate_energy
+            intensity_group.attrs['sample_position'] = f.sample_position()
+            intensity_group.attrs['original_filename'] = filename
+    # Apply reference correction
+    for pos_name, imported_group in position_groups.items():
+        # Create a new HDF5 group
+        abs_name = "{}_refcorr".format(pos_name)
+        new_fs_group = sample_group.create_group(abs_name)
+        # Copy attributes from intensity group
+        for attr_key in imported_group.attrs.keys():
+            new_fs_group.attrs[attr_key] = imported_group.attrs[attr_key]
+        # Calculate absorbance frames for each energy
+        for key in prog(imported_group.keys(), 'Applying reference'):
+            new_fs_group.attrs['default_representation'] = 'image_data'
+            new_fs_group.attrs['parent'] = imported_group.name
+            # Apply reference correction
+            ref_data = reference[key]['image_data'].value
+            sam_data = imported_group[key]['image_data'].value
+            abs_data = np.log(ref_data / sam_data)
+            # Save new data to hdf5 file
+            abs_group = new_fs_group.create_group(key)
+            abs_group.create_dataset(name='image_data',
+                                     data=abs_data,
+                                     compression="gzip")
+            # Copy attrs from old group
+            for attr_key in imported_group[key].attrs.keys():
+                abs_group.attrs[attr_key] = imported_group[key].attrs[attr_key]
+    # Close HDF file to prevent corruption
+    sample_group.file.close()
