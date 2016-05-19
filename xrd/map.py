@@ -8,7 +8,7 @@ import jinja2
 
 import exceptions
 from mapping.map import Map
-from plots import new_axes
+from plots import new_axes, DegreeFormatter
 from xrd.locus import XRDLocus
 from refinement.native import NativeRefinement
 from utilities import prog
@@ -207,6 +207,7 @@ class XRDMap(Map):
         ax.set_xlabel(r'$2\theta$')
         ax.set_ylabel('counts')
         ax.set_title('Bulk diffractogram')
+        ax.xaxis.set_major_formatter(DegreeFormatter())
         # Highlight peaks
         self.loci[0].xrdscan.refinement.highlight_peaks(ax=ax)
         return ax

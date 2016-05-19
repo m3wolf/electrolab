@@ -130,6 +130,7 @@ def plot_scans(scan_list, step_size=0, ax=None, names=[]):
     ax.set_xlim(left=xMin, right=xMax)
     # Decorate
     ax.set_xlabel(r'$2\theta$')
+    ax.xaxis.set_major_formatter(DegreeFormatter())
     ax.set_ylabel('counts')
     return ax
 
