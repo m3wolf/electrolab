@@ -339,11 +339,6 @@ class XanesFrameset():
     def starttime(self):
         """Determine the earliest timestamp amongst all of the frames."""
         all_times = [f.starttime for f in self]
-        # Check background frames as well
-        old_groupname = self.active_group
-        self.switch_group('background_frames')
-        all_times += [f.starttime for f in self]
-        self.switch_group(old_groupname)
         return min(all_times)
 
     def endtime(self):
@@ -429,9 +424,13 @@ class XanesFrameset():
                 dest[E_key].attrs['_copy_on_write'] = True
                 # Copy sym links for datasets
                 for src_ds in old_group[E_key]:
-                    old_path = old_group[E_key][src_ds].name
-                    dest[E_key][str(src_ds)] = h5py.SoftLink(old_path)
-                    dest[E_key].attrs["_copy_on_write"] = True
+                    try:
+                        old_path = old_group[E_key][src_ds].name
+                    except TypeError:
+                        pass
+                    else:
+                        dest[E_key][str(src_ds)] = h5py.SoftLink(old_path)
+                        dest[E_key].attrs["_copy_on_write"] = True
         self.latest_group = new_path
         self.switch_group(name)
 
@@ -1098,7 +1097,7 @@ class XanesFrameset():
         self.fork_group(new_name)
         # Activate particle if necessary
         if loc is not None:
-            for frame in prog(self, 'Idetifying closest particle'):
+            for frame in prog(self, 'Identifying closest particle'):
                 frame.activate_closest_particle(loc=loc)
         # Make sure an active particle is assigned to all frames
         for frame in self:

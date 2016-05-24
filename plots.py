@@ -101,6 +101,8 @@ def dual_axes(orientation='horizontal'):
     # Remove redundant borders
     remove_extra_spines(ax1)
     remove_extra_spines(ax2)
+    # Set background to be transparent
+    fig.patch.set_alpha(0)
     return (ax1, ax2)
 
 
