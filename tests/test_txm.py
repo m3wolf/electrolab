@@ -34,13 +34,13 @@ from tests.cases import HDFTestCase, ScimapTestCase
 from utilities import xycoord, prog
 from peakfitting import Peak
 from txm.xanes_frameset import XanesFrameset, calculate_direct_whiteline, calculate_gaussian_whiteline
-from txm.frame import (
-    average_frames, TXMFrame, xy_to_pixel, pixel_to_xy, Extent, Pixel,
-    rebin_image, apply_reference, position)
+from txm.frame import ( TXMFrame, xy_to_pixel, pixel_to_xy, Extent,
+                        Pixel, rebin_image, apply_reference, position)
 from xas.edges import KEdge, k_edges
 from txm.importers import import_txm_framesets
 from txm.xradia import XRMFile, decode_ssrl_params, decode_aps_params
-from txm.beamlines import sector8_xanes_script, Zoneplate, ZoneplatePoint, Detector
+from txm.beamlines import (sector8_xanes_script, ssrl6_xanes_script,
+                           Zoneplate, ZoneplatePoint, Detector)
 from txm import xanes_frameset
 from txm import plotter
 
@@ -51,6 +51,116 @@ apsdir = os.path.join(testdir, 'aps-txm-data')
 # Silence progress bars for testing
 prog.quiet = True
 
+
+class SSRLScriptTest(unittest.TestCase):
+    """Verify that a script is created for running an operando TXM
+    experiment at SSRL beamline 6-2c. These tests conform to the
+    results of the beamline's in-house script generator. They could be
+    changed but the effects on the beamline operation should be
+    checked first.
+    """
+
+    def setUp(self):
+        self.output_path = os.path.join(testdir, 'ssrl_script.txt')
+        self.scaninfo_path = os.path.join(testdir, 'ScanInfo_ssrl_script.txt')
+        # Check to make sure the file doesn't already exists
+        if os.path.exists(self.output_path):
+            os.remove(self.output_path)
+        assert not os.path.exists(self.output_path)
+        # Values taken from SSRL 6-2c beamtime on 2015-02-22
+        self.zp = Zoneplate(
+            start=ZoneplatePoint(x=-7.40, y=-2.46, z=-1255.46, energy=8250),
+            end=ZoneplatePoint(x=4.14, y=1.38, z=703.06, energy=8640),
+        )
+
+    def tearDown(self):
+        os.remove(self.output_path)
+        os.remove(self.scaninfo_path)
+
+    def test_scaninfo_generation(self):
+        """Check that the script writes all the filenames to a ScanInfo file
+        for TXM Wizard."""
+        with open(self.output_path, 'w') as f:
+            ssrl6_xanes_script(dest=f,
+                               edge=k_edges["Ni_NCA"](),
+                               binning=2,
+                               zoneplate=self.zp,
+                               iterations=["Test0", "Snorlax"],
+                               frame_rest=0,
+                               repetitions=8,
+                               ref_repetitions=15,
+                               positions=[position(3, 4, 5)],
+                               reference_position=position(0, 1, 2),
+                               abba_mode=False)
+        scaninfopath = os.path.join(testdir, 'ScanInfo_ssrl_script.txt')
+        self.assertTrue(os.path.exists(scaninfopath))
+        with open(scaninfopath) as f:
+            self.assertEqual(f.readline(), 'VERSION 1\n')
+            self.assertEqual(f.readline(), 'ENERGY 1\n')
+            self.assertEqual(f.readline(), 'TOMO 0\n')
+            self.assertEqual(f.readline(), 'MOSAIC 0\n')
+            self.assertEqual(f.readline(), 'MULTIEXPOSURE 4\n')
+            self.assertEqual(f.readline(), 'NREPEATSCAN   1\n')
+            self.assertEqual(f.readline(), 'WAITNSECS   0\n')
+            self.assertEqual(f.readline(), 'NEXPOSURES   8\n')
+            self.assertEqual(f.readline(), 'AVERAGEONTHEFLY   0\n')
+            self.assertEqual(f.readline(), 'REFNEXPOSURES  15\n')
+            self.assertEqual(f.readline(), 'REF4EVERYEXPOSURES   8\n')
+            self.assertEqual(f.readline(), 'REFABBA 0\n')
+            self.assertEqual(f.readline(), 'REFAVERAGEONTHEFLY 0\n')
+            self.assertEqual(f.readline(), 'MOSAICUP   1\n')
+            self.assertEqual(f.readline(), 'MOSAICDOWN   1\n')
+            self.assertEqual(f.readline(), 'MOSAICLEFT   1\n')
+            self.assertEqual(f.readline(), 'MOSAICRIGHT   1\n')
+            self.assertEqual(f.readline(), 'MOSAICOVERLAP 0.20\n')
+            self.assertEqual(f.readline(), 'MOSAICCENTRALTILE   1\n')
+            self.assertEqual(f.readline(), 'FILES\n')
+            self.assertEqual(f.readline(), 'ref_Test0_08250.0_eV_000of015.xrm\n')
+
+
+    def test_script_generation(self):
+        """Check that the script first moves to the first energy point and location."""
+        ref_repetitions = 10
+        with open(self.output_path, 'w') as f:
+            ssrl6_xanes_script(dest=f,
+                               edge=k_edges["Ni_NCA"](),
+                               binning=2,
+                               zoneplate=self.zp,
+                               iterations=["Test0", "Snorlax"],
+                               frame_rest=0,
+                               ref_repetitions=ref_repetitions,
+                               positions=[position(3, 4, 5), position(6, 7, 8)],
+                               reference_position=position(0, 1, 2),
+                               abba_mode=True)
+        with open(self.output_path, 'r') as f:
+            # Check that the first couple of lines set up the correct data
+            self.assertEqual(f.readline(), ';; 2D XANES ;;\n')
+            # Sets up the first energy correctly
+            self.assertEqual(f.readline(), ';;;; set the MONO and the ZP\n')
+            self.assertEqual(f.readline(), 'sete 8250.00\n')
+            self.assertEqual(f.readline(), 'moveto zpx -7.40\n')
+            self.assertEqual(f.readline(), 'moveto zpy -2.46\n')
+            self.assertEqual(f.readline(), 'moveto zpz -1255.46\n')
+            self.assertEqual(f.readline(), ';;;; Move to reference position\n')
+            self.assertEqual(f.readline(), 'moveto x 0.00\n')
+            self.assertEqual(f.readline(), 'moveto y 1.00\n')
+            self.assertEqual(f.readline(), 'moveto z 2.00\n')
+            # Collects the first set of references frames
+            self.assertEqual(f.readline(), ';;;; Collect reference frames\n')
+            self.assertEqual(f.readline(), 'setexp 0.50\n')
+            self.assertEqual(f.readline(), 'setbinning 2\n')
+            self.assertEqual(f.readline(), 'collect ref_Test0_08250.0_eV_000of010.xrm\n')
+            # Read-out the rest of the "collect ..." commands
+            [f.readline() for i in range(1, ref_repetitions)]
+            # Moves to and collects first sample frame
+            self.assertEqual(f.readline(), ';;;; Move to sample position 0\n')
+            self.assertEqual(f.readline(), 'moveto x 3.00\n')
+            self.assertEqual(f.readline(), 'moveto y 4.00\n')
+            self.assertEqual(f.readline(), 'moveto z 5.00\n')
+            self.assertEqual(f.readline(), ';;;; Collect frames sample position 0\n')
+            self.assertEqual(f.readline(), 'setexp 0.50\n')
+            self.assertEqual(f.readline(), 'setbinning 2\n')
+            self.assertEqual(f.readline(), 'collect Test0_fov0_08250.0_eV_000of005.xrm\n')
 
 class ApsScriptTest(unittest.TestCase):
     """Verify that a script is created for running an operando
@@ -64,11 +174,11 @@ class ApsScriptTest(unittest.TestCase):
         assert not os.path.exists(self.output_path)
         # Values taken from APS beamtime on 2015-11-11
         self.zp = Zoneplate(
-            start=ZoneplatePoint(z=3110.7, energy=8313),
+            start=ZoneplatePoint(x=0, y=0, z=3110.7, energy=8313),
             step=9.9329 / 2 # Original script assumed 2eV steps
         )
         self.det = Detector(
-            start=ZoneplatePoint(z=389.8, energy=8313),
+            start=ZoneplatePoint(x=0, y=0, z=389.8, energy=8313),
             step=0.387465 / 2 # Original script assumed 2eV steps
         )
 
@@ -192,9 +302,14 @@ class ApsScriptTest(unittest.TestCase):
 class ZoneplateTest(ScimapTestCase):
     def setUp(self):
         # Values taken from APS beamtime on 2015-11-11
-        self.zp = Zoneplate(
-            start=ZoneplatePoint(z=3110.7, energy=8313),
-            step=9.9329 / 2 # Original script assumed 2eV steps
+        self.aps_zp = Zoneplate(
+            start=ZoneplatePoint(x=0, y=0, z=3110.7, energy=8313),
+            z_step=9.9329 / 2 # Original script assumed 2eV steps
+        )
+        # Values taken from SSRL 6-2c on 2015-02-22
+        self.ssrl_zp = Zoneplate(
+            start=ZoneplatePoint(x=-7.40, y=-2.46, z=-1255.46, energy=8250),
+            end=ZoneplatePoint(x=4.14, y=1.38, z=703.06, energy=8640),
         )
 
     def test_constructor(self):
@@ -203,17 +318,26 @@ class ZoneplateTest(ScimapTestCase):
             Zoneplate(start=None)
         with self.assertRaises(ValueError):
             # Passing both step and end is confusing
-            Zoneplate(start=None, step=1, end=1)
+            Zoneplate(start=None, z_step=1, end=1)
         # Check that step is set if not expicitely passed
         zp = Zoneplate(
-            start=ZoneplatePoint(z=3110.7, energy=8313),
-            end=ZoneplatePoint(z=3120.6329, energy=8315)
+            start=ZoneplatePoint(x=0, y=0, z=3110.7, energy=8313),
+            end=ZoneplatePoint(x=0, y=0, z=3120.6329, energy=8315)
         )
-        self.assertApproximatelyEqual(zp.step, 9.9329 / 2)
+        self.assertApproximatelyEqual(zp.step.z, 9.9329 / 2)
 
     def test_z_from_energy(self):
-        result = self.zp.z_position(energy=8315)
+        result = self.aps_zp.position(energy=8315).z
         self.assertApproximatelyEqual(result, 3120.6329)
+
+    def test_position(self):
+        result = self.aps_zp.position(energy=8315)
+        self.assertApproximatelyEqual(result, (0, 0, 3120.6329))
+        result = self.ssrl_zp.position(energy=8352)
+        self.assertApproximatelyEqual(result, (-4.38, -1.46, -743.23))
+        # self.assertApproximatelyEqual(result.x, 0)
+        # self.assertApproximatelyEqual(result.y, 0)
+        # self.assertApproximatelyEqual(result.z, 3120.6329)
 
 
 class XrayEdgeTest(unittest.TestCase):
@@ -673,7 +797,7 @@ class MockFrameset(XanesFrameset):
     hdf_filename = None
     parent_groupname = None
     active_particle_idx = None
-    edge = k_edges['Ni']
+    edge = k_edges['Ni_NCA']
     def __init__(self, *args, **kwargs):
         pass
 
