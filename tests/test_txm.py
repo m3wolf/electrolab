@@ -74,6 +74,7 @@ class SSRLScriptTest(unittest.TestCase):
         )
 
     def tearDown(self):
+        return
         os.remove(self.output_path)
         os.remove(self.scaninfo_path)
 

@@ -1,5 +1,7 @@
 """Descriptions of X-ray energy absorption edge."""
 
+import math
+
 import numpy as np
 from pandas import Series
 from sklearn import linear_model, svm, utils
@@ -59,8 +61,10 @@ class KEdge(Edge):
     def all_energies(self):
         energies = []
         for region in self.regions:
-            r = region[1] - region[0]
-            num = int(r / region[2])
+            start = region[0]
+            stop = region[1]
+            step = region[2]
+            num = int(stop - start) / step + 1
             energies.append(np.linspace(region[0], region[1], num))
         energies = np.concatenate(energies)
         return sorted(list(set(energies)))
@@ -244,7 +248,6 @@ class NCANickelLEdge(KEdge):
         ax.axvline(x=self._peak1, linestyle='-', color="0.55", alpha=0.4)
         ax.axvline(x=self._peak2, linestyle='-', color="0.55", alpha=0.4)
 
-
 # class NickelKEdge(KEdge):
 #     E_0 = 8333
 #     regions = [
@@ -289,6 +292,24 @@ class NCANickelKEdge(KEdge):
     def calculate_direct_map(self, imagestack, energies):
         return self.calculate_direct_whiteline(imagestack, energies)
 
+
+class NCANickelKEdge61(NCANickelKEdge):
+    regions = [
+        (8250, 8310, 15),
+        (8324, 8360, 1),
+        (8360, 8400, 4),
+        (8400, 8440, 8),
+        (8440, 8640, 50),
+    ]
+
+class NCANickelKEdge62(NCANickelKEdge):
+    regions = [
+        (8250, 8310, 15),
+        (8324, 8360, 1),
+        (8360, 8400, 4),
+        (8400, 8440, 8),
+        (8440, 8690, 50),
+    ]
 
 # Dictionaries make it more intuitive to access these edges by element
 k_edges = {

@@ -56,10 +56,10 @@ def decode_ssrl_params(filename):
     a dictionary."""
     # Beamline 6-2c at SSRL
     ssrl_regex_bg = re.compile(
-        'rep(\d{2})_(\d{6})_ref_[0-9]+_([a-zA-Z0-9_]+)_([0-9.]+)_eV_(\d{3})of(\d{3})\.xrm'
+        'rep(\d{2})_(\d{6})_ref_[0-9]+_([-a-zA-Z0-9_]+)_([0-9.]+)_eV_(\d{3})of(\d{3})\.xrm'
     )
     ssrl_regex_sample = re.compile(
-        'rep(\d{2})_[0-9]+_([a-zA-Z0-9_]+)_([0-9.]+)_eV_(\d{3})of(\d{3}).xrm'
+        'rep(\d{2})_[0-9]+_([-a-zA-Z0-9_]+)_([0-9.]+)_eV_(\d{3})of(\d{3}).xrm'
     )
     # Check for background frames
     bg_result = ssrl_regex_bg.search(filename)
