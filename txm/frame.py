@@ -35,7 +35,7 @@ from units import unit, predefined
 
 import exceptions
 import plots
-from hdf import Attr, hdf_attrs
+import hdf
 from utilities import xycoord, Pixel, shape
 from .particle import Particle
 
@@ -142,31 +142,27 @@ def pixel_to_xy(pixel, extent, shape):
     return xycoord(x=x, y=y)
 
 
-@hdf_attrs
 class TXMFrame():
     """A single microscopy image at a certain energy."""
 
     # HDF Attributes
     hdf_default_scope = "frame"
-    hdfattrs = {
-        'energy': Attr(key='energy'),
-        'approximate_energy': Attr('approximate_energy', default=0.0),
-        '_starttime': Attr('starttime'),
-        '_endtime': Attr('endtime'),
-        '_pixel_size_value': Attr(key="pixel_size_value", default=1),
-        '_pixel_size_unit': Attr(key="pixel_size_unit",  default="px"),
-        'position_unit': Attr(key="position_unit", default="m", wrapper=unit),
-        'relative_position': Attr(key="relative_position",
+    energy = hdf.Attr(key='energy')
+    approximate_energy = hdf.Attr('approximate_energy', default=0.0)
+    _starttime = hdf.Attr('starttime')
+    _endtime = hdf.Attr('endtime')
+    _pixel_size_value = hdf.Attr(key="pixel_size_value", default=1)
+    _pixel_size_unit = hdf.Attr(key="pixel_size_unit",  default="px")
+    position_unit = hdf.Attr(key="position_unit", default="m", wrapper=unit)
+    relative_position = hdf.Attr(key="relative_position",
                                   default=position(0, 0, 0),
-                                  wrapper=lambda coords: position(*coords)),
-        'sample_position': Attr(key="sample_position",
+                                  wrapper=lambda coords: position(*coords))
+    sample_position = hdf.Attr(key="sample_position",
                                  default=(0, 0, 0),
-                                 wrapper=lambda coords: position(*coords)),
-        # wrapper=lambda coords: position(*coords)),
-        'original_filename': Attr('original_filename'),
-        'particle_labels_path': Attr(key="particle_labels_path"),
-        'active_particle_idx': Attr(key="active_particle_idx"),
-    }
+                                 wrapper=lambda coords: position(*coords))
+    original_filename = hdf.Attr('original_filename')
+    particle_labels_path = hdf.Attr(key="particle_labels_path")
+    active_particle_idx = hdf.Attr(key="active_particle_idx")
 
     def __init__(self, frameset=None, groupname=None):
         self.frameset = frameset
@@ -178,18 +174,11 @@ class TXMFrame():
             self.frame_group
         )
 
-    # @property
-    # def sample_position(self):
-    #     raw_pos = self._sample_position
-    #     unit = self.position_unit
-    #     pos = position([unit(c) for c in raw_pos])
-    #     return pos
-
-    # @sample_position.setter
-    # def sample_position(self, new_position):
-    #     self._sample_position = new_position
-
     def get_data(self, name):
+        """Retrieve image data with the given name."""
+        return self._get_data(name=name)
+
+    def _get_data(self, name):
         """Retrieve image data with the given name."""
         with self.hdf_file(mode="a") as f:
             # Get current representation
@@ -201,7 +190,10 @@ class TXMFrame():
         return data
 
     def set_data(self, name, data):
-        """Save image data as as a dataset whose name is the given
+        return self._set_data(name=name, data=data)
+
+    def _set_data(self, name, data):
+        """Save image data as a dataset whose name is the given
         representation."""
         with self.hdf_file(mode="a") as f:
             try:
@@ -218,11 +210,6 @@ class TXMFrame():
     @image_data.setter
     def image_data(self, new_data):
         self.set_data(name="image_data", data=new_data)
-
-    @property
-    def image_modulus(self):
-        img = np.abs(self.image_data)
-        return img
 
     @property
     def particle_labels(self):
@@ -354,15 +341,6 @@ class TXMFrame():
                               verticalalignment='center')
                 artists.append(txt)
         return artists
-
-    # def remove_outliers(self, sigma):
-    #     """Mark as invalid any pixels more that `sigma` standard deviations
-    #     away from the median."""
-    #     d = np.abs(self.image_data - np.median(self.image_data))
-    #     sdev = np.std(self.image_data)
-    #     # mdev = np.median(d)
-    #     s = d / sdev if sdev else 0.
-    #     self.image_data[s >= sigma] = 0
 
     def crop(self, bottom, left, top, right):
         """Reduce the image size to given box (in pixels)."""
@@ -502,16 +480,6 @@ class TXMFrame():
         new_frame.image_data = dataset
         return new_frame
 
-    # def particle_labels(self):
-    #     if self.particle_labels_path is None:
-    #         raise exceptions.NoParticleError
-    #     elif not self.particle_labels_path in self.image_data.file:
-    #         msg = "Could not load {}".format(self.particle_labels_path)
-    #         raise exceptions.FrameFileNotFound(msg)
-    #     else:
-    #         labels = self.image_data.file[self.particle_labels_path]
-    #     return labels
-
     def activate_closest_particle(self, loc):
         """Get a particle that's closest to frame location and save for future
         reference."""
@@ -549,6 +517,42 @@ class TXMFrame():
             particles.append(Particle(regionprops=prop, frame=self))
         return particles
 
+
+# def image_phase(a):
+#     """Calculate the phase (in radians) of a complex numpy array. Output values
+#     range from -pi to +pi."""
+#     phase = np.tan(a.imag / a.real)
+#     # Convert nan to pi in case a.real is zero
+#     phase[np.isnan(phase)] = np.pi / 2
+#     return phase
+
+
+class PtychoFrame(TXMFrame):
+    def get_data(self, name):
+        """
+        Retrieves the data as representation `name`. Since the image data
+        are complex, some special names are defined (anything else is assumed
+        to be an HDF5 dataset name):
+        - "modulus": Magnitude of complex number
+        - "phase": Phase of complex number
+        - "real": Just real component of each value
+        - "imag": Just the imaginary component of each value
+        """
+        # Get complex data if necessary
+        if name in ['modulus', 'phase', 'real', 'imag']:
+            _data = self._get_data(name="image_data")
+        if name == "modulus":
+            data = np.abs(_data)
+        elif name == "phase":
+            data = np.angle(_data)
+        elif name == "real":
+            data = _data.real
+        elif name == "imag":
+            data = _data.imag
+        else:
+            # No magic name was given, just get the requested dataset
+            data = self._get_data(name=name)
+        return data
 
 def calculate_particle_labels(data, return_intermediates=False,
                               min_distance=0.016):

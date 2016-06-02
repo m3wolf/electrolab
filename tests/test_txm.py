@@ -35,7 +35,8 @@ from utilities import xycoord, prog
 from peakfitting import Peak
 from txm.xanes_frameset import XanesFrameset, calculate_direct_whiteline, calculate_gaussian_whiteline
 from txm.frame import ( TXMFrame, xy_to_pixel, pixel_to_xy, Extent,
-                        Pixel, rebin_image, apply_reference, position)
+                        Pixel, rebin_image, apply_reference, position,
+                        image_phase)
 from xas.edges import KEdge, k_edges
 from txm.importers import import_txm_framesets
 from txm.xradia import XRMFile, decode_ssrl_params, decode_aps_params
@@ -339,6 +340,32 @@ class ZoneplateTest(ScimapTestCase):
         # self.assertApproximatelyEqual(result.x, 0)
         # self.assertApproximatelyEqual(result.y, 0)
         # self.assertApproximatelyEqual(result.z, 3120.6329)
+
+
+# class PtychoTest(unittest.TestCase):
+#     def test_complex_phase(self):
+#         """Veryify that a complex image array is properly converted to phase."""
+#         # Only real component
+#         a = np.array([1 + 0j])
+#         out = image_phase(a)
+#         self.assertTrue(np.equal(out, np.array([0])))
+#         # Only imaginary component
+#         a = np.array([0 + 1j])
+#         out = image_phase(a)
+#         exp = np.array([np.pi / 2])
+#         self.assertTrue(np.equal(out, exp))
+#         # Negative values (on the bottom of the complex plane)
+#         a = np.array([1 + -1j])
+#         out = image_phase(a)
+#         print(out)
+#         exp = np.array([np.pi / 4])
+#         self.assertTrue(np.equal(out, exp))
+#         # Real and imaginary
+#         a = np.array([-1 + 1j])
+#         out = image_phase(a)
+#         print(out)
+#         exp = np.array([3*np.pi / 4])
+#         self.assertTrue(np.equal(out, exp))
 
 
 class XrayEdgeTest(unittest.TestCase):

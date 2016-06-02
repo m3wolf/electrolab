@@ -37,13 +37,12 @@ from units import unit, predefined
 from utilities import prog, xycoord, Pixel, shape
 from peakfitting import Peak
 from .frame import (
-    TXMFrame, calculate_particle_labels, pixel_to_xy,
+    TXMFrame, PtychoFrame, calculate_particle_labels, pixel_to_xy,
     apply_reference, position)
 from .plotter import FramesetPlotter, FramesetMoviePlotter
 from plots import new_axes, new_image_axes
 import exceptions
 import hdf
-from hdf import Attr, hdf_attrs
 import smp
 
 predefined.define_units()
@@ -202,7 +201,7 @@ def calculate_direct_whiteline(data, *args, **kwargs):
     goodness = np.ones_like(whiteline_energies)
     return (whiteline_energies, goodness)
 
-@hdf_attrs
+# @hdf_attrs
 class XanesFrameset():
     """A collection of TXM frames at different energies moving across an
     absorption edge. Iterating over this object gives the individual
@@ -217,19 +216,22 @@ class XanesFrameset():
     frameset. This argument is only required if there is more than one
     top-level group.
     """
+    FrameClass = TXMFrame
     active_group = ''
     cmap = 'plasma'
+
+    # HDF Attributes
     hdf_default_scope = "frameset"
-    hdfattrs = {
-        'reference_group': Attr('reference_group', default="default"),
-        'latest_group': Attr('latest_group', default="default"),
-        'map_method': Attr('map_method', scope="subset"),
-        'map_name': Attr('map_name', scope="subset"),
-        'map_goodness_name': Attr('map_goodness_name', scope="subset"),
-        'default_representation': Attr('default_representation',
-                                       scope="subset",
-                                       default="modulus"),
-    }
+    reference_group = hdf.Attr('reference_group', default="default")
+    latest_group = hdf.Attr('latest_group', default="default")
+    map_method = hdf.Attr('map_method', scope="subset")
+    map_name = hdf.Attr('map_name', scope="subset")
+    map_goodness_name = hdf.Attr('map_goodness_name', scope="subset")
+    default_representation = hdf.Attr('default_representation',
+                                  scope="subset",
+                                  default="modulus")
+    latest_group = hdf.Attr('latest_group', default="default")
+    map_method = hdf.Attr('map_method', scope="subset")
 
     def __init__(self, filename, edge, groupname=None):
         self.hdf_filename = filename
@@ -277,7 +279,7 @@ class XanesFrameset():
         energies = self.energies()
         for E in energies:
             frame_group = os.path.join(self.active_group, energy_key.format(E))
-            yield TXMFrame(frameset=self, groupname=frame_group)
+            yield self.FrameClass(frameset=self, groupname=frame_group)
 
     def __len__(self):
         return len(self.energies())
@@ -301,7 +303,7 @@ class XanesFrameset():
             #     energy = energies[index]
         group = os.path.join(self.active_group,
                              energy_key.format(float(energy)))
-        frame = TXMFrame(frameset=self, groupname=group)
+        frame = self.FrameClass(frameset=self, groupname=group)
         return frame
 
     def save_images(self, directory):
@@ -357,8 +359,7 @@ class XanesFrameset():
         return fs
 
     def representations(self):
-        """Retrieve a list of valid representations for these data, such as
-        modulus or phase data for ptychography."""
+        """Retrieve a list of valid representations for these data."""
         with self.hdf_file() as f:
             reps = list(f[self[0].frame_group].keys())
         return reps
@@ -1195,7 +1196,7 @@ class XanesFrameset():
             data = payload['data']
             # labels.create_dataset(key, data=data, compression='gzip')
             # Write path to saved particle labels
-            frame = TXMFrame(frameset=self, groupname=payload['key'])
+            frame = self.FrameClass(frameset=self, groupname=payload['key'])
             frame.particle_labels = data
             # Return a shell of the original dictionary so smp handler
             # does not over-right real image data with labels
@@ -1310,7 +1311,8 @@ class XanesFrameset():
         return median_frame
 
     @functools.lru_cache()
-    def xanes_spectrum(self, pixel=None, edge_jump_filter=""):
+    def xanes_spectrum(self, pixel=None, edge_jump_filter="",
+                       representation="modulus"):
         """Collapse the dataset down to a two-dimensional spectrum. Returns a
         pandas series containing the resulting spectrum.
 
@@ -1334,7 +1336,7 @@ class XanesFrameset():
             mask = self.edge_jump_mask()
         # Determine the contribution from each energy frame
         for frame in self:
-            data = frame.image_data
+            data = frame.get_data(name=representation)
             # Determine which subset of pixels to use
             if pixel is not None:
                  # Specific pixel is requested
@@ -1776,6 +1778,27 @@ class XanesFrameset():
         pyplot.close()
 
 
+class PtychoFrameset(XanesFrameset):
+    """A set of images ("frames") at different energies moving across an
+    absorption edge. The individual frames should be generated by
+    ptychographic reconstruction of scanning transmission X-ray
+    microscopy (STXM) to produce an array complex intensity
+    values. This class does *not* include any code responsible for the
+    collection and reconstruction of such data, only for the analysis
+    in the context of X-ray absorption near edge spectroscopy."""
+    FrameClass = PtychoFrame
+
+    def representations(self):
+        """Retrieve a list of valid representations for these data, such as
+        modulus or phase data for ptychography."""
+        reps = super().representations()
+        reps += ['modulus', 'phase', 'real', 'imag']
+        # Complex image data cannot be properly displayed
+        if 'image_data' in reps:
+            reps.remove('image_data')
+        return reps
+
+
 def process_with_smp(frameset: XanesFrameset,
                      worker: Callable[[dict], dict],
                      process_result: Callable[[dict], dict]=None,
@@ -1806,7 +1829,7 @@ def process_with_smp(frameset: XanesFrameset,
     """
     # Prepare callbacks and queue
     def result_callback(payload):
-        frame = TXMFrame(frameset=frameset, groupname=payload['key'])
+        frame = frameset.FrameClass(frameset=frameset, groupname=payload['key'])
         # Call user-provided result callback
         if process_result is not None:
             payload = process_result(payload)

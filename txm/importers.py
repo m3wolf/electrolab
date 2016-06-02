@@ -31,7 +31,7 @@ from scipy.constants import physical_constants
 
 import default_units
 from .xradia import XRMFile, decode_ssrl_params, decode_aps_params
-from .xanes_frameset import XanesFrameset, energy_key
+from .xanes_frameset import XanesFrameset, PtychoFrameset, energy_key
 from .frame import TXMFrame, remove_outliers
 from utilities import prog
 import exceptions
@@ -115,22 +115,21 @@ def import_ptychography_frameset(directory: str,
     Arguments
     ---------
 
-    - results_dir : Directory where to look for results. It should
-    contain a subdirectory named "tiffs" and a file named
-    "energies.txt"
+    - directory : Directory where to look for results. It should
+    contain .cxi files that are the output of the ptychography reconstruction."
 
     - hdf_filename : HDF File used to store computed results. If
-      omitted, the `directory` basename is used
+      omitted or None, the `directory` basename is used
 
     - hdf_groupname : String to use for the hdf group of this
     dataset. If omitted or None, the `directory` basename is
-    used. Raises an exception if the group exists.
+    used. Raises an exception if the group already exists in the HDF file.
     """
     CURRENT_VERSION = "0.2" # Let's file loaders deal with changes to storage
     # Prepare some filesystem information
-    tiff_dir = os.path.join(directory, "tiffs")
-    modulus_dir = os.path.join(tiff_dir, "modulus")
-    stxm_dir = os.path.join(tiff_dir, "modulus")
+    # tiff_dir = os.path.join(directory, "tiffs")
+    # modulus_dir = os.path.join(tiff_dir, "modulus")
+    # stxm_dir = os.path.join(tiff_dir, "modulus")
     # Prepare the HDF5 file and metadata
     hdf_group = _prepare_hdf_group(filename=hdf_filename,
                                    groupname=hdf_groupname,
@@ -166,7 +165,7 @@ def import_ptychography_frameset(directory: str,
             energy_set.attrs['pixel_unit'] = "nm"
             # Save dataset
             data = f['/entry_1/image_1/data'].value
-            energy_set.create_dataset('ptychography',
+            energy_set.create_dataset('image_data',
                                       data=data,
                                       chunks=True,
                                       compression="gzip")
