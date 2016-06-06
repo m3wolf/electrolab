@@ -31,6 +31,7 @@ from skimage.exposure import rescale_intensity
 from skimage.measure import regionprops, label
 from skimage.filters import threshold_adaptive, rank
 from skimage.feature import peak_local_max
+from skimage.restoration import unwrap_phase
 from units import unit, predefined
 
 import exceptions
@@ -280,12 +281,12 @@ class TXMFrame():
         return Extent(left=left.num, right=right.num,
                       bottom=bottom.num, top=top.num)
 
-    def plot_histogram(self, ax=None, bins=100, *args, **kwargs):
+    def plot_histogram(self, ax=None, bins=100, representation=None, *args, **kwargs):
         if ax is None:
             ax = plots.new_axes()
         ax.set_xlabel('Absorbance (AU)')
         ax.set_ylabel('Occurences')
-        data = np.nan_to_num(self.image_data)
+        data = np.nan_to_num(self.get_data(name=representation))
         artist = ax.hist(data.flatten(), bins=bins, *args, **kwargs)
         return artist
 
@@ -516,15 +517,6 @@ class TXMFrame():
         for prop in props:
             particles.append(Particle(regionprops=prop, frame=self))
         return particles
-
-
-# def image_phase(a):
-#     """Calculate the phase (in radians) of a complex numpy array. Output values
-#     range from -pi to +pi."""
-#     phase = np.tan(a.imag / a.real)
-#     # Convert nan to pi in case a.real is zero
-#     phase[np.isnan(phase)] = np.pi / 2
-#     return phase
 
 
 class PtychoFrame(TXMFrame):

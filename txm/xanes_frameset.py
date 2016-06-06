@@ -27,6 +27,7 @@ import os
 import pandas as pd
 from matplotlib import cm, pyplot
 from matplotlib.colors import Normalize
+from scipy import linalg
 import h5py
 import numpy as np
 from skimage import morphology, filters, feature, transform, exposure, color
@@ -465,60 +466,6 @@ class XanesFrameset():
             if new_data.shape != frame.image_data.shape:
                 frame.image_data.resize(new_data.shape)
             frame.image_data.write_direct(new_data)
-
-    def apply_internal_reference(self, mask=None, plot_background=True, ax=None):
-        """Use a portion of each frame for internal reference correction. This
-        converts frames from intensity to absorbance. The median of
-        unmasked pixels is used as I_0. If a mask is not provided, one
-        is calculated by thresholding. The absorbance of each frame is
-        taken as the log_10(I_0/I) for each pixel intensity I.
-
-        Arguments
-        ---------
-
-        mask : An array the same size as each frame that contains a
-          mask to be provided to numpy's ma module.
-
-        plot_background : If truthy, the values of I_0 are plotted as
-          a function of energy.
-
-        ax : The axes to use for plotting if `plot_background` is
-          truthy.
-
-        """
-        self.fork_group("reference_corrected")
-        # Convert the supplied mask to grayscale
-        if mask is not None:
-            graymask = color.rgb2gray(mask)
-        # Array for holding background correction for plotting
-        if plot_background:
-            Es = []
-            I_0s = []
-        # Step through each frame and apply reference correction
-        for frame in prog(self, "Reference correction"):
-            if mask is None:
-                # Calculate background intensity using thresholding
-                img = frame.image_data
-                threshold = filters.threshold_yen(img)
-                background = img[img > threshold]
-                I_0 = np.median(background)
-            else:
-                data = np.ma.array(frame.image_data, mask=graymask)
-                I_0 = np.ma.median(data)
-            # Save values for plotting
-            if plot_background:
-                Es.append(frame.energy)
-                I_0s.append(I_0)
-            # Apply actual reference
-            frame.image_data = np.log(I_0 / frame.image_data)
-        # Plot background for evaluation
-        if plot_background:
-            if ax is None:
-                ax = new_axes()
-            ax.plot(Es, I_0s)
-            ax.set_title("Background Intensity used for Reference Correction")
-            ax.set_xlabel("Energy (eV)")
-            ax.set_ylabel("$I_0$")
 
     def correct_magnification(self):
         """Correct for changes in magnification at different energies.
@@ -1358,6 +1305,7 @@ class XanesFrameset():
 
     def plot_xanes_spectrum(self, ax=None, pixel=None,
                             norm_range=None, normalize=False,
+                            representation="modulus",
                             show_fit=False, edge_jump_filter=False):
         """Calculate and plot the xanes spectrum for this field-of-view.
 
@@ -1379,7 +1327,7 @@ class XanesFrameset():
         if norm_range is None:
             norm_range = (self.edge.map_range[0], self.edge.map_range[1])
         norm = Normalize(*norm_range)
-        spectrum = self.xanes_spectrum(pixel=pixel, edge_jump_filter=edge_jump_filter)
+        spectrum = self.xanes_spectrum(pixel=pixel, edge_jump_filter=edge_jump_filter, representation=representation)
         edge = self.edge()
         if ax is None:
             ax = new_axes()
@@ -1797,6 +1745,72 @@ class PtychoFrameset(XanesFrameset):
         if 'image_data' in reps:
             reps.remove('image_data')
         return reps
+
+    def apply_internal_reference(self, mask=None, plot_background=True, ax=None):
+        """Use a portion of each frame for internal reference correction. The
+        result is the complex refraction for each pixel: the real
+        component describes the phase shift, and the imaginary
+        component is exponential decay, ie. absorbance.
+
+        Arguments
+        ---------
+
+        mask : An array the same size as each frame that contains a
+          mask to be provided to numpy's ma module.
+
+        plot_background : If truthy, the values of I_0 are plotted as
+          a function of energy.
+
+        ax : The axes to use for plotting if `plot_background` is
+          truthy.
+
+        """
+        self.fork_group("reference_corrected")
+        # Convert the supplied mask to grayscale
+        if mask is not None:
+            graymask = color.rgb2gray(mask)
+        # Array for holding background correction for plotting
+        if plot_background:
+            Es = []
+            I_0s = []
+        # Step through each frame and apply reference correction
+        for frame in prog(self, "Reference correction"):
+            img = frame.get_data("modulus")
+            if mask is None:
+                # Calculate background intensity using thresholding
+                threshold = filters.threshold_yen(img)
+                graymask = img > threshold
+                background = img[img > threshold]
+                I_0 = np.median(background)
+            else:
+                data = np.ma.array(img, mask=graymask)
+                I_0 = np.ma.median(data)
+            # Save values for plotting
+            if plot_background:
+                Es.append(frame.energy)
+                I_0s.append(I_0)
+            # Calculate absorbance based on background
+            absorbance = np.log(I_0 / frame.image_data)
+            # Calculate relative phase shift
+            phase = frame.get_data('phase')
+            phase - np.median((phase * graymask)[graymask > 0])
+            # The phase data has a gradient in the background, so remove it
+            x,y = np.meshgrid(np.arange(phase.shape[1]),np.arange(phase.shape[0]))
+            A = np.column_stack([y.flatten(), x.flatten(), np.ones_like(x.flatten())])
+            p, residuals, rank, s = linalg.lstsq(A, phase.flatten())
+            bg = p[0] * y + p[1] * x + p[2]
+            phase = phase - bg
+            # Save complex image
+            frame.image_data = phase + absorbance * complex(0, 1)
+
+        # Plot background for evaluation
+        if plot_background:
+            if ax is None:
+                ax = new_axes()
+            ax.plot(Es, I_0s)
+            ax.set_title("Background Intensity used for Reference Correction")
+            ax.set_xlabel("Energy (eV)")
+            ax.set_ylabel("$I_0$")
 
 
 def process_with_smp(frameset: XanesFrameset,

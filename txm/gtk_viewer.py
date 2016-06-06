@@ -451,6 +451,8 @@ class GtkTxmViewer():
                 artist.remove()
 
     def refresh_artists(self, *args, **kwargs):
+        # Redraw xanes spectrum
+        self.plotter.plot_xanes_spectrum()
         def connect_animation():
             self.plotter.connect_animation(self.event_source)
         GLib.idle_add(connect_animation)

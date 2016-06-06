@@ -329,7 +329,8 @@ class GtkFramesetPlotter(FramesetPlotter):
         ret = super().plot_xanes_spectrum(normalize=normalize,
                                           pixel=self.active_pixel,
                                           show_fit=show_fit,
-                                          edge_jump_filter=self.apply_edge_jump)
+                                          edge_jump_filter=self.apply_edge_jump,
+                                          representation=self.active_representation)
         self.xanes_ax.figure.canvas.draw()
         # Plot zoomed in edge-view
         self.edge_ax.clear()

@@ -415,7 +415,7 @@ class Map():
         self.draw_edge(ax, color='red')
         return ax
 
-    def plot_histogram(self, ax=None):
+    def plot_histogram(self, ax=None, bins=100):
         minimum = self.metric_normalizer.vmin
         maximum = self.metric_normalizer.vmax
         metrics = [locus.metric for locus in self.loci]
@@ -424,7 +424,7 @@ class Map():
         if ax is None:
             ax = new_axes(height=4, width=7)
         # Generate the histogram
-        n, bins, patches = ax.hist(metrics, bins=100, weights=weights)
+        n, bins, patches = ax.hist(metrics, bins=bins, weights=weights)
         # Set the colors based on the metric normalizer
         for patch in patches:
             x_position = patch.get_x()
