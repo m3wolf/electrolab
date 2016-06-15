@@ -45,7 +45,7 @@ from peakfitting import Peak
 from refinement import fullprof
 
 from xrd.unitcell import CubicUnitCell, HexagonalUnitCell, TetragonalUnitCell
-from xrd import standards, lmo
+from xrd import standards, lmo, nca
 from xrd.lmo import LMOPlateauMap
 from xrd.reflection import Reflection
 from xrd.peak import XRDPeak
