@@ -146,12 +146,21 @@ def import_ptychography_frameset(directory: str,
     hdf_group["imported"].attrs["parent"] = ""
     hdf_group["imported"].attrs["default_representation"] = "ptychography"
     file_re = re.compile("projection_modulus_(?P<energy>\d+\.\d+)\.tif")
+    # Check that the directory exists
+    if not os.path.exists(directory):
+        msg = "Could not find directory {}".format(directory)
+        raise exceptions.DataNotFoundError(msg)
     # Look in each directory for cxi files
     cxifiles = []
     for root, dirs, files in os.walk(directory):
         for file in files:
             if file.endswith(".cxi"):
                 cxifiles.append(os.path.join(root, file))
+    # Check that we actually found some data
+    if len(cxifiles) == 0:
+        msg = "{} contained no cxi files to import."
+        raise exceptions.DataNotFoundError(msg)
+    # Import any cxi files that were found
     for filename in cxifiles:
         with h5py.File(filename, mode='r') as f:
             # Extract energy in Joules and convert to eV

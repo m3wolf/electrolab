@@ -19,7 +19,7 @@ class NCA(Phase):
     unit_cell = HexagonalUnitCell(a=2.86687, c=14.18385)
     spacegroup = 'R-3m'
     fullprof_spacegroup = 'R -3 M'
-    diagnostic_hkl = ''
+    diagnostic_hkl = '113'
     reflection_list = [
         Reflection('107', (57, 60), multiplicity=1),
         Reflection('108', (64, 66), multiplicity=1),

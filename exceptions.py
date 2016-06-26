@@ -80,6 +80,10 @@ class FileFormatError(ValueError):
 #########################
 # X-ray microscopy errors
 #########################
+class DataNotFoundError(FileNotFoundError):
+    """Expected a directory containing data but found none."""
+    pass
+
 class FrameFileNotFound(IOError):
     """Expected to load a TXM frame file but it doesn't exist."""
     pass

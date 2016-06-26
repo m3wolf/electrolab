@@ -299,9 +299,6 @@ class XanesFrameset():
             # Get energy from index
             energies = self.energies()
             energy = energies[index]
-            # with self.hdf_file(mode='r') as f:
-            #     energies = f[self.frameset_group]['energies']
-            #     energy = energies[index]
         group = os.path.join(self.active_group,
                              energy_key.format(float(energy)))
         frame = self.FrameClass(frameset=self, groupname=group)
@@ -1674,6 +1671,10 @@ class XanesFrameset():
         return setname
 
     def drop_frame(self, index):
+        """Delete frame with the given index (int) or energy (float). This
+        destructively removes the data from the HDF5 file, so use with
+        caution.
+        """
         frame = self[index]
         with self.hdf_file(mode="a") as f:
             # Delete group
@@ -1734,6 +1735,7 @@ class PtychoFrameset(XanesFrameset):
     values. This class does *not* include any code responsible for the
     collection and reconstruction of such data, only for the analysis
     in the context of X-ray absorption near edge spectroscopy."""
+
     FrameClass = PtychoFrame
 
     def representations(self):

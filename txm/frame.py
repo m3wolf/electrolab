@@ -290,7 +290,7 @@ class TXMFrame():
         artist = ax.hist(data.flatten(), bins=bins, *args, **kwargs)
         return artist
 
-    def plot_image(self, data=None, ax=None,
+    def plot_image(self, data=None, ax=None, cmap="gray",
                    show_particles=True, representation=None,
                    *args, **kwargs):
         """Plot a frame's data image. Use frame.image_data if no data are
@@ -300,7 +300,7 @@ class TXMFrame():
         if data is None:
             data = self.get_data(name=representation)
         extent = self.extent(img_shape=shape(*data.shape))
-        im_ax = ax.imshow(data, *args, cmap='gray', extent=extent,
+        im_ax = ax.imshow(data, *args, cmap=cmap, extent=extent,
                           origin="lower", **kwargs)
         # Plot particles
         if show_particles:
@@ -525,25 +525,29 @@ class PtychoFrame(TXMFrame):
         Retrieves the data as representation `name`. Since the image data
         are complex, some special names are defined (anything else is assumed
         to be an HDF5 dataset name):
-        - "modulus": Magnitude of complex number
+        - "modulus" or None: Magnitude of complex number
         - "phase": Phase of complex number
         - "real": Just real component of each value
         - "imag": Just the imaginary component of each value
         """
+        if name is None:
+            realname = "modulus"
+        else:
+            realname = name
         # Get complex data if necessary
-        if name in ['modulus', 'phase', 'real', 'imag']:
+        if realname in ['modulus', 'phase', 'real', 'imag']:
             _data = self._get_data(name="image_data")
-        if name == "modulus":
+        if realname == "modulus":
             data = np.abs(_data)
-        elif name == "phase":
+        elif realname == "phase":
             data = np.angle(_data)
-        elif name == "real":
+        elif realname == "real":
             data = _data.real
-        elif name == "imag":
+        elif realname == "imag":
             data = _data.imag
         else:
             # No magic name was given, just get the requested dataset
-            data = self._get_data(name=name)
+            data = self._get_data(name=realname)
         return data
 
 def calculate_particle_labels(data, return_intermediates=False,
