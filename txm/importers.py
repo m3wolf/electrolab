@@ -144,7 +144,7 @@ def import_ptychography_frameset(directory: str,
     imported_group = imported.name
     hdf_group["imported"].attrs["level"] = 0
     hdf_group["imported"].attrs["parent"] = ""
-    hdf_group["imported"].attrs["default_representation"] = "ptychography"
+    hdf_group["imported"].attrs["default_representation"] = "modulus"
     file_re = re.compile("projection_modulus_(?P<energy>\d+\.\d+)\.tif")
     # Check that the directory exists
     if not os.path.exists(directory):
@@ -170,8 +170,8 @@ def import_ptychography_frameset(directory: str,
             energy_set = imported.create_group(energy_key.format(energy))
             energy_set.attrs['energy'] = energy
             energy_set.attrs['approximate_energy'] = round(energy, 2)
-            energy_set.attrs['pixel_size'] = 4.17
-            energy_set.attrs['pixel_unit'] = "nm"
+            energy_set.attrs['pixel_size_value'] = 4.17
+            energy_set.attrs['pixel_size_unit'] = "nm"
             # Save dataset
             data = f['/entry_1/image_1/data'].value
             energy_set.create_dataset('image_data',

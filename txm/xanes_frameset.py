@@ -202,7 +202,29 @@ def calculate_direct_whiteline(data, *args, **kwargs):
     goodness = np.ones_like(whiteline_energies)
     return (whiteline_energies, goodness)
 
-# @hdf_attrs
+def _transform(data, scale=None, rotation=None, translation=None):
+    """Apply a similarity transformation to the given (optionally complex)
+    data. Arguments are the same as
+    http://scikit-image.org/docs/dev/api/skimage.transform.html"""
+    transformation = transform.SimilarityTransform(
+        scale=scale,
+        translation=translation,
+        rotation=rotation
+    )
+    warp_kwargs = {
+        'order': 3,
+        'inverse_map': transformation,
+        'mode': 'wrap',
+        'preserve_range': True,
+    }
+    # Apply the transformation
+    new_data = transform.warp(data.real, **warp_kwargs)
+    # Apply transformation to imaginary component
+    if np.any(data.imag):
+        j = complex(0, 1)
+        new_data = np.add(new_data, j * transform.warp(data.imag, **warp_kwargs))
+    return new_data
+
 class XanesFrameset():
     """A collection of TXM frames at different energies moving across an
     absorption edge. Iterating over this object gives the individual
@@ -291,7 +313,7 @@ class XanesFrameset():
         normal index."""
         if isinstance(index, float):
             # Floats are considered to be scan energies
-            energy = index
+            energy = round(index, 2)
             # Check that the energy is a valid option
             if energy not in self.energies():
                 raise KeyError(energy)
@@ -533,11 +555,12 @@ class XanesFrameset():
             shift = shift_func(payload)
             transformation = transform.SimilarityTransform(translation=shift)
             new_data = transform.warp(data, transformation,
-                                      order=3, mode="wrap")
+                                      order=3, mode="wrap", preserve_range=True)
             # Transform labels
             original_dtype = labels.dtype
             labels = labels.astype(np.float64)
-            new_labels = transform.warp(labels, transformation, order=0, mode="constant")
+            new_labels = transform.warp(labels, transformation,
+                                        order=0, mode="constant", preserve_range=True)
             new_labels = new_labels.astype(original_dtype)
             ret = {
                 'key': key,
@@ -730,16 +753,10 @@ class XanesFrameset():
             # Retrieve reference frame
             if reference_frame == "mean":
                 reference_image = self.mean_image()
-                reference_image = exposure.rescale_intensity(
-                    reference_image, out_range=out_range)
             elif reference_frame == "median":
                 reference_image = self.median_image()
-                reference_image = exposure.rescale_intensity(
-                    reference_image, out_range=out_range)
             else:
                 reference_image = self[reference_frame].image_data
-                reference_image = exposure.rescale_intensity(
-                    reference_image, out_range=out_range)
                 if blur == "median":
                     reference_image = filters.median(reference_image,
                                                      morphology.disk(20))
@@ -768,8 +785,7 @@ class XanesFrameset():
                 key = payload['key']
                 data = payload['data']
                 # Temporarily rescale the data to be between -1 and 1
-                scaled_data = exposure.rescale_intensity(data,
-                                                         out_range=out_range)
+                scaled_data = data
                 if blur == "median":
                     blurred_data = filters.median(scaled_data, morphology.disk(20))
                 elif blur is None:
@@ -795,9 +811,10 @@ class XanesFrameset():
                         y=center.vertical - reference_center.vertical,
                     )
                 # Apply net transformation with bicubic interpolation
-                transformation = transform.SimilarityTransform(translation=shift)
-                new_data = transform.warp(data, transformation,
-                                          order=3, mode="wrap")
+                # transformation = transform.SimilarityTransform(translation=shift)
+                # new_data = transform.warp(data, transformation,
+                #                           order=3, mode="wrap", preserve_range=True)
+                new_data = _transform(data, translation=shift)
                 # # Reset intensities of original values
                 # new_data = exposure.rescale_intensity(new_data,
                 #                                       in_range=out_range,
@@ -812,7 +829,7 @@ class XanesFrameset():
                 if labels:
                     original_dtype = labels.dtype
                     labels = labels.astype(np.float64)
-                    new_labels = transform.warp(labels, transformation, order=0, mode="constant")
+                    new_labels = transform.warp(labels, transformation, order=0, mode="constant", preserve_range=True)
                     new_labels = new_labels.astype(original_dtype)
                     result['labels'] = new_labels
                 return result
@@ -872,9 +889,6 @@ class XanesFrameset():
 
         # Perform a final, complete translation and cropping if necessary
         if passes > 1:
-            # Retrieve reference frame
-            # original_shape = shape(*self[reference_frame].image_data.shape)
-            # reference_image = self[reference_frame].image_data
             # Revert back to original frameset
             self.switch_group(os.path.basename(original_group))
             self.fork_group(new_name)
@@ -885,11 +899,6 @@ class XanesFrameset():
                 key = payload['key']
                 data = payload['data']
                 # Temporarily rescale the data to be between -1 and 1
-                in_range = (data.min(), data.max())
-                out_range = (-1, 1)
-                data = exposure.rescale_intensity(data,
-                                                  in_range=in_range,
-                                                  out_range=out_range)
                 labels = payload.get('labels', None)
                 # Compute the net translation needed for this frame
                 curr_shifts = shifts[key]
@@ -897,13 +906,7 @@ class XanesFrameset():
                     sum([n[0] for n in curr_shifts]),
                     sum([n[1] for n in curr_shifts])
                 )
-                transformation = transform.SimilarityTransform(translation=shift)
-                new_data = transform.warp(data, transformation,
-                                          order=3, mode="wrap")
-                # Reset intensities of original values
-                new_data = exposure.rescale_intensity(new_data,
-                                                      in_range=out_range,
-                                                      out_range=in_range)
+                new_data = _transform(data, translation=shift)
                 result = {
                     'key': key,
                     'energy': payload['energy'],
@@ -917,7 +920,7 @@ class XanesFrameset():
                     new_labels = transform.warp(labels,
                                                 transformation,
                                                 order=0,
-                                                mode="constant")
+                                                mode="constant", preserve_range=True)
                     new_labels = new_labels.astype(original_dtype)
                     result['labels'] = new_labels
                 return result
@@ -992,11 +995,11 @@ class XanesFrameset():
                 # Apply the translation with bicubic interpolation
                 transformation = transform.SimilarityTransform(translation=shift)
                 new_data = transform.warp(data, transformation,
-                                          order=3, mode="wrap")
+                                          order=3, mode="wrap", preserve_range=True)
                 # Transform labels
                 original_dtype = labels.dtype
                 labels = labels.astype(np.float64)
-                new_labels = transform.warp(labels, transformation, order=0, mode="constant")
+                new_labels = transform.warp(labels, transformation, order=0, mode="constant", preserve_range=True)
                 new_labels = new_labels.astype(original_dtype)
                 ret = {
                     'key': key,
