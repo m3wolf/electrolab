@@ -66,6 +66,7 @@ def decode_ssrl_params(filename):
     sample_result = ssrl_regex_sample.search(filename)
     if bg_result:
         params = {
+            'repetition': int(bg_result.group(1)),
             'date_string': '',
             'sample_name': bg_result.group(3).strip("_"),
             'position_name': '',
@@ -74,6 +75,7 @@ def decode_ssrl_params(filename):
         }
     elif sample_result:
         params = {
+            'repetition': int(sample_result.group(1)),
             'date_string': '',
             'sample_name': sample_result.group(2).strip("_"),
             'position_name': '',

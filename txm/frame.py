@@ -176,8 +176,13 @@ class TXMFrame():
         )
 
     def get_data(self, name):
-        """Retrieve image data with the given name."""
-        return self._get_data(name=name)
+        """Retrieve image data with the given name. "Modulus" in this case
+        just returns the original data, since it is only real."""
+        if name == "modulus":
+            data = self._get_data(name="image_data")
+        else:
+            data = self._get_data(name=name)
+        return data
 
     def _get_data(self, name):
         """Retrieve image data with the given name."""

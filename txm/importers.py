@@ -256,7 +256,7 @@ def import_ssrl_frameset(directory, hdf_filename=None):
             name, extension = os.path.splitext(filename)
             if extension in format_classes.keys():
                 metadata = decode_ssrl_params(filename)
-                framesetname = metadata['sample_name'] + metadata['position_name']
+                framesetname = metadata['sample_name'] + "rep" + str(metadata['repetition']) + "_" + metadata['position_name']
                 if metadata['is_background']:
                     root = references
                 else:

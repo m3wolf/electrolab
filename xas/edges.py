@@ -265,6 +265,17 @@ class NCANickelLEdge(KEdge):
 #     post_edge = (8440, 8640)
 #     map_range = (8341, 8358)
 
+class LMOMnKEdge(KEdge):
+    regions = [
+        (6450, 6510, 20),
+        (6524, 6542, 2),
+        (6544, 6564, 1),
+        (6566, 6568, 2),
+        (6572, 6600, 4),
+        (6610, 6650, 10),
+        (6700, 6850, 50),
+    ]
+
 class NCANickelKEdge(KEdge):
     E_0 = 8333
     regions = [
@@ -314,6 +325,7 @@ class NCANickelKEdge62(NCANickelKEdge):
 # Dictionaries make it more intuitive to access these edges by element
 k_edges = {
     'Ni_NCA': NCANickelKEdge,
+    'Mn_LMO': LMOMnKEdge,
 }
 
 l_edges = {
