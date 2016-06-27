@@ -37,7 +37,7 @@ from units import unit, predefined
 import exceptions
 import plots
 import hdf
-from utilities import xycoord, Pixel, shape
+from utilities import xycoord, Pixel, shape, component
 from .particle import Particle
 
 predefined.define_units()
@@ -541,15 +541,7 @@ class PtychoFrame(TXMFrame):
             realname = name
         # Get complex data if necessary
         if realname in ['modulus', 'phase', 'real', 'imag']:
-            _data = self._get_data(name="image_data")
-        if realname == "modulus":
-            data = np.abs(_data)
-        elif realname == "phase":
-            data = np.angle(_data)
-        elif realname == "real":
-            data = _data.real
-        elif realname == "imag":
-            data = _data.imag
+            data = component(self._get_data(name="image_data"), name=name)
         else:
             # No magic name was given, just get the requested dataset
             data = self._get_data(name=realname)

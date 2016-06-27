@@ -35,7 +35,7 @@ from sklearn import linear_model
 from sklearn.utils import validation
 from units import unit, predefined
 
-from utilities import prog, xycoord, Pixel, shape
+from utilities import prog, xycoord, Pixel, shape, component
 from peakfitting import Peak
 from .frame import (
     TXMFrame, PtychoFrame, calculate_particle_labels, pixel_to_xy,
@@ -201,6 +201,7 @@ def calculate_direct_whiteline(data, *args, **kwargs):
     whiteline_energies = map_energy(whiteline_indices)
     goodness = np.ones_like(whiteline_energies)
     return (whiteline_energies, goodness)
+
 
 def _transform(data, scale=None, rotation=None, translation=None):
     """Apply a similarity transformation to the given (optionally complex)
@@ -669,8 +670,9 @@ class XanesFrameset():
                      method: str="cross_correlation",
                      methods=[],
                      template=None,
-                     crop=True):
-        """Use phase correlation algorithm to line up the frames. All frames
+                     crop=True,
+                     representation="modulus"):
+        """Use cross correlation algorithm to line up the frames. All frames
         have their sample position set set to (0, 0) since we don't
         know which one is the real position. This operation will
         interpolate between pixels so introduces error. If multiple
@@ -714,6 +716,8 @@ class XanesFrameset():
           it will wrap around, which can be useful for diagnosing
           overzealous cropping.
 
+        representation : What component of the data to use: 'modulus', 'phase', 'imag' or 'real'.
+
         """
         # Check for valid attributes
         valid_filters = ["median", None]
@@ -736,7 +740,7 @@ class XanesFrameset():
             raise ValueError(msg)
         # Guess best reference frame to use
         if reference_frame is "max":
-            spectrum = self.xanes_spectrum()
+            spectrum = self.xanes_spectrum(representation=representation)
             reference_frame = np.argmax(spectrum.values)
         # Keep track of how many passes and where we started
         current_pass = 0
@@ -773,8 +777,8 @@ class XanesFrameset():
                     ]
                 else:
                     reference_target = template
-                reference_match = feature.match_template(reference_image,
-                                                         reference_target,
+                reference_match = feature.match_template(component(reference_image, "imag"),
+                                                         component(reference_target, "imag"),
                                                          pad_input=True)
                 reference_center = np.unravel_index(reference_match.argmax(),
                                                     reference_match.shape)
@@ -800,8 +804,8 @@ class XanesFrameset():
                     shift = xycoord(-shift[1], -shift[0])
                 elif current_method == "template_match":
                     # Determine what the new translation should be
-                    match = feature.match_template(scaled_data,
-                                                   reference_target,
+                    match = feature.match_template(component(scaled_data, "imag"),
+                                                   component(reference_target, "imag"),
                                                    pad_input=True)
                     center = np.unravel_index(match.argmax(), match.shape)
                     center = Pixel(vertical=center[0], horizontal=center[1])
@@ -1434,7 +1438,7 @@ class XanesFrameset():
         """
         edge_jump = self.edge_jump_filter()
         img_range = (edge_jump.min(), edge_jump.max())
-        threshold = filters.threshold_otsu(edge_jump)
+        threshold = filters.threshold_otsu(component(edge_jump, "modulus"))
         threshold = img_range[0] + sensitivity * (threshold - img_range[0])
         mask = edge_jump > threshold
         mask = morphology.dilation(mask)

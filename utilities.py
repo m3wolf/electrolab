@@ -26,10 +26,26 @@ from collections import namedtuple
 import sys
 
 from tqdm import tqdm
+import numpy as np
 
 xycoord = namedtuple('xycoord', ('x', 'y'))
 Pixel = namedtuple('Pixel', ('vertical', 'horizontal'))
 shape = namedtuple('shape', ('rows', 'columns'))
+
+
+def component(data, name):
+    """If complex, turn to given component, otherwise return original data."""
+    if np.any(data.imag):
+        # Sort out complex components
+        if name == "modulus":
+            data = np.abs(data)
+        elif name == "phase":
+            data = np.angle(data)
+        elif name == "real":
+            data = data.real
+        elif name == "imag":
+            data = data.imag
+    return data
 
 
 class Prog:

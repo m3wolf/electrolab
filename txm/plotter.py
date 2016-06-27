@@ -31,6 +31,7 @@ try:
 except (TypeError, ImportError):
     pass
 
+from utilities import component
 import exceptions
 import plots
 from .animation import FrameAnimation
@@ -89,7 +90,7 @@ class FramesetPlotter():
         # Plot chemical map (on top of absorbance image, if present)
         extent = self.frameset.extent()
         masked_map = self.frameset.masked_map(goodness_filter=goodness_filter)
-        artist = self.map_ax.imshow(masked_map,
+        artist = self.map_ax.imshow(np.abs(masked_map),
                                     extent=extent,
                                     cmap=self.map_cmap,
                                     origin="lower",
@@ -111,18 +112,18 @@ class FramesetPlotter():
         # Plot chemical map (on top of absorbance image, if present)
         extent = self.frameset.extent()
         goodness_map = self.frameset.goodness_filter()
-        artist = self.goodness_ax.imshow(goodness_map,
-                                    extent=extent,
-                                    cmap=self.map_cmap,
-                                    origin="lower",
-                                    alpha=alpha,
-                                    *args, **kwargs)
+        artist = self.goodness_ax.imshow(component(goodness_map, "modulus"),
+                                         extent=extent,
+                                         cmap=self.map_cmap,
+                                         origin="lower",
+                                         alpha=alpha,
+                                         *args, **kwargs)
         # Decorate axes labels, etc
         self.goodness_ax.set_xlabel("µm")
         self.goodness_ax.set_ylabel("µm")
         return artist
 
-    def plot_histogram(self, ax=None, norm_range=None, goodness_filter=False):
+    def plot_histogram(self, ax=None, norm_range=None, goodness_filter=False, representation="modulus"):
         if ax is None:
             ax = plots.new_axes()
         # Set normalizer
@@ -140,7 +141,7 @@ class FramesetPlotter():
         #     2 * energies[-1] - energies[-2]
         # ]
         clipped_map =  np.clip(masked_map, edge.map_range[0], edge.map_range[1])
-        n, bins, patches = ax.hist(clipped_map[~mask],
+        n, bins, patches = ax.hist(component(clipped_map[~mask], name="modulus").flatten(),
                                    bins=100)
         # Set colors on histogram
         for patch in patches:
