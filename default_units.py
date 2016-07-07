@@ -27,6 +27,9 @@ import units.predefined
 
 # Define default units
 units.predefined.define_units()
+# Distances
+angstrom = units.scaled_unit('Å', 'm', 1e-10)
+um = units.unit('um')
 # Grams
 mass = units.unit('g')
 # Time (hours)

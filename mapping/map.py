@@ -12,7 +12,7 @@ from mapping.coordinates import Cube
 from mapping.locus import Locus, DummyLocus
 from mapping.colormaps import cmaps
 from plots import new_axes, dual_axes
-from utilities import prog
+from utilities import prog, xycoord
 
 
 class Map():
@@ -22,20 +22,19 @@ class Map():
     """
     cmap_name = 'viridis'
     camera_zoom = 1
-    loci = []
     hexagon_patches = None  # Replaced by cached versions
     metric_normalizer = colors.Normalize(0, 1, clip=True)
     metric_name = 'Metric'
     reliability_normalizer = colors.Normalize(0, 1, clip=True)
 
-    def __init__(self, *, center=(0, 0), diameter=12.7, coverage=1,
+    def __init__(self, *, hdf_filename, center=(0, 0), diameter=12.7, coverage=1,
                  sample_name='unknown', resolution=1):
+        self.hdf_filename = hdf_filename
         self.center = center
         self.diameter = diameter
         self.coverage = coverage
         self.sample_name = sample_name
         self.resolution = resolution
-        self.create_loci()
 
     @property
     def name(self):
@@ -269,6 +268,28 @@ class Map():
         self.plot_histogram(ax=histogramAxes)
         return (mapAxes, histogramAxes)
 
+    def plot_locus(self, loc, ax, shape, size):
+        """Draw a location on the map.
+
+        Arguments
+        ---------
+        - loc: tuple of (x, y) values of where the locus should be drawn on `ax`.
+
+        - ax: Matplotlib axes object on which to draw
+
+        - shape: String describing the shape to draw. Choices are "square"/"rect" or "hex".
+
+        - size: How big to make the shape, generally the diameter
+          (hex) or length (square or rect).
+        """
+        loc = xycoord(*loc)
+        if shape in ["square", "rect"]:
+            patch = patches.Rectangle(xy=loc, width=size, height=size)
+        else:
+            raise ValueError("Unknown value for shape: '{}'".format(shape))
+        # Add patch to the axes
+        ax.add_patch(patch)
+
     def plot_map(self, ax=None, metric_range=None,
                  highlighted_locus=None, alpha=None):
         """
@@ -289,7 +310,7 @@ class Map():
         ax.set_xlabel('mm')
         ax.set_ylabel('mm')
         for locus in prog(self.loci, desc='Mapping'):
-            locus.plot_hexagon(ax=ax)
+            self.plot_locus(locus, ax=ax, shape="square", size=1)
         # If there's space between beam locations, plot beam location
         if self.coverage != 1:
             for locus in self.loci:

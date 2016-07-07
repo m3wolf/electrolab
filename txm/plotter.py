@@ -98,8 +98,8 @@ class FramesetPlotter():
                                     alpha=alpha,
                                     *args, **kwargs)
         # Decorate axes labels, etc
-        self.map_ax.set_xlabel("µm")
-        self.map_ax.set_ylabel("µm")
+        self.map_ax.set_xlabel(self.frameset[0].pixel_size.unit)
+        self.map_ax.set_ylabel(self.frameset[0].pixel_size.unit)
         return artist
 
     def draw_goodness(self, norm_range=None, alpha=1, *args, **kwargs):

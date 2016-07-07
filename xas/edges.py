@@ -228,7 +228,7 @@ class NCANickelLEdge(KEdge):
     post_edge = (857, 862)
     map_range = (0, 1)
     _peak1 = 850.91
-    _peak2 = 854.91
+    _peak2 = 853.16
 
     def calculate_direct_map(self, imagestack, energies):
         """Return a map with the ratios of intensities at 851 and 853 eV."""

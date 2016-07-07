@@ -9,7 +9,8 @@ import jinja2
 import exceptions
 from mapping.map import Map
 from plots import new_axes, DegreeFormatter
-from xrd.locus import XRDLocus
+from .locus import XRDLocus
+from .xrdstore import XRDStore
 from refinement.native import NativeRefinement
 from utilities import prog
 
@@ -61,6 +62,13 @@ class XRDMap(Map):
         kwargs['resolution'] = kwargs.get('resolution', collimator)
         # Return parent class init
         return super().__init__(*args, **kwargs)
+
+    @property
+    def loci(self):
+        with XRDStore(hdf_filename=self.hdf_filename, groupname=self.sample_name) as store:
+            positions = store.positions
+            step_size = store.step_size
+        return positions * step_size.num
 
     def context(self):
         """Convert the object to a dictionary for the templating engine."""

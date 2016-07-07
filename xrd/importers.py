@@ -18,12 +18,15 @@
 # along with Scimap. If not, see <http://www.gnu.org/licenses/>.
 
 import os
+from typing import Union, Tuple
 
 import h5py
 import numpy as np
 import pandas as pd
 
 import hdf
+from default_units import angstrom
+from .xrdstore import XRDStore
 
 def import_aps_32IDE_map(directory: str, wavelength: int,
                          shape: Tuple[int, int], step_size: Union[float, int],
@@ -60,12 +63,26 @@ def import_aps_32IDE_map(directory: str, wavelength: int,
     sample_group = hdf.prepare_hdf_group(filename=hdf_filename,
                                          groupname=hdf_groupname,
                                          dirname=directory)
-    sample_group.file.create_dataset('version', data=2)
+    xrdstore = XRDStore(hdf_filename=hdf_filename, groupname=sample_group.name, mode="r+")
+    wavelength_AA = angstrom(wavelength).num
+    sample_group.create_dataset('wavelength', data=wavelength_AA)
+    sample_group['wavelength'].attrs['unit'] = 'Å'
+    # Determine the sample step sizes
+    xrdstore.step_size = step_size
+    # Calculate mapping positions ("loci")
+    xv, yv = np.meshgrid(range(0, shape.columns), range(0, shape.rows))
+    newshape = (shape.rows * shape.columns, 2)
+    positions = np.reshape(np.dstack((xv, yv)), newshape=newshape)
+    xrdstore.positions = positions
+    xrdstore.layout = 'rect'
+
     intensities = []
     qs = []
     angles = []
 
-    for filename in os.listdir(directory):
+    chifiles = [p for p in os.listdir(directory) if os.path.splitext(p)[1] == '.chi']
+
+    for filename in chifiles:
         path = os.path.join(directory, filename)
         # Get header data
         with open(path) as f:
@@ -81,9 +98,10 @@ def import_aps_32IDE_map(directory: str, wavelength: int,
                           names=[xunits, yunits],
                           skiprows=4,
                           skipinitialspace=True)
-        # Determine if we need to convert to q
+        # Determine if we need to convert to q (scattering vector length)
         if '2-Theta Angle (Degrees)' in xunits:
-            qs.append(4*np.pi/wavelength*np.sin(np.radians(csv.index/2)))
+            q = 4 * np.pi / wavelength_AA * np.sin(np.radians(csv.index / 2))
+            qs.append(q)
         intensities.append(csv.values)
     # Save to hdf file
     sample_group.create_dataset('scattering_lengths', data=qs)

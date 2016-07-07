@@ -1310,7 +1310,9 @@ class XanesFrameset():
     def plot_xanes_spectrum(self, ax=None, pixel=None,
                             norm_range=None, normalize=False,
                             representation="modulus",
-                            show_fit=False, edge_jump_filter=False):
+                            show_fit=False, edge_jump_filter=False,
+                            linestyle=":",
+                            *args, **kwargs):
         """Calculate and plot the xanes spectrum for this field-of-view.
 
         Arguments
@@ -1353,7 +1355,7 @@ class XanesFrameset():
         if normalize:
             # Adjust the limits of the spectrum to be between 0 and 1
             spectrum = edge.normalize(spectrum)
-        ax.plot(spectrum, linestyle=":")
+        ax.plot(spectrum, linestyle=linestyle, *args, **kwargs)
         xlim = ax.get_xlim()
         ylim = ax.get_ylim()
         if show_fit:
@@ -1534,15 +1536,15 @@ class XanesFrameset():
         """Use a default frameset plotter to draw a map of the chemical data."""
         if plotter is None:
             plotter = FramesetPlotter(frameset=self, map_ax=ax)
-        plotter.draw_map(norm_range=norm_range, alpha=alpha,
-                         goodness_filter=goodness_filter,
-                         *args, **kwargs)
+        artist = plotter.draw_map(norm_range=norm_range, alpha=alpha,
+                                  goodness_filter=goodness_filter,
+                                  *args, **kwargs)
         # Draw crosshairs for the active pixel if necessary
         if active_pixel:
             xy = pixel_to_xy(active_pixel, extent=self.extent(),
                              shape=self.map_shape())
             plotter.draw_crosshairs(active_xy=xy)
-        return plotter
+        return plotter, artist
 
     def plot_goodness(self, plotter=None, ax=None, norm_range=None,
                       *args, **kwargs):
