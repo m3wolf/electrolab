@@ -51,6 +51,7 @@ from xrd.reflection import Reflection
 from xrd.peak import XRDPeak
 from xrd.scan import XRDScan, align_scans
 from xrd.map import XRDMap
+from xrd.importers import import_aps_32IDE_map
 
 from mapping.coordinates import Cube
 from mapping.map import Map, DummyMap, PeakPositionMap, PhaseRatioMap, FwhmMap

@@ -29,6 +29,7 @@ import numpy as np
 from PIL import Image
 from scipy.constants import physical_constants
 
+import hdf
 import default_units
 from .xradia import XRMFile, decode_ssrl_params, decode_aps_params
 from .xanes_frameset import XanesFrameset, PtychoFrameset, energy_key
@@ -40,50 +41,6 @@ import exceptions
 format_classes = {
     '.xrm': XRMFile
 }
-
-
-def _prepare_hdf_group(filename: str, groupname: str, dirname: str):
-    """Check the filenames and create an hdf file as needed. Will
-    overwrite the group if it already exists.
-
-    Returns: HDFFile
-
-    Arguments
-    ---------
-
-    - filename : name of the requested hdf file, may be None if not
-      provided, in which case the filename will be generated
-      automatically based on `dirname`.
-
-    - groupname : Requested groupname for these data.
-
-    - dirname : Used to derive a default filename if None is passed
-      for `filename` attribute.
-    """
-    # Get default filename and groupname if necessary
-    if filename is None:
-        real_name = os.path.abspath(dirname)
-        new_filename = os.path.split(real_name)[1]
-        hdf_filename = "{basename}-results.h5".format(basename=new_filename)
-    else:
-        hdf_filename = filename
-    if groupname is None:
-        groupname = os.path.split(os.path.abspath(dirname))[1]
-    # Open actual file
-    hdf_file = h5py.File(hdf_filename)
-    # Alert the user that we're overwriting this group
-    if groupname in hdf_file.keys():
-        msg = 'Group "{groupname}" exists. Overwriting.'
-        print(msg.format(groupname=groupname))
-        del hdf_file[groupname]
-    new_group = hdf_file.create_group(groupname)
-    # User feedback
-    if not prog.quiet:
-        print('Saving to HDF5 file {file} in group {group}'.format(
-            file=hdf_filename,
-            group=groupname)
-        )
-    return new_group
 
 
 def _average_frames(*frames):
@@ -131,7 +88,7 @@ def import_ptychography_frameset(directory: str,
     # modulus_dir = os.path.join(tiff_dir, "modulus")
     # stxm_dir = os.path.join(tiff_dir, "modulus")
     # Prepare the HDF5 file and metadata
-    hdf_group = _prepare_hdf_group(filename=hdf_filename,
+    hdf_group = hdf.prepare_hdf_group(filename=hdf_filename,
                                    groupname=hdf_groupname,
                                    dirname=directory)
     hdf_group.attrs["scimap_version"] = CURRENT_VERSION
@@ -284,7 +241,7 @@ def import_ssrl_frameset(directory, hdf_filename=None):
                                                     list(references.keys())))
     # Go through each sample and import
     for sample_name, sample in samples.items():
-        sample_group = _prepare_hdf_group(filename=hdf_filename,
+        sample_group = hdf.prepare_hdf_group(filename=hdf_filename,
                                           groupname=sample_name,
                                           dirname=directory)
         imported = sample_group.create_group("imported")
@@ -369,7 +326,7 @@ def import_aps_8BM_frameset(directory, hdf_filename=None):
     # Determine sample name from first file
     metadata = decode_aps_params(files[0])
     # Create HDF groups
-    sample_group = _prepare_hdf_group(filename=hdf_filename,
+    sample_group = hdf.prepare_hdf_group(filename=hdf_filename,
                                       groupname=metadata['sample_name'],
                                       dirname=directory)
     ref_name = "reference"
