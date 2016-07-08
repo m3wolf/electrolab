@@ -87,3 +87,37 @@ class XRDStore():
     @layout.setter
     def layout(self, value):
         self._group()['positions'].attrs['layout'] = value
+
+    @property
+    def intensities(self):
+        intensities = self._group()['intensities'].value
+        return intensities
+
+    @intensities.setter
+    def intensities(self, value):
+        self._group().create_dataset('intensities', dataset=value)
+
+    @intensities.setter
+    def intensities(self, value):
+        self._group().create_dataset('intensities', dataset=value)
+
+    @property
+    def scattering_lengths(self):
+        intensities = self._group()['scattering_lengths'].value
+        return intensities
+
+    @property
+    def backgrounds(self):
+        data = self._group()['backgrounds'].value
+        print(data.shape)
+        new_shape = (data.shape[0], data.shape[1])
+        return data.reshape(new_shape)
+
+    @backgrounds.setter
+    def backgrounds(self, value):
+        name = 'backgrounds'
+        try:
+            del self._group()[name]
+        except KeyError:
+            pass
+        self._group().create_dataset(name, data=value)

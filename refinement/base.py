@@ -13,10 +13,9 @@ class BaseRefinement():
         'scale_factors': False,
     }
 
-    def __init__(self, scan):
-        self.scan = scan
-        if scan.filename is not None:
-            self.basename = os.path.splitext(scan.filename)[0]
+    def __init__(self, phases=[], background_phases=[]):
+        self.phases = phases
+        self.background_phases = background_phases
 
     def refine_background(self):
         raise NotImplementedError

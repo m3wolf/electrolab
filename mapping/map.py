@@ -62,6 +62,13 @@ class Map():
                           filebase=filebase)
         return new_locus
 
+    @property
+    def loci(self):
+        with self.store() as store:
+            positions = store.positions
+            step_size = store.step_size
+        return positions * step_size.num
+
     def create_loci(self):
         """Populate the loci array with new loci in a hexagonal array."""
         self.loci = []
@@ -120,8 +127,10 @@ class Map():
             samplename=self.sample_name
         )
 
-    def xy_lim(self):
-        return self.diameter / 2 * 1.5
+    # def xy_lim(self):
+        
+        
+    #     # return self.diameter / 2 * 1.5
 
     def write_script(self, *args, **kwargs):
         raise NotImplementedError
@@ -268,7 +277,7 @@ class Map():
         self.plot_histogram(ax=histogramAxes)
         return (mapAxes, histogramAxes)
 
-    def plot_locus(self, loc, ax, shape, size):
+    def plot_locus(self, loc, ax, shape, size, metric: float):
         """Draw a location on the map.
 
         Arguments
@@ -281,10 +290,14 @@ class Map():
 
         - size: How big to make the shape, generally the diameter
           (hex) or length (square or rect).
+
+        - metric: What value to use for generating a color with the
+          colormap self.get_cmap().
         """
         loc = xycoord(*loc)
+        color = self.get_cmap()(metric)
         if shape in ["square", "rect"]:
-            patch = patches.Rectangle(xy=loc, width=size, height=size)
+            patch = patches.Rectangle(xy=loc, width=size, height=size, color=color)
         else:
             raise ValueError("Unknown value for shape: '{}'".format(shape))
         # Add patch to the axes
@@ -304,13 +317,21 @@ class Map():
         if not ax:
             # New axes unless one was already created
             ax = new_axes()
-        xy_lim = self.xy_lim()
-        ax.set_xlim([-xy_lim, xy_lim])
-        ax.set_ylim([-xy_lim, xy_lim])
-        ax.set_xlabel('mm')
-        ax.set_ylabel('mm')
-        for locus in prog(self.loci, desc='Mapping'):
-            self.plot_locus(locus, ax=ax, shape="square", size=1)
+        # xy_lim = self.xy_lim()
+        # ax.set_xlim([-xy_lim, xy_lim])
+        xs, ys = self.loci.swapaxes(0, 1)
+        with self.store() as store:
+            step_size = store.step_size
+        ax.set_xlim(min(xs), max(xs)+step_size.num)
+        ax.set_ylim(min(ys), max(ys)+step_size.num)
+        # ax.set_ylim([-xy_lim, xy_lim])
+        ax.set_xlabel(step_size.unit.name)
+        ax.set_ylabel(step_size.unit.name)
+        with self.store() as store:
+            metrics = scipy.integrate.trapz(store.intensities, axis=1)
+        metrics = (max(metrics) - metrics) / (max(metrics) - min(metrics))
+        for locus, metric in prog(zip(self.loci, metrics), desc='Mapping'):
+            self.plot_locus(locus, ax=ax, shape="square", size=1, metric=metric)
         # If there's space between beam locations, plot beam location
         if self.coverage != 1:
             for locus in self.loci:
@@ -319,7 +340,7 @@ class Map():
         if highlighted_locus is not None:
             highlighted_locus.highlight_beam(ax=ax)
         # Add circle for theoretical edge
-        self.draw_edge(ax, color='red')
+        # self.draw_edge(ax, color='red')
         # Add colormap to the side of the axes
         mappable = cm.ScalarMappable(norm=self.metric_normalizer, cmap=cmap)
         mappable.set_array(numpy.arange(0, 2))

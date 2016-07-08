@@ -103,6 +103,14 @@ def import_aps_32IDE_map(directory: str, wavelength: int,
             q = 4 * np.pi / wavelength_AA * np.sin(np.radians(csv.index / 2))
             qs.append(q)
         intensities.append(csv.values)
+    qs = np.array(qs)
+    intensities = np.array(intensities)
+    new_shape = (intensities.shape[0], intensities.shape[1])
+    intensities = intensities.reshape(new_shape)
+    # Filter out zero intensity values (beam-stop)
+    print(qs.shape, intensities.shape)
+    qs = qs[intensities>0]
+    intensities = intensities[intensities>0]
     # Save to hdf file
     sample_group.create_dataset('scattering_lengths', data=qs)
     sample_group.create_dataset('intensities', data=intensities)

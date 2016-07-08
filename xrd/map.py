@@ -3,6 +3,7 @@
 import math
 import os
 
+import numpy as np
 import pandas
 import jinja2
 
@@ -29,9 +30,9 @@ class XRDMap(Map):
     cell_parameter_normalizer = None
     phase_ratio_normalizer = None
     fwhm_normalizer = None
-    THETA1_MIN = 0  # Source limits based on geometry
+    THETA1_MIN = 0 # Source limits based on geometry
     THETA1_MAX = 50
-    THETA2_MIN = 0  # Detector limits based on geometry
+    THETA2_MIN = 0 # Detector limits based on geometry
     THETA2_MAX = 55
     camera_zoom = 6
     two_theta_range = (10, 80)
@@ -63,12 +64,11 @@ class XRDMap(Map):
         # Return parent class init
         return super().__init__(*args, **kwargs)
 
-    @property
-    def loci(self):
-        with XRDStore(hdf_filename=self.hdf_filename, groupname=self.sample_name) as store:
-            positions = store.positions
-            step_size = store.step_size
-        return positions * step_size.num
+    def store(self, mode='r'):
+        """Get an XRD Store object that saves and retrieves data from the HDF5
+        file."""
+        return XRDStore(hdf_filename=self.hdf_filename,
+                        groupname=self.sample_name, mode=mode)
 
     def context(self):
         """Convert the object to a dictionary for the templating engine."""
@@ -181,44 +181,74 @@ class XRDMap(Map):
         df = pandas.DataFrame(bulk_series, columns=['counts'])
         return df
 
-    def bulk_diffractogram(self):
+    def get_diffractogram(self, index=None):
         """
         Calculate the bulk diffractogram by averaging each scan weighted
         by reliability.
         """
-        bulk_diffractogram = pandas.Series()
-        locusCount = 0
+        with self.store() as store:
+            if index is None:
+                df = np.average(store.intensities, axis=0)
+            else:
+                df = store.intensities[index]
+        return df
+        # bulk_diffractogram = pandas.Series()
+        # locusCount = 0
         # Add a contribution from each map location
-        for locus in self.loci:
-            if locus.diffractogram_is_loaded:
-                locus_diffractogram = locus.diffractogram['counts']
-                corrected_diffractogram = locus_diffractogram * locus.reliability
-                locusCount = locusCount + 1
-                bulk_diffractogram = bulk_diffractogram.add(corrected_diffractogram, fill_value=0)
-        # Divide by the total number of scans included
-        bulk_diffractogram = bulk_diffractogram / locusCount
-        return bulk_diffractogram
+        # for locus in self.loci:
+        #     if locus.diffractogram_is_loaded:
+        #         locus_diffractogram = locus.diffractogram['counts']
+        #         corrected_diffractogram = locus_diffractogram * locus.reliability
+        #         locusCount = locusCount + 1
+        #         bulk_diffractogram = bulk_diffractogram.add(corrected_diffractogram, fill_value=0)
+        # # Divide by the total number of scans included
+        # bulk_diffractogram = bulk_diffractogram / locusCount
+        # return bulk_diffractogram
 
-    def plot_diffractogram(self, ax=None):
+    def plot_diffractogram(self, ax=None, index=None):
+        """Plot a specific diffractogram or an average of all the scans,
+        weighted by reliability.
+
+        Arguments
+        ---------
+        - ax : The matplotlib axes object to plot on to
+
+        - index : Which locus to plot.
         """
-        Plot an averaged diffractogram of all the scans, weighted by
-        reliability.
-        """
-        bulk_diffractogram = self.bulk_diffractogram()
+        def get_values(data, index):
+            if index is None:
+                return np.average(data, axis=0)
+            else:
+                return data[index]
+        with self.store() as store:
+            intensities = get_values(store.intensities, index=index)
+            qs = get_values(store.scattering_lengths, index=index)
+            bg = get_values(store.backgrounds, index=index)
         # Get default axis if none is given
         if ax is None:
             ax = new_axes()
-        if len(bulk_diffractogram) > 0:
-            bulk_diffractogram.plot(ax=ax)
-        else:
-            print("No bulk diffractogram data to plot")
+        ax.plot(qs, intensities)
+        print(qs.shape, bg.shape)
+        ax.plot(qs, bg)
         ax.set_xlabel(r'$2\theta$')
         ax.set_ylabel('counts')
         ax.set_title('Bulk diffractogram')
         ax.xaxis.set_major_formatter(DegreeFormatter())
         # Highlight peaks
-        self.loci[0].xrdscan.refinement.highlight_peaks(ax=ax)
+        # self.loci[0].xrdscan.refinement.highlight_peaks(ax=ax)
         return ax
+
+    def refine_mapping_data(self):
+        """Refine the relevant XRD parameters, such as background, unit-cells,
+        etc."""
+        refinement = self.refinement(phases=self.phases)
+        bgs = []
+        with self.store(mode='r+') as store:
+            for qs, intensities in zip(store.scattering_lengths, store.intensities):
+                bg = refinement.refine_background(scattering_lengths=qs,
+                                                  intensities=intensities)
+                bgs.append(bg)
+            store.backgrounds = bgs
 
     def set_metric_phase_ratio(self, phase_idx=0):
         """Set the plotting metric as the proportion of given phase."""

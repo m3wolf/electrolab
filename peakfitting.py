@@ -39,7 +39,7 @@ BASE_PENALTY = 300
 def remove_peak_from_df(reflection, df):
     """Accept an xrd scan dataframe and remove the given reflection's peak from
     the data."""
-    peak = reflection.two_theta_range
+    peak = reflection.qrange
     df.drop(df[peak[0]:peak[1]].index, inplace=True)
 
 

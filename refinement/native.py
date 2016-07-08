@@ -93,27 +93,25 @@ class NativeRefinement(BaseRefinement):
             phase.scale_factor = area
         self.is_refined['scale_factors'] = True
 
-    def refine_background(self):
-        originalData = self.scan.diffractogram
-        workingData = originalData.copy()
+    def refine_background(self, scattering_lengths, intensities):
+        # originalData = self.scan.diffractogram
+        # workingData = originalData.copy()
         # Remove pre-indexed peaks for background fitting
-        phase_list = self.scan.phases + self.scan.background_phases
+        phase_list = self.phases + self.background_phases
+        df = pandas.Series(data=intensities, index=scattering_lengths)
         for phase in phase_list:
             for reflection in phase.reflection_list:
-                remove_peak_from_df(reflection, workingData)
+                remove_peak_from_df(reflection, df)
         # Determine a background line from the noise without peaks
         self.spline = UnivariateSpline(
-            x=workingData.index,
-            y=workingData.counts,
-            s=len(workingData.index) * 25,
+            x=df.index,
+            y=df.values,
+            s=len(df) * 25,
             k=4
         )
         # Extrapolate the background for the whole pattern
-        x = originalData.index
-        self._background = pandas.Series(data=self.spline(x),
-                                         index=originalData.index)
-        self._subtracted = pandas.Series(originalData.counts - self._background)
-        return originalData
+        background = self.spline(scattering_lengths)
+        return background
 
     def refine_peak_widths(self):
         pass
@@ -209,7 +207,6 @@ class NativeRefinement(BaseRefinement):
                 if self.scan.contains_peak(reflection.two_theta_range):
                     left = reflection.two_theta_range[0]
                     right = reflection.two_theta_range[1]
-                    # print(self.subtracted.loc[69:70])
                     df = self.subtracted.loc[left:right]
                     # Try each fit method until one works
                     for method in fitMethods:
