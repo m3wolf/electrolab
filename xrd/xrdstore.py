@@ -109,13 +109,28 @@ class XRDStore():
     @property
     def backgrounds(self):
         data = self._group()['backgrounds'].value
-        print(data.shape)
         new_shape = (data.shape[0], data.shape[1])
         return data.reshape(new_shape)
 
     @backgrounds.setter
     def backgrounds(self, value):
         name = 'backgrounds'
+        try:
+            del self._group()[name]
+        except KeyError:
+            pass
+        self._group().create_dataset(name, data=value)
+
+    @property
+    def subtracted(self):
+        bg = self.backgrounds
+        it = self.intensities
+        return it - bg
+
+    @subtracted.setter
+    def subtracted(self, value):
+        print(value.shape)
+        name = 'subtracted'
         try:
             del self._group()[name]
         except KeyError:

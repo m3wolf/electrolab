@@ -28,9 +28,22 @@ import hdf
 from default_units import angstrom
 from .xrdstore import XRDStore
 
+def q_to_twotheta(q, wavelength):
+    """Converts a numpy array or value in scattering length (q) into
+    2θ angle."""
+    twotheta = np.degrees(2 * np.arcsin(q * wavelength / 4 / np.pi))
+    return twotheta
+
+def twotheta_to_q(two_theta, wavelength):
+    """Converts a numpy array or value in 2θ angle into scattering length
+    (q)."""
+    q = 4 * np.pi / wavelength * np.sin(np.radians(two_theta / 2))
+    return q
+
 def import_aps_32IDE_map(directory: str, wavelength: int,
                          shape: Tuple[int, int], step_size: Union[float, int],
-                         hdf_filename=None, hdf_groupname=None):
+                         hdf_filename=None, hdf_groupname=None,
+                         beamstop=0):
     """Import a set of diffraction patterns from a map taken at APS
     beamline 34-ID-E. The data should be taken in a rectangle.
 
@@ -57,6 +70,9 @@ def import_aps_32IDE_map(directory: str, wavelength: int,
       dataset. If omitted or None, the `directory` basename is
       used. Raises an exception if the group already exists in the HDF
       file.
+
+    - beamstop : A scattering length (q) below which the beam stop
+      cuts off the signal.
 
     """
     # Prepare HDF file
@@ -100,17 +116,24 @@ def import_aps_32IDE_map(directory: str, wavelength: int,
                           skipinitialspace=True)
         # Determine if we need to convert to q (scattering vector length)
         if '2-Theta Angle (Degrees)' in xunits:
-            q = 4 * np.pi / wavelength_AA * np.sin(np.radians(csv.index / 2))
-            qs.append(q)
+            # Remove values obscured by the beam stop
+            if beamstop > 0:
+                csv = csv.loc[q_to_twotheta(beamstop, wavelength=wavelength_AA):]
+            # Convert to scattering factor
+            q = twotheta_to_q(csv.index, wavelength=wavelength_AA)
+        else:
+            # Data already in q
+            # Remove values obscured by the beam stop
+            if beamstop > 0:
+                csv = csv.loc[q_to_twotheta(beamstop):]
+            q = csv.index
+        qs.append(q)
         intensities.append(csv.values)
+    # Convert to properly shaped numpy arrays
     qs = np.array(qs)
     intensities = np.array(intensities)
     new_shape = (intensities.shape[0], intensities.shape[1])
     intensities = intensities.reshape(new_shape)
-    # Filter out zero intensity values (beam-stop)
-    print(qs.shape, intensities.shape)
-    qs = qs[intensities>0]
-    intensities = intensities[intensities>0]
     # Save to hdf file
     sample_group.create_dataset('scattering_lengths', data=qs)
     sample_group.create_dataset('intensities', data=intensities)

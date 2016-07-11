@@ -5,7 +5,7 @@ import os
 import pickle
 
 from matplotlib import pyplot, cm, patches, colors
-import numpy
+import numpy as np
 import scipy
 
 from mapping.coordinates import Cube
@@ -295,7 +295,7 @@ class Map():
           colormap self.get_cmap().
         """
         loc = xycoord(*loc)
-        color = self.get_cmap()(metric)
+        color = self.get_cmap()(self.metric_normalizer(metric))
         if shape in ["square", "rect"]:
             patch = patches.Rectangle(xy=loc, width=size, height=size, color=color)
         else:
@@ -328,8 +328,11 @@ class Map():
         ax.set_xlabel(step_size.unit.name)
         ax.set_ylabel(step_size.unit.name)
         with self.store() as store:
-            metrics = scipy.integrate.trapz(store.intensities, axis=1)
-        metrics = (max(metrics) - metrics) / (max(metrics) - min(metrics))
+            ys = store.intensities - store.backgrounds
+            metrics = scipy.integrate.trapz(ys, axis=1)
+        # Normalize the metrics
+        # metrics = np.array(1 - (max(metrics) - metrics) / (max(metrics) - min(metrics)))
+        self.metric_normalizer = colors.Normalize(min(metrics), max(metrics), clip=True)
         for locus, metric in prog(zip(self.loci, metrics), desc='Mapping'):
             self.plot_locus(locus, ax=ax, shape="square", size=1, metric=metric)
         # If there's space between beam locations, plot beam location
@@ -343,7 +346,8 @@ class Map():
         # self.draw_edge(ax, color='red')
         # Add colormap to the side of the axes
         mappable = cm.ScalarMappable(norm=self.metric_normalizer, cmap=cmap)
-        mappable.set_array(numpy.arange(0, 2))
+        mappable.set_array(np.arange(self.metric_normalizer.vmin,
+                                     self.metric_normalizer.vmax))
         pyplot.colorbar(mappable, ax=ax)
         return ax
 
@@ -405,12 +409,12 @@ class Map():
                 compositeHeight = compositeWidth
                 # Create a new numpy array to hold the composited image
                 # (it is unsigned int 16 to not overflow when images are added)
-                dtype = numpy.uint16
-                compositeImage = numpy.ndarray(
+                dtype = np.uint16
+                compositeImage = np.ndarray(
                     (compositeHeight, compositeWidth, 3), dtype=dtype
                 )
                 # Array to keep track of how many images contribute to each px
-                counterArray = numpy.ndarray(
+                counterArray = np.ndarray(
                     (compositeHeight, compositeWidth, 3), dtype=dtype
                 )
                 # Set to white by default
@@ -430,7 +434,7 @@ class Map():
                 # Divide by the total count for each pixel
                 compositeImage = compositeImage / counterArray
                 # Convert back to a uint8 array for displaying
-                compositeImage = compositeImage.astype(numpy.uint8)
+                compositeImage = compositeImage.astype(np.uint8)
                 # Roll over pixels to force white background
                 # (bias was added in padded_image method)
                 compositeImage = compositeImage - 1
@@ -461,7 +465,7 @@ class Map():
         minimum = self.metric_normalizer.vmin
         maximum = self.metric_normalizer.vmax
         metrics = [locus.metric for locus in self.loci]
-        metrics = numpy.clip(metrics, minimum, maximum)
+        metrics = np.clip(metrics, minimum, maximum)
         weights = [locus.reliability for locus in self.loci]
         if ax is None:
             ax = new_axes(height=4, width=7)

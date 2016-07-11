@@ -205,7 +205,7 @@ class XRDMap(Map):
         # bulk_diffractogram = bulk_diffractogram / locusCount
         # return bulk_diffractogram
 
-    def plot_diffractogram(self, ax=None, index=None):
+    def plot_diffractogram(self, ax=None, index=None, subtracted=False):
         """Plot a specific diffractogram or an average of all the scans,
         weighted by reliability.
 
@@ -214,6 +214,8 @@ class XRDMap(Map):
         - ax : The matplotlib axes object to plot on to
 
         - index : Which locus to plot.
+
+        - subtracted : If True, the plot will be shown with background removed.
         """
         def get_values(data, index):
             if index is None:
@@ -227,16 +229,37 @@ class XRDMap(Map):
         # Get default axis if none is given
         if ax is None:
             ax = new_axes()
-        ax.plot(qs, intensities)
-        print(qs.shape, bg.shape)
-        ax.plot(qs, bg)
-        ax.set_xlabel(r'$2\theta$')
-        ax.set_ylabel('counts')
+        if subtracted:
+            ax.plot(qs, intensities - bg)
+        else:
+            ax.plot(qs, intensities)
+            ax.plot(qs, bg)
+        ax.set_xlabel(r'Scattering Length (q) /AA')
+        ax.set_ylabel('Intensity a.u.')
         ax.set_title('Bulk diffractogram')
-        ax.xaxis.set_major_formatter(DegreeFormatter())
+        # ax.xaxis.set_major_formatter(DegreeFormatter())
         # Highlight peaks
         # self.loci[0].xrdscan.refinement.highlight_peaks(ax=ax)
         return ax
+
+    def plot_all_diffractograms(self, ax=None, subtracted=False, xstep=0, ystep=5,
+                                *args, **kwargs):
+        if ax is None:
+            ax = new_axes(width=15, height=15)
+        with self.store() as store:
+            xs = store.scattering_lengths
+            ys = store.intensities
+            if subtracted:
+                bgs = store.backgrounds
+                ys = ys - bgs
+            for i, (x, y) in enumerate(zip(xs, ys)):
+                x += xstep * i
+                y += ystep * i
+                ax.plot(x, y, *args, **kwargs)
+                if i % 5 == 0:
+                    # Plot a text label every 5 plots
+                    ax.text(x[-1], y[-1], s=i,
+                            verticalalignment="center")
 
     def refine_mapping_data(self):
         """Refine the relevant XRD parameters, such as background, unit-cells,
@@ -248,7 +271,7 @@ class XRDMap(Map):
                 bg = refinement.refine_background(scattering_lengths=qs,
                                                   intensities=intensities)
                 bgs.append(bg)
-            store.backgrounds = bgs
+            store.backgrounds = np.array(bgs)
 
     def set_metric_phase_ratio(self, phase_idx=0):
         """Set the plotting metric as the proportion of given phase."""

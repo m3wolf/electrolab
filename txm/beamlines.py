@@ -24,6 +24,8 @@ from typing import List, Tuple, Iterable
 from collections import namedtuple
 import os
 
+import numpy as np
+
 from xas.edges import KEdge
 from .frame import position
 
@@ -275,7 +277,8 @@ def sector8_xanes_script(dest,
                          names: List[str],
                          iterations: Iterable=range(0, 1),
                          binning: int=1,
-                         exposure: int=30):
+                         exposure: int=30,
+                         abba_mode: bool=True):
     """Prepare an script file for running multiple consecutive XANES
     framesets on the transmission x-ray micrscope at the Advanced
     Photon Source beamline 8-BM-B.
@@ -303,29 +306,43 @@ def sector8_xanes_script(dest,
     - iterations : iterable to contains an identifier for each full
       set of xanes location with reference.
 
+    - abba_mode : If True, script will locations forward and backwards
+      to save time. Eg: reference, sample, change-energy, sample,
+      reference, change-energy, etc. Not compatible with `frame_rest`
+      argument.
+
     """
     dest.write("setbinning {}\n".format(binning))
     dest.write("setexp {}\n".format(exposure))
     energies = edge.all_energies()
     starting_energy = energies[0]
     for iteration in iterations:
-        for idx in range(0, len(sample_positions)):
-            position = sample_positions[idx]
-            name = names[idx]
-            # Move to x, y, z
-            dest.write("moveto x {:.2f}\n".format(position.x))
-            dest.write("moveto y {:.2f}\n".format(position.y))
-            dest.write("moveto z {:.2f}\n".format(position.z))
-            # Approach target energy from below
-            for energy in range(starting_energy - 100, starting_energy, 2):
-                dest.write("moveto energy {:.2f}\n".format(energy))
-            for energy in energies:
-                # Set energy
-                dest.write("moveto energy {:.2f}\n".format(energy))
-                # Set zoneplate
-                dest.write("moveto zpz {:.2f}\n".format(zoneplate.z_position(energy)))
-                # Set detector
-                dest.write("moveto detz {:.2f}\n".format(detector.z_position(energy)))
+        # Status flag for using abba_mode
+        reverse_positions = False
+        # Approach target energy from below
+        for energy in np.arange(starting_energy - 100, starting_energy, 2):
+            dest.write("moveto energy {:.2f}\n".format(energy))
+        for energy in energies:
+            # Set energy
+            dest.write("moveto energy {:.2f}\n".format(energy))
+            # Set zoneplate
+            dest.write("moveto zpz {:.2f}\n".format(zoneplate.position(energy).z))
+            # Set detector
+            dest.write("moveto detz {:.2f}\n".format(detector.position(energy).z))
+            # Prepare range of sample positions
+            if reverse_positions and abba_mode:
+                position_indexes = range(len(sample_positions)-1, -1, -1)
+            else:
+                position_indexes = range(0, len(sample_positions))
+            reverse_positions = not reverse_positions
+            # Cycle through sample positions and collect data
+            for idx in position_indexes:
+                position = sample_positions[idx]
+                name = names[idx]
+                # Move to x, y, z
+                dest.write("moveto x {:.2f}\n".format(position.x))
+                dest.write("moveto y {:.2f}\n".format(position.y))
+                dest.write("moveto z {:.2f}\n".format(position.z))
                 # Collect frame
                 filename = "{name}_xanes{iter}_{energy}eV.xrm"
                 energy_str = "{}_{}".format(*str(float(energy)).split('.'))

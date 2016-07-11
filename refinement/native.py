@@ -3,6 +3,7 @@
 import math
 import warnings
 
+import matplotlib.pyplot as plt
 import numpy
 import scipy
 from scipy.interpolate import UnivariateSpline
@@ -35,13 +36,9 @@ class NativeRefinement(BaseRefinement):
         #     raise exceptions.RefinementError(msg)
         # Prepare list of peak position differences
         for idx, actual_peak in enumerate(actual_peaks):
-            # actual = actual_peak.center_kalpha
-            # predicted = min(predicted_peaks, key=lambda x:abs(x.two_theta - 
-            # predicted = predicted_peaks[idx].two_theta
             offsets = [abs(p.two_theta-actual_peak.center_kalpha)
                        for p in predicted_peaks]
             diffs.append(min(offsets))
-            # diffs.append(actual - predicted)
         # Calculate mean-square-difference
         running_total = 0
         for diff in diffs:
@@ -94,8 +91,6 @@ class NativeRefinement(BaseRefinement):
         self.is_refined['scale_factors'] = True
 
     def refine_background(self, scattering_lengths, intensities):
-        # originalData = self.scan.diffractogram
-        # workingData = originalData.copy()
         # Remove pre-indexed peaks for background fitting
         phase_list = self.phases + self.background_phases
         df = pandas.Series(data=intensities, index=scattering_lengths)
@@ -106,11 +101,15 @@ class NativeRefinement(BaseRefinement):
         self.spline = UnivariateSpline(
             x=df.index,
             y=df.values,
-            s=len(df) * 25,
-            k=4
+            s=len(df) / 20,
+            k=3
         )
         # Extrapolate the background for the whole pattern
         background = self.spline(scattering_lengths)
+        # plt.figure(figsize=(9, 6))
+        # plt.plot(scattering_lengths, background)
+        # plt.plot(scattering_lengths, intensities)
+        # plt.plot(scattering_lengths, intensities - background)
         return background
 
     def refine_peak_widths(self):
