@@ -21,17 +21,17 @@ class NCA(Phase):
     fullprof_spacegroup = 'R -3 M'
     diagnostic_hkl = '113'
     reflection_list = [
-        Reflection('003', (1.3, 1.35)),
-        Reflection('101', (2.5, 2.6)),
-        Reflection('006', (2.6, 2.7)),
-        Reflection('102', (2.62, 2.72)),
-        Reflection('104', (3.05, 3.10)),
-        Reflection('105', (3.3, 3.4), multiplicity=1),
-        Reflection('107', (3.95, 4.05), multiplicity=1),
-        Reflection('107', (3.95, 4.05), multiplicity=1),
-        Reflection('108', (4.3, 4.35), multiplicity=1),
-        Reflection('110', (4.35, 4.4), multiplicity=1),
-        Reflection('113', (4.5, 4.6)),
+        Reflection('003', qrange=(1.30, 1.35)),
+        Reflection('101', qrange=(2.50, 2.60)),
+        Reflection('006', qrange=(2.60, 2.70)),
+        Reflection('102', qrange=(2.62, 2.72)),
+        Reflection('104', qrange=(3.05, 3.10)),
+        Reflection('105', qrange=(3.30, 3.40)),
+        Reflection('107', qrange=(3.95, 4.05)),
+        Reflection('107', qrange=(3.95, 4.05)),
+        Reflection('108', qrange=(4.30, 4.35)),
+        Reflection('110', qrange=(4.35, 4.40)),
+        Reflection('113', qrange=(4.50, 4.60)),
     ]
 
 # Define a new class for mapping the transition

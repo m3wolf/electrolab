@@ -27,7 +27,7 @@ class Map():
     metric_name = 'Metric'
     reliability_normalizer = colors.Normalize(0, 1, clip=True)
 
-    def __init__(self, *, hdf_filename, center=(0, 0), diameter=12.7, coverage=1,
+    def __init__(self, hdf_filename=None, center=(0, 0), diameter=12.7, coverage=1,
                  sample_name='unknown', resolution=1):
         self.hdf_filename = hdf_filename
         self.center = center

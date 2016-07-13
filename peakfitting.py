@@ -36,9 +36,8 @@ import plots
 BASE_PENALTY = 300
 
 
-def remove_peak_from_df(reflection, df):
-    """Accept an xrd scan dataframe and remove the given reflection's peak from
-    the data."""
+def remove_peak_from_df(x, y, xrange):
+    """Remove data with the given xrange from the x and y data."""
     peak = reflection.qrange
     df.drop(df[peak[0]:peak[1]].index, inplace=True)
 
@@ -54,21 +53,29 @@ def cauchy_fwhm(width_parameter):
     return 2 * width_parameter
 
 
-def discrete_fwhm(data: Series):
-    """Compute numerically the full-width half-max of peak described by data."""
-    maxheight = data.max()
+def discrete_fwhm(x, y):
+    """Compute numerically the full-width half-max of peak described by x
+    and y data.
+    """
+    maxheight = y.max()
     # Split the dataset into an upper half and a lower half
-    maxidx = data.argmax()
-    rightdata = data[maxidx:]
-    leftdata = data[:maxidx]
+    maxidx = y.argmax()
+    leftx = x[:maxidx+1]
+    rightx = x[maxidx:]
+    lefty = y[:maxidx+1]
+    righty = y[maxidx:]
     # Only interested in data that are less than half-max
-    rightdata = rightdata[rightdata < maxheight / 2]
-    leftdata = leftdata[leftdata < maxheight / 2]
+    rightx = rightx[righty < maxheight / 2]
+    leftx = leftx[lefty < maxheight / 2]
     # Find the nearest datum to halfmax in each half
-    # rightx = (np.abs(rightdata.index - maxidx)).min() + maxidx
-    # leftx = maxidx - (np.abs(leftdata.index - maxidx)).min()
-    rightx = (np.abs(rightdata.index - maxidx)).min()
-    leftx = -(np.abs(leftdata.index - maxidx)).min()
+    if len(rightx) > 0:
+        rightx = (np.abs(rightx - maxidx)).min()
+    else:
+        rightx = math.nan
+    if len(leftx) > 0:
+        leftx = -(np.abs(leftx - maxidx)).min()
+    else:
+        leftx = math.nan
     # Check for one-sided peaks (such as XAS edge)
     if math.isnan(rightx):
         fwhm = 2 * abs(leftx)
@@ -114,17 +121,17 @@ class PeakFit():
                 penalty += BASE_PENALTY
         return penalty
 
-    def initial_parameters(self, data, center=0, height=None):
+    def initial_parameters(self, x, y, center=0, height=None):
         """Estimate intial parameters from data. Calling function is
         responsible for determining peak center since multiple peaks
         may be involved. If `height` is None (default) it is estimated
         from the maximum value in the data.
         """
         # Convert FWHM to stdDev (taken from wolfram alpha page for Gaussian)
-        stdDev = discrete_fwhm(data) / 2.3548
+        stdDev = discrete_fwhm(x, y) / 2.3548
         # Decide which value to use for the peak height
         if height is None:
-            new_height = data.max()
+            new_height = y.max()
         else:
             new_height = height
         # Prepare tuples of parameters
@@ -305,7 +312,7 @@ class Peak():
             groups.append(params[i:end])
         return groups
 
-    def guess_parameters(self, data: Series):
+    def guess_parameters(self, x, y):
         """Use the data to guess appropriate starting parameters before
         fitting can take place. Returns a list the same length as the
         number of sub-peaks. Each entry is a tuple of sub-peak
@@ -313,29 +320,31 @@ class Peak():
 
         Arguments
         ---------
-        - x (numpy.ndarray) : Independent data to use for guessing
+        - xs (array-like) : Independent data to use for guessing
           peak properties.
 
-        - y (numpy.ndarray) : Dependent data to use for guess peak
+        - ys (array-like) : Dependent data to use for guess peak
           properties.
         """
         guess = []
         # Guess peak position based on maximum value
-        max_idx = data.argmax()
+        max_idx = y.argmax()
         # peak_max = x[max_idx]
         # Guess values for width (based on fitting method)
         for i in range(0, self.num_peaks):
-            sub_params = self.FitClass().initial_parameters(data=data,
+            sub_params = self.FitClass().initial_parameters(x=x, y=y,
                                                             center=max_idx)
             guess.append(sub_params)
         return guess
 
-    def fit(self, data: Series):
+    def fit(self, x, y):
         """Least squares refinement of a function to the data.
 
         Arguments
         ---------
-        - data : series of data to be fit.
+        - x : Iterable of x values to fit against
+
+        - y : Iterable of y values to fit against
 
         - num_peaks (int) : How many overlapping peaks should be
           used. Eg. X-ray data often has kα1 and kα2 peaks (default 1)
@@ -347,11 +356,10 @@ class Peak():
             - 'Pseudo-Voigt'
             - 'estimated'
         """
-        # Save x range for later
-        try:
-            self.x_range = (data.index[0], data.index[-1])
-        except IndexError:
+        # Check that actual data was passed
+        if len(x) == 0 or len(y) == 0:
             raise exceptions.RefinementError("No data to fit.")
+        self.x_range = (x[0], x[-1])
         # Create fit object(s)
         self.fit_list = []
         FitClass = self.FitClass
@@ -377,9 +385,9 @@ class Peak():
             for fit, paramTuple in zip(self.fit_list, paramlist):
                 # Calculate single peak penalties
                 penalty += fit.penalty(paramTuple)
-            result = objective(data.index, *obj_params)
-            return (data.values - result)**2 + penalty
-        initialParameters = self.guess_parameters(data=data)
+            result = objective(x, *obj_params)
+            return (y - result)**2 + penalty
+        initialParameters = self.guess_parameters(x=x, y=y)
         # Minimize the residual least squares
         try:
             result = optimize.leastsq(residual_error,
@@ -400,7 +408,7 @@ class Peak():
             for idx, fit in enumerate(self.fit_list):
                 fit.parameters = paramsList[idx]
         # Save goodness-of-fit
-        self._goodness = self.goodness(data)
+        # self._goodness = self.goodness(data)
 
     def predict(self, xdata=None):
         """Get a dataframe of the predicted peak fits.

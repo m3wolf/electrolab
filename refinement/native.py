@@ -4,7 +4,7 @@ import math
 import warnings
 
 import matplotlib.pyplot as plt
-import numpy
+import numpy as np
 import scipy
 from scipy.interpolate import UnivariateSpline
 import pandas
@@ -17,17 +17,23 @@ from refinement.base import BaseRefinement
 from mapping.datadict import DataDict
 
 
+def contains_peak(scattering_lengths, qrange):
+    """Does this instance have the given peak within its range of q values?"""
+    qmax = max(scattering_lengths)
+    qmin = min(scattering_lengths)
+    isInRange = (qmin < qrange[0] < qmax or
+                 qmin < qrange[1] < qmax)
+    return isInRange
+
+
 class NativeRefinement(BaseRefinement):
     data_dict = DataDict(['spline', 'is_refined'])
 
     def peak_rms_error(self, phase, unit_cell=None):
         diffs = []
-        wavelength = self.scan.wavelength
-        predicted_peaks = phase.predicted_peak_positions(wavelength=wavelength,
-                                                         unit_cell=unit_cell,
-                                                         scan=self.scan)
+        predicted_peaks = phase.predicted_peak_positions(unit_cell=unit_cell)
         # Only include those that are within the two_theta range
-        phase_idx = self.scan.phases.index(phase)
+        phase_idx = self.phases.index(phase)
         actual_peaks = self._peak_list[phase_idx]
         # Make sure lists line up
         # if len(predicted_peaks) != len(actual_peaks):
@@ -36,7 +42,7 @@ class NativeRefinement(BaseRefinement):
         #     raise exceptions.RefinementError(msg)
         # Prepare list of peak position differences
         for idx, actual_peak in enumerate(actual_peaks):
-            offsets = [abs(p.two_theta-actual_peak.center_kalpha)
+            offsets = [abs(p.q-actual_peak.center_kalpha)
                        for p in predicted_peaks]
             diffs.append(min(offsets))
         # Calculate mean-square-difference
@@ -46,13 +52,16 @@ class NativeRefinement(BaseRefinement):
         rms_error = math.sqrt(running_total / len(diffs))
         return rms_error
 
-    def refine_unit_cells(self, quiet=True):
+    def refine_unit_cells(self, scattering_lengths, intensities, quiet=True):
         """Residual least squares refinement of the unit-cell
-        parameters. Returns the residual root-mean-square error between
-        predicted and observed 2θ."""
+        parameters. Returns a (m, 6) array where m is the number of
+        phases and axis 1 has a value for each of the cell parameters
+        (a, b, c, α, β, γ).
+        """
         # Fit peaks to Gaussian/Cauchy functions using least squares refinement
-        self.fit_peaks()
-        for phase in self.scan.phases:
+        self.fit_peaks(scattering_lengths=scattering_lengths,
+                       intensities=intensities)
+        for phase in self.phases:
             # Define an objective function that will be minimized
             def objective(cell_parameters):
                 # Determine cell parameters from numpy array
@@ -131,14 +140,6 @@ class NativeRefinement(BaseRefinement):
             bg = self._background
         return bg
 
-    @property
-    def subtracted(self):
-        subtracted = getattr(self, '_subtracted', None)
-        if subtracted is None:
-            self.refine_background()
-            subtracted = self._subtracted
-        return subtracted
-
     def refine_displacement(self):
         """Not implemented yet."""
         pass
@@ -148,10 +149,10 @@ class NativeRefinement(BaseRefinement):
         # fullDF = self.scan.diffractogram
         df = self.subtracted
         # Get peak dataframe for integration
-        if self.scan.contains_peak(two_theta_range):
+        if self.contains_peak(scattering_lengths, two_theta_range):
             netDF = df.loc[two_theta_range[0]:two_theta_range[1]]
             # Integrate peak
-            area = numpy.trapz(x=netDF.index, y=netDF)
+            area = np.trapz(x=netDF.index, y=netDF)
         else:
             area = 0
         return area
@@ -190,7 +191,7 @@ class NativeRefinement(BaseRefinement):
         # Sanity checks passed so return to only value
         return peaks[0]
 
-    def fit_peaks(self):
+    def fit_peaks(self, scattering_lengths, intensities):
         """
         Use least squares refinement to fit gaussian/Cauchy/etc functions
         to the predicted reflections.
@@ -199,19 +200,22 @@ class NativeRefinement(BaseRefinement):
         fitMethods = ['pseudo-voigt', 'gaussian', 'cauchy', 'estimated']
         reflection_list = []
         # Step through each reflection in the relevant phases and find the peak
-        for phase in self.scan.phases:
+        for phase in self.phases:
             reflection_list += phase.reflection_list
             phase_peak_list = []
             for reflection in reflection_list:
-                if self.scan.contains_peak(reflection.two_theta_range):
-                    left = reflection.two_theta_range[0]
-                    right = reflection.two_theta_range[1]
-                    df = self.subtracted.loc[left:right]
+                if contains_peak(scattering_lengths, reflection.qrange):
+                    left = reflection.qrange[0]
+                    right = reflection.qrange[1]
+                    idx = np.where(np.logical_and(left < scattering_lengths,
+                                                  scattering_lengths < right))
+                    xs = scattering_lengths[idx]
+                    ys = scattering_lengths[idx]
                     # Try each fit method until one works
                     for method in fitMethods:
                         newPeak = XRDPeak(reflection=reflection, method=method)
                         try:
-                            newPeak.fit(df)
+                            newPeak.fit(x=xs, y=ys)
                         except exceptions.PeakFitError:
                             # Try next fit
                             continue

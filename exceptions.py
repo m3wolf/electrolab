@@ -73,9 +73,14 @@ class NoReflectionsError(RefinementError):
         msg = "I(obs) = 0. Do you really have reflections? {}"
         return msg.format(self.args)
 
-class FileFormatError(ValueError):
-    """This file is does not have a handler registered."""
+class UnknownFileTypeError(ValueError):
+    """This file does not have a handler registered."""
     pass
+
+class FileFormatError(ValueError):
+    """This file is not formatted as expected."""
+    pass
+
 
 #########################
 # X-ray microscopy errors

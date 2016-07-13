@@ -39,26 +39,26 @@ class XRDMap(Map):
     frame_step = 20  # How much to move detector by in degrees
     frame_width = 20  # 2-theta coverage of detector face
     scan_time = 300  # In seconds
-    phases = []
+    Phases = []
     background_phases = []
 
-    def __init__(self, *args, collimator=0.5, two_theta_range=None,
+    def __init__(self, *args, collimator=0.5, qrange=None,
                  scan_time=None, detector_distance=20,
-                 frame_size=1024, phases=[], background_phases=[],
+                 frame_size=1024, Phases=[], background_phases=[],
                  refinement=NativeRefinement, **kwargs):
         self.collimator = collimator
         self.detector_distance = detector_distance
         self.frame_size = frame_size
         # Checking for non-default lists allows for better subclassing
-        if len(phases) > 0:
-            self.phases = phases
+        if len(Phases) > 0:
+            self.Phases = Phases
         if len(background_phases) > 0:
             self.background_phases = background_phases
         if scan_time is not None:
             self.scan_time = scan_time
         self.refinement = refinement
-        if two_theta_range is not None:
-            self.two_theta_range = two_theta_range
+        if qrange is not None:
+            self.qrange = qrange
         # Unless otherwise specified, the collimator sets the resolution
         kwargs['resolution'] = kwargs.get('resolution', collimator)
         # Return parent class init
@@ -264,14 +264,24 @@ class XRDMap(Map):
     def refine_mapping_data(self):
         """Refine the relevant XRD parameters, such as background, unit-cells,
         etc."""
-        refinement = self.refinement(phases=self.phases)
         bgs = []
         with self.store(mode='r+') as store:
-            for qs, intensities in zip(store.scattering_lengths, store.intensities):
+            refinements = [self.refinement(phases=self.phases)
+                           for df in store.scattering_lengths]
+            items = zip(store.scattering_lengths, store.intensities, refinements)
+            for qs, intensities, refinement in items:
                 bg = refinement.refine_background(scattering_lengths=qs,
                                                   intensities=intensities)
                 bgs.append(bg)
             store.backgrounds = np.array(bgs)
+            # Refine unit-cell parameters
+            items = zip(store.scattering_lengths,
+                        store.intensities - store.backgrounds,
+                        refinements)
+            for qs, subtracted, refinement in items:
+                cells = refinement.refine_unit_cells(scattering_lengths=qs,
+                                                     intensities=subtracted,
+                                                     quiet=False)
 
     def set_metric_phase_ratio(self, phase_idx=0):
         """Set the plotting metric as the proportion of given phase."""

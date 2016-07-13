@@ -12,13 +12,13 @@ class Corundum(Phase):
     fullprof_spacegroup = 'R -3 C'
     diagnostic_hkl = '104'
     reflection_list = [
-        Reflection('012', (25, 27)),
-        Reflection('104', (34, 36)),
-        Reflection('110', (37, 39)),
-        Reflection('006', (41, 42.5)),
-        Reflection('113', (42.5, 44)),
-        Reflection('024', (52, 54)),
-        Reflection('116', (56, 59)),
+        Reflection('012', qrange=(1.76, 1.90)),
+        Reflection('104', qrange=(2.38, 2.52)),
+        Reflection('110', qrange=(2.59, 2.72)),
+        Reflection('006', qrange=(2.85, 2.95)),
+        Reflection('113', qrange=(2.95, 3.05)),
+        Reflection('024', qrange=(3.57, 3.70)),
+        Reflection('116', qrange=(3.83, 4.01)),
     ]
 
 
@@ -27,9 +27,9 @@ class Aluminum(Phase):
     unit_cell = CubicUnitCell(a=4.05)
     diagnostic_hkl = '111'
     reflection_list = [
-        Reflection('111', (37.3, 39)),
-        Reflection('200', (43.5, 45)),
-        Reflection('220', (63.5, 65.5)),
-        Reflection('311', (77, 80)),
-        Reflection('222', (81, 84)),
+        Reflection('111', qrange=(2.61, 2.72)),
+        Reflection('200', qrange=(3.02, 3.12)),
+        Reflection('220', qrange=(4.29, 4.41)),
+        Reflection('311', qrange=(5.07, 5.24)),
+        Reflection('222', qrange=(5.29, 5.45)),
     ]

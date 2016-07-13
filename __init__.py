@@ -15,7 +15,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with Foobar.  If not, see <http://www.gnu.org/licenses/>.
+# along with scimap.  If not, see <http://www.gnu.org/licenses/>.
 
 # flake8: noqa
 
@@ -48,10 +48,12 @@ from xrd.unitcell import CubicUnitCell, HexagonalUnitCell, TetragonalUnitCell
 from xrd import standards, lmo, nca
 from xrd.lmo import LMOPlateauMap
 from xrd.reflection import Reflection
+from xrd.tube import tubes
 from xrd.peak import XRDPeak
 from xrd.scan import XRDScan, align_scans
 from xrd.map import XRDMap
-from xrd.importers import import_aps_32IDE_map
+from xrd.importers import import_aps_34IDE_map
+from xrd.utilities import q_to_twotheta, twotheta_to_q
 
 from mapping.coordinates import Cube
 from mapping.map import Map, DummyMap, PeakPositionMap, PhaseRatioMap, FwhmMap

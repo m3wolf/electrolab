@@ -16,10 +16,10 @@ def hkl_to_tuple(hkl_input):
         hklTuple = hkl_input
     elif isinstance(hkl_input, str):
         # String to tuple
-        hklTuple = (
-            int(hkl_input[0]),
-            int(hkl_input[1]),
-            int(hkl_input[2])
+        hklTuple = HKL(
+            h=int(hkl_input[0]),
+            k=int(hkl_input[1]),
+            l=int(hkl_input[2])
         )
     return hklTuple
 
@@ -35,7 +35,7 @@ class Reflection():
       boundaries of this reflection.
 
     """
-    def __init__(self, hkl=(0, 0, 0), qrange=(10, 80), multiplicity=1, intensity=100):
+    def __init__(self, hkl=(0, 0, 0), qrange=(0.71, 5.24), multiplicity=1, intensity=100):
         h, k, l = hkl_to_tuple(hkl)
         self._h = h
         self._k = k

@@ -3,6 +3,7 @@
 import pandas as pd
 from pandas import Series
 import numpy as np
+import matplotlib.pyplot as plt
 
 import exceptions
 from xrd.tube import tubes, KALPHA2_RATIO
@@ -35,42 +36,36 @@ class XRDPeak(Peak):
         )
         return name
 
-    def guess_parameters(self, data: Series):
+    def guess_parameters(self, x, y):
         # Currently assumes two overlapping k-alpha peaks
         assert self.num_peaks == 2
         # Filter out data that is below half standard deviation of the whole set
-        threshold = 0.5 * np.std(data)
-        peak_data = data[data > threshold]
+        threshold = 0.5 * np.std(y)
+        idx = np.where(y>threshold)
+        peak_data = y[y > threshold]
         # Guess mean peak position based on weight average of x values
         if len(peak_data) == 0:
             msg = "No data exceeds background for peak."
             raise exceptions.PeakFitError(msg)
-        mean_center = np.average(peak_data.index, weights=peak_data.values)
+        mean_center = np.average(x, weights=y)
 
         # Convert average center to k-alpha1, k-alpha2
         center1, center2 = self.tube.split_angle_by_kalpha(mean_center)
         # Estimate kα₁, kα₂ heights
-        height1 = data.max()
+        height1 = y.max()
         height2 = height1 / 2
         # Guess initial parameters for the selected fitting method
         guess = [
-            self.FitClass().initial_parameters(data=data,
+            self.FitClass().initial_parameters(x=x,
+                                               y=y,
                                                center=center1,
                                                height=height1),
-            self.FitClass().initial_parameters(data=data,
+            self.FitClass().initial_parameters(x=x,
+                                               y=y,
                                                center=center2,
                                                height=height2),
         ]
         return guess
-
-    def fit(self, diffractogram: Series):
-        """Least squares refinement of a function to a peak in XRD data.
-
-        Arguments
-        ---------
-        - diffractogram : pandas series of data to be fit.
-        """
-        return super().fit(data=diffractogram)
 
 #     @property
 #     def center_mean(self):

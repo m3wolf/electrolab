@@ -2,6 +2,8 @@
 
 import math
 
+from default_units import angstrom
+
 # kalpha2 is half the intensity of kalpha1
 KALPHA2_RATIO = 0.5
 
@@ -30,5 +32,5 @@ class XRDTube():
         return (theta1, theta2)
 
 tubes = {
-    'Cu': XRDTube(kalpha1=1.5406, kalpha2=1.5444),
+    'Cu': XRDTube(kalpha1=angstrom(1.5406), kalpha2=angstrom(1.5444)),
 }

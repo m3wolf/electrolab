@@ -27,20 +27,10 @@ import pandas as pd
 import hdf
 from default_units import angstrom
 from .xrdstore import XRDStore
+from .utilities import twotheta_to_q, q_to_twotheta
 
-def q_to_twotheta(q, wavelength):
-    """Converts a numpy array or value in scattering length (q) into
-    2θ angle."""
-    twotheta = np.degrees(2 * np.arcsin(q * wavelength / 4 / np.pi))
-    return twotheta
 
-def twotheta_to_q(two_theta, wavelength):
-    """Converts a numpy array or value in 2θ angle into scattering length
-    (q)."""
-    q = 4 * np.pi / wavelength * np.sin(np.radians(two_theta / 2))
-    return q
-
-def import_aps_32IDE_map(directory: str, wavelength: int,
+def import_aps_34IDE_map(directory: str, wavelength: int,
                          shape: Tuple[int, int], step_size: Union[float, int],
                          hdf_filename=None, hdf_groupname=None,
                          beamstop=0):
@@ -136,5 +126,6 @@ def import_aps_32IDE_map(directory: str, wavelength: int,
     intensities = intensities.reshape(new_shape)
     # Save to hdf file
     sample_group.create_dataset('scattering_lengths', data=qs)
+    sample_group['scattering_lengths'].attrs['unit'] = 'Å⁻'
     sample_group.create_dataset('intensities', data=intensities)
     return qs, intensities

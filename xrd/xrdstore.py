@@ -129,7 +129,6 @@ class XRDStore():
 
     @subtracted.setter
     def subtracted(self, value):
-        print(value.shape)
         name = 'subtracted'
         try:
             del self._group()[name]

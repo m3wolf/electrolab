@@ -5,9 +5,9 @@ from matplotlib import pyplot
 
 import plots
 from filters import fourier_transform
-from xrd.tube import tubes
+from .tube import tubes
 from refinement.native import NativeRefinement
-from adapters.shortcuts import adapter_from_filename
+from .adapters import adapter_from_filename
 
 
 def align_scans(scan_list, peak):
@@ -37,7 +37,7 @@ class XRDScan():
     def __init__(self, filename='', name=None,
                  phases=[], phase=None, background_phases=[],
                  tube='Cu', wavelength=None,
-                 refinement=NativeRefinement, two_theta_range=None):
+                 Refinement=NativeRefinement, two_theta_range=None):
         self._filename = filename
         if phase is not None:
             self.phases = [phase]
@@ -45,15 +45,13 @@ class XRDScan():
             self.phases = phases
         self.background_phases = background_phases
         self.cached_data = {}
-        self.refinement = refinement(scan=self)
+        self.refinement = Refinement(phases=self.phases)
         self._two_theta_range = two_theta_range
         # Determine wavelength from tube type
         self.tube = tubes[tube]
         self.wavelength = self.tube.kalpha
         # Load diffractogram from file
         self.name = name
-        if len(filename) > 0:
-            self.load_diffractogram(filename)
 
     def __repr__(self):
         return "<{cls}: {filename}>".format(cls=self.__class__.__name__,
@@ -68,20 +66,26 @@ class XRDScan():
         self._filename = val
 
     @property
-    def diffractogram(self):
-        """Return a pandas dataframe with the X-ray diffractogram for this
-        scan.
-        """
-        if self._df is not None:
-            # Retrieve cached diffractogram
-            df = self._df
-        else:
-            df = self.load_diffractogram(filename=self.filename)
-        return df
+    def scattering_lengths(self):
+        with adapter_from_filename(self.filename) as f:
+            return f.scattering_lengths
 
-    @diffractogram.setter
-    def diffractogram(self, new_df):
-        self._df = new_df
+    @property
+    def intensities(self):
+        with adapter_from_filename(self.filename) as f:
+            return f.intensities
+
+    # @property
+    # def diffractogram(self):
+    #     """Return a pandas dataframe with the X-ray diffractogram for this
+    #     scan.
+    #     """
+    #     df = pd.Series(intensities, 
+    #     return df
+
+    # @diffractogram.setter
+    # def diffractogram(self, new_df):
+    #     self._df = new_df
 
     def save_diffractogram(self, filename):
         # Determine file type from extension
@@ -89,7 +93,7 @@ class XRDScan():
         result = adapter.write_diffractogram(scan=self)
         return result
 
-    def load_diffractogram(self, filename):
+    def _load_diffractogram(self, filename):
         adapter = adapter_from_filename(filename)
         df = adapter.dataframe
         self.name = adapter.sample_name
@@ -191,15 +195,6 @@ class XRDScan():
         ax3.set_title('Difference')
         # axMin, axMax = ax2.get_ylim()
         # ax3.set_ylim(-(axMax-axMin)/2,(axMax-axMin)/2)
-
-    def contains_peak(self, two_theta_range):
-        """Does this instance have the given peak within its two_theta_range?"""
-        df = self.diffractogram
-        two_theta_max = df.index.max()
-        two_theta_min = df.index.min()
-        isInRange = (two_theta_min < two_theta_range[0] < two_theta_max or
-                     two_theta_min < two_theta_range[1] < two_theta_max)
-        return isInRange
 
     @property
     def peak_list(self):
