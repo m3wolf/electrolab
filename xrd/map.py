@@ -2,8 +2,10 @@
 
 import math
 import os
+import warnings
 
 import numpy as np
+import scipy
 import pandas
 import jinja2
 
@@ -249,7 +251,9 @@ class XRDMap(Map):
         with self.store() as store:
             xs = store.scattering_lengths
             ys = store.intensities
-            if subtracted:
+            if subtracted == "background":
+                ys = store.backgrounds
+            elif subtracted:
                 bgs = store.backgrounds
                 ys = ys - bgs
             for i, (x, y) in enumerate(zip(xs, ys)):
@@ -261,27 +265,45 @@ class XRDMap(Map):
                     ax.text(x[-1], y[-1], s=i,
                             verticalalignment="center")
 
-    def refine_mapping_data(self):
+    def refine_mapping_data(self, phase_idx=0):
         """Refine the relevant XRD parameters, such as background, unit-cells,
         etc."""
         bgs = []
+        all_cells = []
+        failed = []
         with self.store(mode='r+') as store:
-            refinements = [self.refinement(phases=self.phases)
-                           for df in store.scattering_lengths]
-            items = zip(store.scattering_lengths, store.intensities, refinements)
-            for qs, intensities, refinement in items:
+            items = zip(store.scattering_lengths, store.intensities)
+            total = len(store.scattering_lengths)
+            for idx, (qs, Is) in enumerate(prog(items, total=total)):
+                phases = [P() for P in self.Phases]
+                refinement = self.refinement(phases=phases)
+                # Refine background
                 bg = refinement.refine_background(scattering_lengths=qs,
-                                                  intensities=intensities)
+                                                  intensities=Is,
+                                                  k=3, s=len(qs)/20)
                 bgs.append(bg)
+                # Fit peak shapes
+                refinement.fit_peaks(qs, Is)
+                # Refine unit-cell parameters
+                subtracted = Is - bg
+                try:
+                    refinement.refine_unit_cells(scattering_lengths=qs,
+                                                 intensities=subtracted,
+                                                 quiet=True)
+                except (exceptions.RefinementError, exceptions.UnitCellError):
+                    failed.append(idx)
+                    # all_cells.append(((0, 0, 0, 0, 0, 0)))
+                finally:
+                    phases = tuple(p.unit_cell.as_tuple() for p in refinement.phases)
+                    all_cells.append(phases)
+            # Store refined data for later
             store.backgrounds = np.array(bgs)
-            # Refine unit-cell parameters
-            items = zip(store.scattering_lengths,
-                        store.intensities - store.backgrounds,
-                        refinements)
-            for qs, subtracted, refinement in items:
-                cells = refinement.refine_unit_cells(scattering_lengths=qs,
-                                                     intensities=subtracted,
-                                                     quiet=False)
+            import pdb; pdb.set_trace()
+            store.cell_parameters = np.array(all_cells)
+        # Alert the user of failed refinements
+        if failed:
+            msg = "Could not refine unit cell for loci: {}".format(failed)
+            warnings.warn(msg, RuntimeWarning)
 
     def set_metric_phase_ratio(self, phase_idx=0):
         """Set the plotting metric as the proportion of given phase."""
@@ -289,6 +311,25 @@ class XRDMap(Map):
             phase_scale = locus.phases[phase_idx].scale_factor
             total_scale = sum([phase.scale_factor for phase in locus.phases])
             locus.metric = phase_scale / total_scale
+
+    def metric(self, phase_idx, param):
+        """Calculate a mapping value as the parameter (eg. unit-cell a) for
+        given phase index `phaseidx`. Valid parameters:
+        - Unit cell parameters: 'a', 'b', 'c', 'alpha', 'beta', 'gamma'
+        - 'integral' to indicate total integrated signal after bg subtraction
+        """
+        # Check for unit-cell parameters
+        UNIT_CELL_PARAMS = ['a', 'b', 'c', 'alpha', 'beta', 'gamma']
+        if param in UNIT_CELL_PARAMS:
+            param_idx = UNIT_CELL_PARAMS.index(param)
+            with self.store() as store:
+                metric = store.cell_parameters[:,phase_idx,param_idx]
+        elif param == 'integral':
+            with self.store() as store:
+                q = store.scattering_lengths
+                I = store.subtracted
+                metric = scipy.integrate.trapz(y=I, x=q, axis=1)
+        return metric
 
     def plot_phase_ratio(self, phase_idx=0, *args, **kwargs):
         """Plot a map of the ratio of the given phase index to all the phases"""

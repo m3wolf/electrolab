@@ -127,11 +127,6 @@ class Map():
             samplename=self.sample_name
         )
 
-    # def xy_lim(self):
-        
-        
-    #     # return self.diameter / 2 * 1.5
-
     def write_script(self, *args, **kwargs):
         raise NotImplementedError
 
@@ -202,6 +197,13 @@ class Map():
     def subtract_backgrounds(self):
         for scan in prog(self.scans, desc='Fitting background'):
             scan.subtract_background()
+
+    def metric(self, *args, **kwargs):
+        """
+        Calculate a set of mapping values. Should be implemented by
+        subclasses.
+        """
+        raise NotImplementedError
 
     def mapscan_metric(self, scan):
         """
@@ -303,14 +305,15 @@ class Map():
         # Add patch to the axes
         ax.add_patch(patch)
 
-    def plot_map(self, ax=None, metric_range=None,
+    def plot_map(self, ax=None, phase_idx=0, metric='location', metric_range=None,
                  highlighted_locus=None, alpha=None):
-        """
-        Generate a two-dimensional map of the electrode surface. Color is
-        determined by each scans metric() method. If no axes are given
-        via the `ax` argument, a new set will be used. Optionally, a
-        `highlighted_locus` can be given which will show up as a different
-        color.
+        """Generate a two-dimensional map of the electrode surface. A `metric`
+        can and should be given to indicate which metric should be
+        mapped.Color is determined by the metric() method (see its
+        docstring for valid choices). If no axes are given via the
+        `ax` argument, a new set will be used. Optionally, a
+        `highlighted_locus` can be given which will show up as a
+        different color.
         """
         cmap = self.get_cmap()
         # Plot hexagons
@@ -327,9 +330,7 @@ class Map():
         # ax.set_ylim([-xy_lim, xy_lim])
         ax.set_xlabel(step_size.unit.name)
         ax.set_ylabel(step_size.unit.name)
-        with self.store() as store:
-            ys = store.intensities - store.backgrounds
-            metrics = scipy.integrate.trapz(ys, axis=1)
+        metrics = self.metric(phase_idx=phase_idx, param=metric)
         # Normalize the metrics
         # metrics = np.array(1 - (max(metrics) - metrics) / (max(metrics) - min(metrics)))
         self.metric_normalizer = colors.Normalize(min(metrics), max(metrics), clip=True)

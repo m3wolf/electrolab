@@ -28,6 +28,7 @@ def contains_peak(scattering_lengths, qrange):
 
 class NativeRefinement(BaseRefinement):
     data_dict = DataDict(['spline', 'is_refined'])
+    spline = None
 
     def peak_rms_error(self, phase, unit_cell=None):
         diffs = []
@@ -99,26 +100,37 @@ class NativeRefinement(BaseRefinement):
             phase.scale_factor = area
         self.is_refined['scale_factors'] = True
 
-    def refine_background(self, scattering_lengths, intensities):
+    def refine_background(self, scattering_lengths, intensities, s=None, k=4):
+        """Fit a univariate spline to the background data.
+
+        Arguments
+        ---------
+        - scattering_lengths : Array of scattering vector lengths, q.
+
+        - intensities : Array of intensity values at each q position
+
+        - s : Smoothing factor passed to the spline. Default is
+          len(scattering_lengths)
+
+        - k : Degree of the spline (default quartic spline)
+        """
+        if s is None:
+            s = len(scattering_lengths)
         # Remove pre-indexed peaks for background fitting
         phase_list = self.phases + self.background_phases
-        df = pandas.Series(data=intensities, index=scattering_lengths)
+        q, I = scattering_lengths, intensities
         for phase in phase_list:
             for reflection in phase.reflection_list:
-                remove_peak_from_df(reflection, df)
+                q, I = remove_peak_from_df(x=q, y=I, xrange=reflection.qrange)
         # Determine a background line from the noise without peaks
         self.spline = UnivariateSpline(
-            x=df.index,
-            y=df.values,
-            s=len(df) / 20,
+            x=q,
+            y=I,
+            s=s,
             k=3
         )
         # Extrapolate the background for the whole pattern
         background = self.spline(scattering_lengths)
-        # plt.figure(figsize=(9, 6))
-        # plt.plot(scattering_lengths, background)
-        # plt.plot(scattering_lengths, intensities)
-        # plt.plot(scattering_lengths, intensities - background)
         return background
 
     def refine_peak_widths(self):
@@ -133,12 +145,15 @@ class NativeRefinement(BaseRefinement):
         return peak.fwhm()
 
     @property
-    def background(self):
-        bg = getattr(self, '_background', None)
-        if bg is None:
-            self.refine_background()
-            bg = self._background
-        return bg
+    def has_background(self):
+        """Returns true if the background has been fit and subtracted.
+        """
+        return self.spline is not None
+
+    def background(self, x):
+        if self.spline is None:
+            raise exceptions.RefinementError("Please run `refine_background()` first")
+        return self.spline(x)
 
     def refine_displacement(self):
         """Not implemented yet."""
@@ -199,6 +214,10 @@ class NativeRefinement(BaseRefinement):
         self._peak_list = []
         fitMethods = ['pseudo-voigt', 'gaussian', 'cauchy', 'estimated']
         reflection_list = []
+        # Check if there are phases present
+        if len(self.phases) == 0:
+            msg = '{this} has no phases. Nothing to fit'.format(this=self)
+            warnings.warn(msg, RuntimeWarning)
         # Step through each reflection in the relevant phases and find the peak
         for phase in self.phases:
             reflection_list += phase.reflection_list
@@ -210,7 +229,7 @@ class NativeRefinement(BaseRefinement):
                     idx = np.where(np.logical_and(left < scattering_lengths,
                                                   scattering_lengths < right))
                     xs = scattering_lengths[idx]
-                    ys = scattering_lengths[idx]
+                    ys = intensities[idx]
                     # Try each fit method until one works
                     for method in fitMethods:
                         newPeak = XRDPeak(reflection=reflection, method=method)
@@ -229,17 +248,16 @@ class NativeRefinement(BaseRefinement):
             self._peak_list.append(phase_peak_list)
         return self._peak_list
 
-    def plot(self, ax=None):
+    def plot(self, x, ax=None):
+        # Create new axes if necessary
+        if ax is None:
+            ax = plots.new_axes()
         # Check if background has been fit
-        spline = getattr(self, 'spline', None)
-        if spline is not None:
-            # Create new axes if necessary
-            if ax is None:
-                ax = plots.new_axes()
+        if self.spline is not None:
             # Plot background
-            two_theta = self.scan.diffractogram.index
-            background = self.spline(two_theta)
-            ax.plot(two_theta, background)
+            q = x
+            background = self.spline(q)
+            ax.plot(q, background)
         # Highlight peaks
         self.highlight_peaks(ax=ax)
         # Plot peak fittings
@@ -250,7 +268,8 @@ class NativeRefinement(BaseRefinement):
             # peak.plot_overall_fit(ax=ax, background=spline)
         if peaks:
             predicted = pandas.concat(peaks)
-            predicted = predicted + self.spline(predicted.index)
+            if self.spline:
+                predicted = predicted + self.spline(predicted.index)
             predicted.plot(ax=ax)
         return ax
 
@@ -267,14 +286,14 @@ class NativeRefinement(BaseRefinement):
             alpha = 0.15
             # Highlight each peak in this phase
             for reflection in phase.reflection_list:
-                two_theta = reflection.two_theta_range
+                two_theta = reflection.qrange
                 ax.axvspan(two_theta[0], two_theta[1],
                            color=color, alpha=alpha)
         # Highlight phases
-        for idx, phase in enumerate(self.scan.phases):
+        for idx, phase in enumerate(self.phases):
             draw_peaks(ax=ax, phase=phase, color=color_list[idx])
         # Highlight background
-        for phase in self.scan.background_phases:
+        for phase in self.background_phases:
             draw_peaks(ax=ax, phase=phase, color='grey')
         return ax
 

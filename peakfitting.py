@@ -38,8 +38,10 @@ BASE_PENALTY = 300
 
 def remove_peak_from_df(x, y, xrange):
     """Remove data with the given xrange from the x and y data."""
-    peak = reflection.qrange
-    df.drop(df[peak[0]:peak[1]].index, inplace=True)
+    is_peak = np.logical_and(x>xrange[0], x<xrange[1])
+    newx = x[~is_peak]
+    newy = y[~is_peak]
+    return newx, newy
 
 
 def gaussian_fwhm(width_parameter):
@@ -94,7 +96,7 @@ class PeakFit():
 
     def __repr__(self):
         return "<{cls}: {center}>".format(cls=self.__class__.__name__,
-                                          center=round(self.center, 2))
+                                          center=round(self.center, 3))
 
     @property
     def parameters(self):
@@ -420,6 +422,7 @@ class Peak():
             will be generated within the range intially used for the
             fitting.
         """
+        # import pdb; pdb.set_trace()
         if xdata is None:
             # Create a default linspace to use as xdata
             x = np.linspace(self.x_range[0],

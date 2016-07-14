@@ -20,6 +20,8 @@
 import os
 import re
 from collections import namedtuple
+import zipfile
+from xml.etree import ElementTree
 
 import numpy as np
 import pandas as pd
@@ -159,15 +161,14 @@ class BrukerPltFile(XRDAdapter):
 class BrukerBrmlFile(XRDAdapter):
     def __init__(self, filename):
         self._zf = zipfile.ZipFile(filename)
-        data_file = self.zf.open('Experiment0/RawData0.xml')
-        self._dataTree = ElementTree.parse(dataFile)
+        data_file = self._zf.open('Experiment0/RawData0.xml')
+        self._dataTree = ElementTree.parse(data_file)
 
     def __enter__(self):
         return self
 
     def __exit__(self, type, value, traceback):
         # Close files on disk
-        self._dataTree.close()
         self._zf.close()
 
     @property
@@ -199,7 +200,7 @@ class BrukerBrmlFile(XRDAdapter):
         unit = tubeElement.get('Unit')
         num = float(tubeElement.get('Value'))
         if unit == 'Å': # Special character copied from brml file
-            wavelength = default_units.angstrom(num)
+            wavelength = angstrom(num)
         else:
             msg = 'Unrecognized unit "{}"'.format(unit)
             raise exceptions.BrmlReadError(msg)

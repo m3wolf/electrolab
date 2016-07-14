@@ -30,9 +30,9 @@ class XRDPeak(Peak):
         super().__init__(num_peaks=num_peaks, method=method, *args, **kwargs)
 
     def __repr__(self):
-        name = "<{cls}: {angle}°>".format(
+        name = "<{cls}: q={q}>".format(
             cls=self.__class__.__name__,
-            angle=self.center()
+            q=round(self.center(), 3)
         )
         return name
 

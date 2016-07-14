@@ -53,6 +53,11 @@ class UnitCell():
                            alpha=self.alpha, beta=self.beta, gamma=self.gamma)
         return name
 
+    def as_tuple(self):
+        params = (self.a, self.b, self.c,
+                  self.alpha, self.beta, self.gamma)
+        return params
+
     @property
     def cell_parameters(self):
         """Named tuple of the cell parameters that aren't fixed."""

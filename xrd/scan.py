@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 
+from functools import lru_cache
+
 import pandas as pd
 from matplotlib import pyplot
 
@@ -75,13 +77,18 @@ class XRDScan():
         with adapter_from_filename(self.filename) as f:
             return f.intensities
 
-    # @property
-    # def diffractogram(self):
-    #     """Return a pandas dataframe with the X-ray diffractogram for this
-    #     scan.
-    #     """
-    #     df = pd.Series(intensities, 
-    #     return df
+    @property
+    def diffractogram(self):
+        """Return a pandas dataframe with the X-ray diffractogram for this
+        scan.
+        """
+        data = {
+            'counts': self.intensities,
+            'subtracted': self.intensities - self.background(),
+        }
+        q = self.scattering_lengths
+        df = pd.DataFrame(index=q, data=data)
+        return df
 
     # @diffractogram.setter
     # def diffractogram(self, new_df):
@@ -107,12 +114,19 @@ class XRDScan():
         return self._df
 
     @property
-    def has_background(self):
-        """Returns true if the background has been fit and subtracted in the
-        dataframe.
+    def raw_data(self):
+        """Return the imported XRD pattern as a 2-tuple of (scattering_length,
+        intensity) data.
         """
-        hasBackground = 'background' in self.diffractogram.columns
-        return hasBackground
+        return self.scattering_lengths, self.intensities
+
+    @lru_cache()
+    def background(self):
+        """Return background that has been refined."""
+        q, I = self.raw_data
+        self.refinement.refine_background(q, I, s=len(q)*25)
+        background = self.refinement.background(q)
+        return background
 
     def shift_diffractogram(self, offset):
         """Slide the whole diffractogram to the right by offset."""
@@ -120,23 +134,25 @@ class XRDScan():
         df['2theta'] = df.index + offset
         df.set_index('2theta', inplace=True)
 
-    def plot_diffractogram(self, ax=None, *args, **kwargs):
+    def plot_diffractogram(self, ax=None, marker='+', linestyle="None",
+                           *args, **kwargs):
         """
         Plot the XRD diffractogram for this scan. Generates a new set of axes
         unless supplied by the `ax` keyword.
         """
-        df = self.diffractogram
+        q = self.scattering_lengths
+        y = self.intensities
         if ax is None:
             ax = plots.big_axes()
-        ax.set_xlim(left=df.index.min(), right=df.index.max())
-        ax.xaxis.set_major_formatter(plots.DegreeFormatter())
-        ax.plot(df.index, df.loc[:, 'counts'], *args, **kwargs)
+        ax.set_xlim(left=q.min(), right=q.max())
+        # ax.xaxis.set_major_formatter(plots.DegreeFormatter())
+        ax.plot(q, y, marker=marker, linestyle=linestyle, *args, **kwargs)
 
         # Plot refinement
-        self.refinement.plot(ax=ax)
+        # self.refinement.plot(ax=ax)
 
         # Set plot annotations
-        ax.set_xlabel(r'$2\theta$')
+        ax.set_xlabel(r'q $/{unit}^{-}$')
         ax.set_ylabel('Counts')
         ax.set_title(self.axes_title())
         return ax

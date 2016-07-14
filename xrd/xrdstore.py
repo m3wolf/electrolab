@@ -81,6 +81,20 @@ class XRDStore():
         self._group().create_dataset('positions', data=value)
 
     @property
+    def cell_parameters(self):
+        return self._group()['cell_parameters'].value
+
+    @cell_parameters.setter
+    def cell_parameters(self, value):
+        group = self._group()
+        try:
+            del group['cell_parameters']
+        except KeyError:
+            pass
+        group.create_dataset('cell_parameters', data=value)
+        group['cell_parameters'].attrs['order'] = "(scan, phase, (a, b, c, α, β, γ))"
+
+    @property
     def layout(self):
         return self._group()['positions'].attrs['layout']
 
@@ -116,7 +130,7 @@ class XRDStore():
     def backgrounds(self, value):
         name = 'backgrounds'
         try:
-            del self._group()[name]
+             del self._group()[name]
         except KeyError:
             pass
         self._group().create_dataset(name, data=value)

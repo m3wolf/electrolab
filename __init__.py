@@ -29,7 +29,7 @@ import exceptions
 import default_units
 from electrochem.electrochem_units import *
 
-from peakfitting import Peak
+from peakfitting import Peak, remove_peak_from_df
 # from xrd.peak import XRDPeak
 # from xrdpeak import PeakFit
 
