@@ -271,6 +271,7 @@ class XRDMap(Map):
         bgs = []
         all_cells = []
         failed = []
+        goodness = []
         with self.store(mode='r+') as store:
             items = zip(store.scattering_lengths, store.intensities)
             total = len(store.scattering_lengths)
@@ -287,19 +288,27 @@ class XRDMap(Map):
                 # Refine unit-cell parameters
                 subtracted = Is - bg
                 try:
-                    refinement.refine_unit_cells(scattering_lengths=qs,
-                                                 intensities=subtracted,
-                                                 quiet=True)
+                    residuals = refinement.refine_unit_cells(
+                        scattering_lengths=qs,
+                        intensities=subtracted,
+                        quiet=True
+                    )
                 except (exceptions.RefinementError, exceptions.UnitCellError):
                     failed.append(idx)
-                    # all_cells.append(((0, 0, 0, 0, 0, 0)))
+                    goodness.append(np.nan)
+                else:
+                    goodness.append(residuals)
                 finally:
                     phases = tuple(p.unit_cell.as_tuple() for p in refinement.phases)
                     all_cells.append(phases)
             # Store refined data for later
             store.backgrounds = np.array(bgs)
-            import pdb; pdb.set_trace()
             store.cell_parameters = np.array(all_cells)
+            # Normalize goodnesses of fit values to be between 0 and 1
+            max_ = np.nanmax(goodness)
+            min_ = np.nanmin(goodness)
+            goodness = (max_ - goodness) / (max_ - min_)
+            store.goodness = np.nan_to_num(goodness)
         # Alert the user of failed refinements
         if failed:
             msg = "Could not refine unit cell for loci: {}".format(failed)
@@ -317,6 +326,8 @@ class XRDMap(Map):
         given phase index `phaseidx`. Valid parameters:
         - Unit cell parameters: 'a', 'b', 'c', 'alpha', 'beta', 'gamma'
         - 'integral' to indicate total integrated signal after bg subtraction
+        - 'goodness' to use the quality of fit determined during refinement
+        - 'position' to give the distance from the origin (for testing purposes)
         """
         # Check for unit-cell parameters
         UNIT_CELL_PARAMS = ['a', 'b', 'c', 'alpha', 'beta', 'gamma']
@@ -329,6 +340,16 @@ class XRDMap(Map):
                 q = store.scattering_lengths
                 I = store.subtracted
                 metric = scipy.integrate.trapz(y=I, x=q, axis=1)
+        elif param == "position":
+            with self.store() as store:
+                locs = store.positions
+            metric = np.sqrt(locs[:,0]**2 + locs[:,1]**2)
+        elif param in ['goodness']:
+            # Just return the requested store attribute
+            with self.store() as store:
+                metric = getattr(store, param)
+        else:
+            raise ValueError("Unknown param: {}".format(param))
         return metric
 
     def plot_phase_ratio(self, phase_idx=0, *args, **kwargs):

@@ -279,7 +279,7 @@ class Map():
         self.plot_histogram(ax=histogramAxes)
         return (mapAxes, histogramAxes)
 
-    def plot_locus(self, loc, ax, shape, size, metric: float):
+    def plot_locus(self, loc, ax, shape, size, metric: float, alpha: float=1):
         """Draw a location on the map.
 
         Arguments
@@ -299,29 +299,45 @@ class Map():
         loc = xycoord(*loc)
         color = self.get_cmap()(self.metric_normalizer(metric))
         if shape in ["square", "rect"]:
-            patch = patches.Rectangle(xy=loc, width=size, height=size, color=color)
+            patch = patches.Rectangle(xy=loc, width=size, height=size, color=color, alpha=alpha)
         else:
             raise ValueError("Unknown value for shape: '{}'".format(shape))
         # Add patch to the axes
         ax.add_patch(patch)
 
-    def plot_map(self, ax=None, phase_idx=0, metric='location', metric_range=None,
+    def plot_map(self, ax=None, phase_idx=0, metric='position', metric_range=None,
                  highlighted_locus=None, alpha=None):
         """Generate a two-dimensional map of the electrode surface. A `metric`
-        can and should be given to indicate which metric should be
-        mapped.Color is determined by the metric() method (see its
-        docstring for valid choices). If no axes are given via the
-        `ax` argument, a new set will be used. Optionally, a
-        `highlighted_locus` can be given which will show up as a
-        different color.
+        can and should be given to indicate which quantity should be
+        mapped, otherwise the map just shows distance from the origin
+        for testing purposes. Color and alpha are determined by the
+        Map.metric() method (see its docstring for valid choices).
+
+        Arguments
+        ---------
+        - ax : A matplotlib Axes object onto which the map will be
+          drawn. If omitted, a new Axes object will be created.
+
+        - phase_idx : Controls which phase will be used for generating
+          the metric (eg. cell parameter). Not relevant for all
+          metrics.
+
+        - metric : Name of the quantity to be used for determining color.
+
+        - metric_range : Specifies the bounds for mapping. Anything
+          outside these bounds will be clipped to the max or min.
+
+        - hightlight_locus : Currently broken!
+
+        - alpha : Name of the quantity to be used to determine the
+          opacity of each cell.
+
         """
         cmap = self.get_cmap()
-        # Plot hexagons
+        # Plot loci
         if not ax:
             # New axes unless one was already created
             ax = new_axes()
-        # xy_lim = self.xy_lim()
-        # ax.set_xlim([-xy_lim, xy_lim])
         xs, ys = self.loci.swapaxes(0, 1)
         with self.store() as store:
             step_size = store.step_size
@@ -332,17 +348,24 @@ class Map():
         ax.set_ylabel(step_size.unit.name)
         metrics = self.metric(phase_idx=phase_idx, param=metric)
         # Normalize the metrics
-        # metrics = np.array(1 - (max(metrics) - metrics) / (max(metrics) - min(metrics)))
         self.metric_normalizer = colors.Normalize(min(metrics), max(metrics), clip=True)
-        for locus, metric in prog(zip(self.loci, metrics), desc='Mapping'):
-            self.plot_locus(locus, ax=ax, shape="square", size=1, metric=metric)
+        # Retrieve alpha values
+        if alpha is None:
+            alphas = np.ones_like(metrics)
+        else:
+            alphas = self.metric(phase_idx=phase_idx, param=alpha)
+        # Plot the actual loci
+        for locus, metric, _alpha in prog(zip(self.loci, metrics, alphas), desc='Mapping'):
+            self.plot_locus(locus, ax=ax, shape="square",
+                            size=1, metric=metric, alpha=_alpha)
         # If there's space between beam locations, plot beam location
         if self.coverage != 1:
             for locus in self.loci:
                 locus.plot_beam(ax=ax)
         # If a highlighted scan was given, show it in a different color
         if highlighted_locus is not None:
-            highlighted_locus.highlight_beam(ax=ax)
+            warning.warn(UserWarning, "highlighted_locus not implemented")
+            # highlighted_locus.highlight_beam(ax=ax)
         # Add circle for theoretical edge
         # self.draw_edge(ax, color='red')
         # Add colormap to the side of the axes

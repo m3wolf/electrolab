@@ -36,11 +36,6 @@ class NativeRefinement(BaseRefinement):
         # Only include those that are within the two_theta range
         phase_idx = self.phases.index(phase)
         actual_peaks = self._peak_list[phase_idx]
-        # Make sure lists line up
-        # if len(predicted_peaks) != len(actual_peaks):
-        #     msg = 'uneven peak lists: {} != {}'.format(len(predicted_peaks),
-        #                                                len(actual_peaks))
-        #     raise exceptions.RefinementError(msg)
         # Prepare list of peak position differences
         for idx, actual_peak in enumerate(actual_peaks):
             offsets = [abs(p.q-actual_peak.center_kalpha)
@@ -55,7 +50,7 @@ class NativeRefinement(BaseRefinement):
 
     def refine_unit_cells(self, scattering_lengths, intensities, quiet=True):
         """Residual least squares refinement of the unit-cell
-        parameters. Returns a (m, 6) array where m is the number of
+        parameters. Returns an (p, 6) array where p is the number of
         phases and axis 1 has a value for each of the cell parameters
         (a, b, c, α, β, γ).
         """

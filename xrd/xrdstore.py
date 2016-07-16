@@ -53,6 +53,17 @@ class XRDStore():
     def _group(self):
         return self._file[self.groupname]
 
+    def replace_dataset(self, name, data, *args, **kwargs):
+        """Wrapper for h5py.create_dataset that removes the existing dataset
+        if it exists."""
+        # Remove the existing dataset if possible
+        try:
+            del self._group()[name]
+        except KeyError:
+            pass
+        # Perform the actual group creation
+        self._group().create_dataset(name=name, data=data, *args, **kwargs)
+
     @property
     def step_size(self):
         unit = units.unit(self._group()['step_size'].attrs['unit'])
@@ -78,7 +89,15 @@ class XRDStore():
 
     @positions.setter
     def positions(self, value):
-        self._group().create_dataset('positions', data=value)
+        self.replace_dataset('positions', data=value)
+
+    @property
+    def goodness(self):
+        return self._group()['goodness_of_fit'].value
+
+    @goodness.setter
+    def goodness(self, value):
+        self.replace_dataset('goodness_of_fit', data=value)
 
     @property
     def cell_parameters(self):
