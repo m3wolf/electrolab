@@ -23,7 +23,7 @@ class XRDPeak(Peak):
         peakfitting.Peak for valid choices
     """
 
-    def __init__(self, reflection=None, num_peaks=2, method="pseudo-voigt",
+    def __init__(self, reflection=None, num_peaks=1, method="pseudo-voigt",
                  tube=tubes["Cu"], *args, **kwargs):
         self.reflection = reflection
         self.tube = tube
@@ -38,7 +38,8 @@ class XRDPeak(Peak):
 
     def guess_parameters(self, x, y):
         # Currently assumes two overlapping k-alpha peaks
-        assert self.num_peaks == 2
+        if self.num_peaks != 1:
+            warnings.warn(UserWarning("guess_parameters() currently assumes only 1 peak"))
         # Filter out data that is below half standard deviation of the whole set
         threshold = 0.5 * np.std(y)
         idx = np.where(y>threshold)
@@ -50,7 +51,8 @@ class XRDPeak(Peak):
         mean_center = np.average(x, weights=y)
 
         # Convert average center to k-alpha1, k-alpha2
-        center1, center2 = self.tube.split_angle_by_kalpha(mean_center)
+        # center1, center2 = self.tube.split_angle_by_kalpha(mean_center)
+        # print(center1, center2)
         # Estimate kα₁, kα₂ heights
         height1 = y.max()
         height2 = height1 / 2
@@ -58,12 +60,12 @@ class XRDPeak(Peak):
         guess = [
             self.FitClass().initial_parameters(x=x,
                                                y=y,
-                                               center=center1,
+                                               center=mean_center,
                                                height=height1),
-            self.FitClass().initial_parameters(x=x,
-                                               y=y,
-                                               center=center2,
-                                               height=height2),
+            # self.FitClass().initial_parameters(x=x,
+            #                                    y=y,
+            #                                    center=center2,
+            #                                    height=height2),
         ]
         return guess
 

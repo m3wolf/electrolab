@@ -100,17 +100,21 @@ class XRDStore():
         self.replace_dataset('goodness_of_fit', data=value)
 
     @property
+    def fits(self):
+        return self._group()['fits'].value
+
+    @fits.setter
+    def fits(self, value):
+        self.replace_dataset('fits', data=value)
+
+    @property
     def cell_parameters(self):
         return self._group()['cell_parameters'].value
 
     @cell_parameters.setter
     def cell_parameters(self, value):
+        self.replace_dataset('cell_parameters', data=value)
         group = self._group()
-        try:
-            del group['cell_parameters']
-        except KeyError:
-            pass
-        group.create_dataset('cell_parameters', data=value)
         group['cell_parameters'].attrs['order'] = "(scan, phase, (a, b, c, α, β, γ))"
 
     @property

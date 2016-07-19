@@ -1,4 +1,6 @@
 *~
+.#*
+*.pyc
 __pycache__
 tests/testdata
 tests/.ipynb_checkpoints

@@ -71,11 +71,13 @@ def discrete_fwhm(x, y):
     leftx = leftx[lefty < maxheight / 2]
     # Find the nearest datum to halfmax in each half
     if len(rightx) > 0:
-        rightx = (np.abs(rightx - maxidx)).min()
+        # rightx = (np.abs(rightx - maxidx)).min()
+        rightx = rightx.min()
     else:
         rightx = math.nan
     if len(leftx) > 0:
-        leftx = -(np.abs(leftx - maxidx)).min()
+        # leftx = -(np.abs(leftx - maxidx)).min()
+        leftx = leftx.max()
     else:
         leftx = math.nan
     # Check for one-sided peaks (such as XAS edge)
@@ -433,9 +435,7 @@ class Peak():
         y = np.zeros_like(x)
         for fit in self.fit_list:
             y += fit.evaluate(x)
-        # Correct for vertical offset
-        y += self.vertical_offset
-        return Series(data=y, index=x)
+        return y
 
     def residuals(self, observations):
         """Calculate the differences at each point between the fit and the

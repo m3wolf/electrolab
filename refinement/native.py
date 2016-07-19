@@ -38,7 +38,7 @@ class NativeRefinement(BaseRefinement):
         actual_peaks = self._peak_list[phase_idx]
         # Prepare list of peak position differences
         for idx, actual_peak in enumerate(actual_peaks):
-            offsets = [abs(p.q-actual_peak.center_kalpha)
+            offsets = [abs(p.q-actual_peak.center())
                        for p in predicted_peaks]
             diffs.append(min(offsets))
         # Calculate mean-square-difference
@@ -243,7 +243,27 @@ class NativeRefinement(BaseRefinement):
             self._peak_list.append(phase_peak_list)
         return self._peak_list
 
+    def predict(self, scattering_lengths):
+        """Predict intensity values from the given scattering lengths, q.
+
+        Arguments
+        ---------
+        - scattering_lengths : Iterable with scattering_lengths
+          (x-values) that will be used to predict the diffraction
+          intensities.
+        """
+        q = scattering_lengths
+        predicted = np.zeros_like(q)
+        # Calculate background
+        if self.spline is not None:
+            predicted += self.spline(q)
+        # Calculate peak fittings
+        for peak in self.peak_list:
+            predicted += peak.predict(q)
+        return predicted
+
     def plot(self, x, ax=None):
+        warnings.warn(DeprecationWarning(), "Use predict() method and pyplot instead.")
         # Create new axes if necessary
         if ax is None:
             ax = plots.new_axes()

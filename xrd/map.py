@@ -220,29 +220,59 @@ class XRDMap(Map):
 
         - subtracted : If True, the plot will be shown with background removed.
         """
+        # Helper function for determining mean vs single-locus patterns
         def get_values(data, index):
             if index is None:
                 return np.average(data, axis=0)
             else:
                 return data[index]
+        # Retrieve the actual data
         with self.store() as store:
             intensities = get_values(store.intensities, index=index)
             qs = get_values(store.scattering_lengths, index=index)
             bg = get_values(store.backgrounds, index=index)
+            fits = get_values(store.fits, index=index)
         # Get default axis if none is given
         if ax is None:
             ax = new_axes()
+        # Prepare arrays of data for plotting
         if subtracted:
-            ax.plot(qs, intensities - bg)
+            observations = intensities - bg
+            predictions = fits - bg
         else:
-            ax.plot(qs, intensities)
-            ax.plot(qs, bg)
+            observations = intensities
+            predictions = fits
+        residuals = observations - predictions
+        # Plot data
+        ax.plot(qs, observations, marker="+", linestyle="None")
+        ax.plot(qs, predictions)
+        ax.plot(qs, residuals)
+        # Annotate axes
         ax.set_xlabel(r'Scattering Length (q) /AA')
         ax.set_ylabel('Intensity a.u.')
         ax.set_title('Bulk diffractogram')
-        # ax.xaxis.set_major_formatter(DegreeFormatter())
         # Highlight peaks
-        # self.loci[0].xrdscan.refinement.highlight_peaks(ax=ax)
+        color_list = [
+            'green',
+            'blue',
+            'red',
+            'orange'
+        ]
+        # Helper function to highlight peaks
+        def draw_peaks(ax, phase, color):
+            """Highlight the expected peak corresponding to this phase."""
+            alpha = 0.15
+            # Highlight each peak in this phase
+            for reflection in phase.reflection_list:
+                two_theta = reflection.qrange
+                ax.axvspan(two_theta[0], two_theta[1],
+                           color=color, alpha=alpha)
+        # Highlight phases
+        for idx, phase in enumerate(self.Phases):
+            draw_peaks(ax=ax, phase=phase, color=color_list[idx])
+        # Highlight background
+        for phase in self.background_phases:
+            draw_peaks(ax=ax, phase=phase, color='grey')
         return ax
 
     def highlight_beam(self, ax, locus: int):
@@ -291,17 +321,18 @@ class XRDMap(Map):
                     ax.text(x[-1], y[-1], s=i,
                             verticalalignment="center")
 
-    def refine_mapping_data(self, phase_idx=0):
+    def refine_mapping_data(self):
         """Refine the relevant XRD parameters, such as background, unit-cells,
-        etc."""
+        etc. This will save the refined data to the HDF file."""
         bgs = []
+        fits = []
         all_cells = []
         failed = []
         goodness = []
         with self.store(mode='r+') as store:
-            items = zip(store.scattering_lengths, store.intensities)
+            scans = zip(store.scattering_lengths[:], store.intensities[:])
             total = len(store.scattering_lengths)
-            for idx, (qs, Is) in enumerate(prog(items, total=total)):
+            for idx, (qs, Is) in enumerate(prog(scans, total=total)):
                 phases = [P() for P in self.Phases]
                 refinement = self.refinement(phases=phases)
                 # Refine background
@@ -309,8 +340,6 @@ class XRDMap(Map):
                                                   intensities=Is,
                                                   k=3, s=len(qs)/20)
                 bgs.append(bg)
-                # Fit peak shapes
-                refinement.fit_peaks(qs, Is)
                 # Refine unit-cell parameters
                 subtracted = Is - bg
                 try:
@@ -327,9 +356,11 @@ class XRDMap(Map):
                 finally:
                     phases = tuple(p.unit_cell.as_tuple() for p in refinement.phases)
                     all_cells.append(phases)
+                fits.append(refinement.predict(qs))
             # Store refined data for later
             store.backgrounds = np.array(bgs)
             store.cell_parameters = np.array(all_cells)
+            store.fits = np.array(fits)
             # Normalize goodnesses of fit values to be between 0 and 1
             max_ = np.nanmax(goodness)
             min_ = np.nanmin(goodness)
