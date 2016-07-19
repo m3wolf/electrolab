@@ -4,6 +4,7 @@ import math
 import os
 import warnings
 
+from matplotlib import patches
 import numpy as np
 import scipy
 import pandas
@@ -15,7 +16,7 @@ from plots import new_axes, DegreeFormatter
 from .locus import XRDLocus
 from .xrdstore import XRDStore
 from refinement.native import NativeRefinement
-from utilities import prog
+from utilities import prog, xycoord
 
 
 class XRDMap(Map):
@@ -244,6 +245,31 @@ class XRDMap(Map):
         # self.loci[0].xrdscan.refinement.highlight_peaks(ax=ax)
         return ax
 
+    def highlight_beam(self, ax, locus: int):
+        """Draw a border on the map showing which locus is currently selected.
+
+        Arguments
+        ---------
+        - ax : matplotlib Axes object for plotting. Should already
+          have a map on it
+        - locus : Index of which locus to highlight. Location will be
+          taken from the self.store().
+        """
+        with self.store() as store:
+            diameter = store.step_size
+            loc = xycoord(*store.positions[locus,:])
+        ellipse = patches.Ellipse(
+            xy=loc,
+            width=diameter,
+            height=diameter,
+            linewidth=1,
+            alpha=1,
+            edgecolor='red',
+            facecolor='none'
+        )
+        ax.add_patch(ellipse)
+        return ellipse
+
     def plot_all_diffractograms(self, ax=None, subtracted=False, xstep=0, ystep=5,
                                 *args, **kwargs):
         if ax is None:
@@ -321,13 +347,25 @@ class XRDMap(Map):
             total_scale = sum([phase.scale_factor for phase in locus.phases])
             locus.metric = phase_scale / total_scale
 
-    def metric(self, phase_idx, param):
+    def valid_metrics(self):
+        """Return a list of the available metrics that a user can map."""
+        valid = ['a', 'b', 'c', 'alpha', 'beta', 'gamma',
+                 'integral', 'goodness', 'position']
+        return valid
+
+    def metric(self, param, phase_idx=0, locus=None):
         """Calculate a mapping value as the parameter (eg. unit-cell a) for
         given phase index `phaseidx`. Valid parameters:
         - Unit cell parameters: 'a', 'b', 'c', 'alpha', 'beta', 'gamma'
         - 'integral' to indicate total integrated signal after bg subtraction
         - 'goodness' to use the quality of fit determined during refinement
         - 'position' to give the distance from the origin (for testing purposes)
+
+        Returns
+        -------
+        A numpy array with the requested metrics. If `locus` is None,
+        this array will contain all loci, otherwise it will be only
+        the requested locus.
         """
         # Check for unit-cell parameters
         UNIT_CELL_PARAMS = ['a', 'b', 'c', 'alpha', 'beta', 'gamma']
@@ -350,6 +388,9 @@ class XRDMap(Map):
                 metric = getattr(store, param)
         else:
             raise ValueError("Unknown param: {}".format(param))
+        # Filter by requested locus
+        if locus is not None:
+            metric = metric[locus:locus+1]
         return metric
 
     def plot_phase_ratio(self, phase_idx=0, *args, **kwargs):

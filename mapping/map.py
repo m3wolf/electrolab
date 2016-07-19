@@ -3,6 +3,7 @@
 import math
 import os
 import pickle
+import warnings
 
 from matplotlib import pyplot, cm, patches, colors
 import numpy as np
@@ -11,7 +12,7 @@ import scipy
 from mapping.coordinates import Cube
 from mapping.locus import Locus, DummyLocus
 from mapping.colormaps import cmaps
-from plots import new_axes, dual_axes
+from plots import new_axes, dual_axes, set_outside_ticks
 from utilities import prog, xycoord
 
 
@@ -78,20 +79,29 @@ class Map():
             new_locus = self.new_locus(location=coords, filebase=filebase)
             self.loci.append(new_locus)
 
-    def locus(self, cube_coords):
-        """Find a mapping cell in the array give a set of cubic coordinates"""
-        result = None
-        cube_coords = Cube(*cube_coords)
-        for locus in self.loci:
-            if locus.cube_coords == cube_coords:
-                result = locus
-                break
-        return result
+    # def locus(self, cube_coords):
+    #     """Find a mapping cell in the array give a set of cubic coordinates"""
+    #     result = None
+    #     cube_coords = Cube(*cube_coords)
+    #     for locus in self.loci:
+    #         if locus.cube_coords == cube_coords:
+    #             result = locus
+    #             break
+    #     return result
 
     def locus_by_xy(self, xy):
-        """Find the nearest locus by set of xy coords."""
-        locus = self.locus(Cube.from_xy(xy, unit_size=self.unit_size))
+        """Find the index of the nearest locus by set of xy coords."""
+        with self.store() as store:
+            pos = store.positions
+        distance = np.sqrt(np.sum(np.square(pos-xy), axis=1))
+        locus = distance.argmin()
         return locus
+
+    def xy_by_locus(self, locus):
+        """Retrieve the x, y position of the locus with the given index."""
+        with self.store() as store:
+            loc = xycoord(*store.positions[locus,:])
+        return loc
 
     def path(self, rows):
         """Generator gives coordinates for a spiral path around the sample."""
@@ -296,10 +306,20 @@ class Map():
         - metric: What value to use for generating a color with the
           colormap self.get_cmap().
         """
+        # Adjust xy to account for step size
+        with self.store() as store:
+            step = store.step_size.num
         loc = xycoord(*loc)
+        corner = xycoord(
+            x=loc.x - step / 2,
+            y=loc.y - step / 2,
+        )
         color = self.get_cmap()(self.metric_normalizer(metric))
+        convertor = colors.ColorConverter()
+        color = convertor.to_rgba(color, alpha=alpha)
         if shape in ["square", "rect"]:
-            patch = patches.Rectangle(xy=loc, width=size, height=size, color=color, alpha=alpha)
+            patch = patches.Rectangle(xy=corner, width=size, height=size,
+                                      facecolor=color, edgecolor=color)
         else:
             raise ValueError("Unknown value for shape: '{}'".format(shape))
         # Add patch to the axes
@@ -373,6 +393,16 @@ class Map():
         mappable.set_array(np.arange(self.metric_normalizer.vmin,
                                      self.metric_normalizer.vmax))
         pyplot.colorbar(mappable, ax=ax)
+        # Adjust x and y limits
+        xs = self.loci[:,0]
+        ys = self.loci[:,1]
+        xrange_ = (xs.min() - step_size.num / 2, xs.max() + step_size.num / 2)
+        yrange_ = (ys.min() - step_size.num / 2, ys.max() + step_size.num / 2)
+        ax.set_xlim(*xrange_)
+        ax.set_ylim(*yrange_)
+        ax.set_aspect('equal', adjustable="box")
+        # Cosmetic adjustmets to the axes
+        set_outside_ticks(ax=ax)
         return ax
 
     def plot_map_gtk(self, WindowClass=None):
@@ -471,6 +501,8 @@ class Map():
         """
         Show the composite micrograph image on a set of axes.
         """
+        warnings.warn(UserWarning(), "Not implemented")
+        return
         if ax is None:
             ax = new_axes()
         axis_limits = (
@@ -485,12 +517,35 @@ class Map():
         self.draw_edge(ax, color='red')
         return ax
 
-    def plot_histogram(self, ax=None, bins=100):
+    def plot_histogram(self, metric: str, phase_idx: int=0, ax=None,
+                       bins: int=0):
+        """Plot a histogram showing the distribution of the given metric.
+
+        Arguments
+        ---------
+        - metric : String describing which metric to plot. See
+          self.metric() for valid choices.
+
+        - phase_idx : Which phase to use for retrieving the
+          metric. Only applicable to things like unit-cell parameters.
+
+        - ax : Matplotlib axes on which to plot.
+
+        - bins : Number of bins in which to distribute the metric
+          values. If zero, the number of bins will be determined
+          automatically from the number of loci.
+
+        """
         minimum = self.metric_normalizer.vmin
         maximum = self.metric_normalizer.vmax
-        metrics = [locus.metric for locus in self.loci]
+        metrics = self.metric('position')
+        # metrics = [locus.metric for locus in self.loci]
         metrics = np.clip(metrics, minimum, maximum)
-        weights = [locus.reliability for locus in self.loci]
+        # Guess number of bins'
+        if not bins:
+            bins = int(metrics.shape[0] / 5)
+        # weights = [locus.reliability for locus in self.loci]
+        weights = self.metric(param='goodness')
         if ax is None:
             ax = new_axes(height=4, width=7)
         # Generate the histogram

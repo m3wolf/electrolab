@@ -79,6 +79,8 @@ def import_aps_34IDE_map(directory: str, wavelength: int,
     xv, yv = np.meshgrid(range(0, shape.columns), range(0, shape.rows))
     newshape = (shape.rows * shape.columns, 2)
     positions = np.reshape(np.dstack((xv, yv)), newshape=newshape)
+    # Shift positions by half a step-size so the location is the center of each square
+    positions = np.add(positions, step_size.num / 2)
     xrdstore.positions = positions
     xrdstore.layout = 'rect'
 
