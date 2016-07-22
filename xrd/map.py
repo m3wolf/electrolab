@@ -8,7 +8,6 @@ from matplotlib import patches
 import numpy as np
 import scipy
 import pandas
-import jinja2
 
 import exceptions
 from mapping.map import Map
@@ -47,8 +46,13 @@ class XRDMap(Map):
 
     def __init__(self, *args, collimator=0.5, qrange=None,
                  scan_time=None, detector_distance=20,
-                 frame_size=1024, Phases=[], background_phases=[],
+                 frame_size=1024, Phases=[], phases=None,
+                 background_phases=[],
                  refinement=NativeRefinement, **kwargs):
+        # Old-style mapping format deprecation
+        if phases is not None:
+            warnings.warn(DeprecationWarning(), "Use 'Phases=' instead")
+            Phases = phases
         self.collimator = collimator
         self.detector_distance = detector_distance
         self.frame_size = frame_size
@@ -75,61 +79,7 @@ class XRDMap(Map):
 
     def context(self):
         """Convert the object to a dictionary for the templating engine."""
-        # Estimate the total time
-        totalSecs = len(self.loci) * self.scan_time * self.get_number_of_frames()
-        days = math.floor(totalSecs / 60 / 60 / 24)
-        remainder = totalSecs - days * 60 * 60 * 24
-        hours = math.floor(remainder / 60 / 60)
-        remainder = remainder - hours * 60 * 60
-        mins = math.floor(remainder / 60)
-        total_time = "{secs}s ({days}d {hours}h {mins}m)".format(secs=totalSecs,
-                                                                 days=days,
-                                                                 hours=hours,
-                                                                 mins=mins)
-        # List of frames to integrate
-        frames = []
-        for frame_num in range(0, self.get_number_of_frames()):
-            start = self.two_theta_range[0] + frame_num * self.frame_step
-            end = start + self.frame_step
-            frame = {
-                'start': start,
-                'end': end,
-                'number': frame_num,
-            }
-            frames.append(frame)
-        # Generate flood and spatial reference files to load
-        floodFilename = "{framesize:04d}_{distance:03d}._FL".format(
-            distance=self.detector_distance,
-            framesize=self.frame_size
-        )
-        spatialFilename = "{framesize:04d}_{distance:03d}._ix".format(
-            distance=self.detector_distance,
-            framesize=self.frame_size
-        )
-        # Prepare context dictionary
-        context = {
-            'scans': [],
-            'num_scans': len(self.loci),
-            'frames': frames,
-            'frame_step': self.frame_step,
-            'number_of_frames': self.get_number_of_frames(),
-            'xoffset': self.center[0],
-            'yoffset': self.center[1],
-            'theta1': self.get_theta1(),
-            'theta2': self.get_theta2_start(),
-            'aux': self.camera_zoom,
-            'scan_time': self.scan_time,
-            'total_time': total_time,
-            'sample_name': self.sample_name,
-            'flood_file': floodFilename,
-            'spatial_file': spatialFilename,
-        }
-        for idx, locus in enumerate(self.loci):
-            # Prepare scan-specific details
-            x, y = locus.xy_coords(unit_size=self.unit_size)
-            scan_metadata = {'x': x, 'y': y, 'filename': locus.filebase}
-            context['scans'].append(scan_metadata)
-        return context
+        raise NotImplementedError("Use gadds._context()")
 
     def new_locus(self, *, location, filebase):
         """Create a new XRD Mapping cell with the given attributes as well as
@@ -148,34 +98,7 @@ class XRDMap(Map):
         """
         Format the sample into a slam file that GADDS can process.
         """
-        # Import template
-        env = jinja2.Environment(loader=jinja2.PackageLoader('scimap', ''))
-        template = env.get_template('mapping/mapping-template.slm')
-        self.create_loci()
-        context = self.context()
-        # Create file and directory if necessary
-        if file is None:
-            directory = self.directory()
-            if not os.path.exists(directory):
-                os.makedirs(directory)
-            filename = '{dir}/{samplename}.slm'.format(
-                dir=directory, samplename=self.sample_name
-            )
-            with open(filename, 'w') as file:
-                file.write(template.render(**context))
-        else:
-            file.write(template.render(**context))
-        # Print summary info
-        if not quiet:
-            msg = "Running {num} scans ({frames} frames each). ETA: {time}."
-            print(msg.format(num=context['num_scans'],
-                             time=context['total_time'],
-                             frames=context['number_of_frames']))
-            frameStart = context['frames'][0]['start']
-            frameEnd = context['frames'][-1]['end']
-            msg = "Integration range: {start}° to {end}°"
-            print(msg.format(start=frameStart, end=frameEnd))
-        return file
+        raise NotImplementedError("Use gadds.write_gadds_script()")
 
     @property
     def diffractogram(self):
@@ -484,10 +407,11 @@ class XRDMap(Map):
         return dots_per_mm
 
     def prepare_mapping_data(self):
-        for locus in self.loci:
-            locus.load_diffractogram()
-        self.refine_scans()
-        return super().prepare_mapping_data()
+        warnings.warn(DeprecationWarning("Use `xrd.imports.import_gadds_map`"))
+        # for locus in self.loci:
+        #     locus.load_diffractogram()
+        # self.refine_scans()
+        # return super().prepare_mapping_data()
 
     def refine_scans(self):
         """

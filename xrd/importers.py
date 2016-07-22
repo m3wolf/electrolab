@@ -30,6 +30,47 @@ from .xrdstore import XRDStore
 from .utilities import twotheta_to_q, q_to_twotheta
 
 
+def import_gadds_map(directory: str, tube: str="Cu", hdf_filename:
+                     str=None, hdf_groupname: str=None, hexfilenames=False):
+    """Import a set of diffraction patterns from a map taken on a Bruker
+    D8 Discover Series II diffractometer using the GADDS software
+    suite.
+
+    Arguments
+    ---------
+
+    - directory : Directory where to look for results. It should
+    contain .plt files that are 2-theta and intensity data as well as
+    .jpg files of the locus images
+
+    - tube : Anode material used in the X-ray tube. This will be used
+      to determine the wavelength for converting two-theta to
+      scattering lengths (q).
+
+    - hdf_filename : HDF File used to store computed results. If
+      omitted or None, the `directory` basename is used
+
+    - hdf_groupname : String to use for the hdf group of this
+      dataset. If omitted or None, the `directory` basename is
+      used. Raises an exception if the group already exists in the HDF
+      file.
+
+    """
+    # Prepare HDF file
+    sample_group = hdf.prepare_hdf_group(filename=hdf_filename,
+                                         groupname=hdf_groupname,
+                                         dirname=directory)
+    xrdstore = XRDStore(hdf_filename=hdf_filename,
+                        groupname=sample_group.name, mode="r+")
+    # Get wavelength
+    # Calculate mapping positions ("loci")
+    # Prepare list of .plt files
+    pltfiles = [p for p in os.listdir(directory) if os.path.splitext(p)[1] == '.plt']
+    # Convert "old-style" hex filenames to new decimal filenames
+    # Prepare list of .jpg files
+    
+
+
 def import_aps_34IDE_map(directory: str, wavelength: int,
                          shape: Tuple[int, int], step_size: Union[float, int],
                          hdf_filename=None, hdf_groupname=None,

@@ -28,7 +28,7 @@ class Map():
     metric_name = 'Metric'
     reliability_normalizer = colors.Normalize(0, 1, clip=True)
 
-    def __init__(self, hdf_filename=None, center=(0, 0), diameter=12.7, coverage=1,
+    def __init__(self, hdf_filename, center=(0, 0), diameter=12.7, coverage=1,
                  sample_name='unknown', resolution=1):
         self.hdf_filename = hdf_filename
         self.center = center
@@ -103,75 +103,23 @@ class Map():
             loc = xycoord(*store.positions[locus,:])
         return loc
 
-    def path(self, rows):
+    def path(self, *args, **kwargs):
         """Generator gives coordinates for a spiral path around the sample."""
-        # Six different directions one can move
-        basis_set = {
-            'W': Cube(-1, 1, 0),
-            'SW': Cube(-1, 0, 1),
-            'SE': Cube(0, -1, 1),
-            'E': Cube(1, -1, 0),
-            'NE': Cube(1, 0, -1),
-            'NW': Cube(0, 1, -1)
-        }
-        # Start in the center
-        curr_coords = Cube(0, 0, 0)
-        yield curr_coords
-        # Spiral through each row
-        for row in range(1, rows):
-            # Move to next row
-            curr_coords += basis_set['NE']
-            yield curr_coords
-            for i in range(0, row - 1):
-                curr_coords += basis_set['NW']
-                yield curr_coords
-            # Go around the ring for each basis vector
-            for key in ['W', 'SW', 'SE', 'E', 'NE']:
-                vector = basis_set[key]
-                for i in range(0, row):
-                    curr_coords += vector
-                    yield curr_coords
+        raise NotImplementedError("Use gadds._path() instead")
 
     def directory(self):
         return '{samplename}-frames'.format(
             samplename=self.sample_name
         )
 
-    def write_script(self, *args, **kwargs):
-        raise NotImplementedError
-
     def get_number_of_frames(self):
-        angle_range = self.two_theta_range[1] - self.two_theta_range[0]
-        num_frames = math.ceil(angle_range / self.frame_step)
-        # Check for values outside instrument limits
-        t2_start = self.get_theta2_start()
-        t2_end = t2_start + num_frames * self.frame_step
-        if (t2_end - self.THETA1_MAX) > self.THETA2_MAX:
-            msg = "2-theta range {given} is outside detector limits: {limits}"
-            msg = msg.format(given=self.two_theta_range,
-                             limits=(self.THETA2_MIN, self.THETA2_MAX))
-            raise ValueError(msg)
-        return num_frames
+        warnings.warn(DeprecationWarning("Use gadds.number_of_frames()"))
 
     def get_theta2_start(self):
-        # Assuming that theta1 starts at highest possible range
-        theta1 = self.get_theta1()
-        theta2_bottom = self.two_theta_range[0] - theta1
-        theta2_start = theta2_bottom + self.frame_width / 2
-        return theta2_start
+        warnings.warn(DeprecationWarning("Use gadds._detector_start()"))
 
     def get_theta1(self):
-        # Check for values outside preset limits
-        theta1 = self.two_theta_range[0]
-        if theta1 < self.THETA1_MIN:
-            msg = "2-theta range {given} is outside source limits: {limits}"
-            msg = msg.format(given=self.two_theta_range,
-                             limits=(self.THETA1_MIN, self.THETA1_MAX))
-            raise ValueError(msg)
-        elif theta1 > self.THETA1_MAX:
-            # Cap the theta1 value at a safety limited maximum
-            theta1 = self.THETA1_MAX
-        return theta1
+        warnings.warn(DeprecationWarning("Use gadds._source_angle()"))
 
     def get_cmap(self):
         """Return a function that converts values in range 0 to 1 to colors."""
@@ -599,13 +547,7 @@ class DummyMap(Map):
 
     def create_loci(self):
         """Populate the loci array with new scans in a hexagonal array."""
-        self.loci = []
-        for idx, coords in enumerate(self.path(self.rows)):
-            # Try and determine filename from the sample name
-            fileBase = "map-{n:x}".format(n=idx)
-            new_locus = DummyLocus(location=coords, xrd_map=self,
-                                   filebase=fileBase)
-            self.loci.append(new_locus)
+        raise NotImplementedError("Use gadds._path()")
 
 
 class PeakPositionMap(Map):
