@@ -175,8 +175,9 @@ def prepare_hdf_group(filename: str, groupname: str, dirname: str):
     hdf_file = h5py.File(hdf_filename)
     # Alert the user that we're overwriting this group
     if groupname in hdf_file.keys():
-        msg = 'Group "{groupname}" exists. Overwriting.'
-        print(msg.format(groupname=groupname))
+        if not prog.quiet:
+            msg = 'Group "{groupname}" exists. Overwriting.'
+            print(msg.format(groupname=groupname))
         del hdf_file[groupname]
     new_group = hdf_file.create_group(groupname)
     # User feedback

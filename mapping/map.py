@@ -108,9 +108,7 @@ class Map():
         raise NotImplementedError("Use gadds._path() instead")
 
     def directory(self):
-        return '{samplename}-frames'.format(
-            samplename=self.sample_name
-        )
+        raise NotImplementedError("Just don't use it.")
 
     def get_number_of_frames(self):
         warnings.warn(DeprecationWarning("Use gadds.number_of_frames()"))

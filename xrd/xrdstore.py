@@ -50,7 +50,7 @@ class XRDStore():
     def close(self):
         self._file.close()
 
-    def _group(self):
+    def group(self):
         return self._file[self.groupname]
 
     def replace_dataset(self, name, data, *args, **kwargs):
@@ -58,16 +58,16 @@ class XRDStore():
         if it exists."""
         # Remove the existing dataset if possible
         try:
-            del self._group()[name]
+            del self.group()[name]
         except KeyError:
             pass
         # Perform the actual group creation
-        self._group().create_dataset(name=name, data=data, *args, **kwargs)
+        self.group().create_dataset(name=name, data=data, *args, **kwargs)
 
     @property
     def step_size(self):
-        unit = units.unit(self._group()['step_size'].attrs['unit'])
-        val = self._group()['step_size'].value
+        unit = units.unit(self.group()['step_size'].attrs['unit'])
+        val = self.group()['step_size'].value
         return unit(val)
 
     @step_size.setter
@@ -80,20 +80,37 @@ class XRDStore():
             step_size_value = value
             step_size_unit = 'm'
         # Save values to HDF5 file
-        self._group().create_dataset('step_size', data=step_size_value)
-        self._group()['step_size'].attrs['unit'] = step_size_unit
+        self.group().create_dataset('step_size', data=step_size_value)
+        self.group()['step_size'].attrs['unit'] = step_size_unit
 
     @property
     def positions(self):
-        return self._group()['positions'].value
+        return self.group()['positions'].value
 
     @positions.setter
     def positions(self, value):
         self.replace_dataset('positions', data=value)
 
     @property
+    def layout(self):
+        return self.group()['positions'].attrs['layout']
+
+    @positions.setter
+    def layout(self, value):
+        self.group()['positions'].attrs['layout'] = value
+
+    @property
+    def file_basenames(self):
+        return self.group()['file_basenames'].value
+
+    @file_basenames.setter
+    def file_basenames(self, value):
+        value = value.astype("S10")
+        self.replace_dataset('file_basenames', data=value)
+
+    @property
     def goodness(self):
-        return self._group()['goodness_of_fit'].value
+        return self.group()['goodness_of_fit'].value
 
     @goodness.setter
     def goodness(self, value):
@@ -101,7 +118,7 @@ class XRDStore():
 
     @property
     def fits(self):
-        return self._group()['fits'].value
+        return self.group()['fits'].value
 
     @fits.setter
     def fits(self, value):
@@ -109,43 +126,51 @@ class XRDStore():
 
     @property
     def cell_parameters(self):
-        return self._group()['cell_parameters'].value
+        return self.group()['cell_parameters'].value
 
     @cell_parameters.setter
     def cell_parameters(self, value):
         self.replace_dataset('cell_parameters', data=value)
-        group = self._group()
+        group = self.group()
         group['cell_parameters'].attrs['order'] = "(scan, phase, (a, b, c, α, β, γ))"
 
     @property
+    def wavelength(self):
+        return self.group()['wavelength'].value
+
+    @wavelength.setter
+    def wavelength(self, value):
+        self.replace_dataset('wavelength', data=value)
+
+    @property
     def layout(self):
-        return self._group()['positions'].attrs['layout']
+        return self.group()['positions'].attrs['layout']
 
     @layout.setter
     def layout(self, value):
-        self._group()['positions'].attrs['layout'] = value
+        self.group()['positions'].attrs['layout'] = value
 
     @property
     def intensities(self):
-        intensities = self._group()['intensities'].value
+        intensities = self.group()['intensities'].value
         return intensities
 
     @intensities.setter
     def intensities(self, value):
-        self._group().create_dataset('intensities', dataset=value)
+        self.group().create_dataset('intensities', dataset=value)
 
     @intensities.setter
     def intensities(self, value):
-        self._group().create_dataset('intensities', dataset=value)
+        self.group().create_dataset('intensities', dataset=value)
 
     @property
     def scattering_lengths(self):
-        intensities = self._group()['scattering_lengths'].value
+        intensities = self.group()['scattering_lengths'].value
         return intensities
 
     @property
     def backgrounds(self):
-        data = self._group()['backgrounds'].value
+        data = self.group()['backgrounds'].value
         new_shape = (data.shape[0], data.shape[1])
         return data.reshape(new_shape)
 
@@ -153,10 +178,10 @@ class XRDStore():
     def backgrounds(self, value):
         name = 'backgrounds'
         try:
-             del self._group()[name]
+             del self.group()[name]
         except KeyError:
             pass
-        self._group().create_dataset(name, data=value)
+        self.group().create_dataset(name, data=value)
 
     @property
     def subtracted(self):
@@ -168,7 +193,7 @@ class XRDStore():
     def subtracted(self, value):
         name = 'subtracted'
         try:
-            del self._group()[name]
+            del self.group()[name]
         except KeyError:
             pass
-        self._group().create_dataset(name, data=value)
+        self.group().create_dataset(name, data=value)

@@ -68,7 +68,6 @@ def import_gadds_map(directory: str, tube: str="Cu", hdf_filename:
     pltfiles = [p for p in os.listdir(directory) if os.path.splitext(p)[1] == '.plt']
     # Convert "old-style" hex filenames to new decimal filenames
     # Prepare list of .jpg files
-    
 
 
 def import_aps_34IDE_map(directory: str, wavelength: int,

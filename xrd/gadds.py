@@ -23,15 +23,20 @@
 with GADDS controller software. Importing an already-acquired map is
 done with the importers.import_gadds_map function."""
 
+import os
 import math
 
 import numpy as np
 import jinja2
 
+import hdf
+from default_units import angstrom
 from mapping.coordinates import Cube
 from .utilities import q_to_twotheta, twotheta_to_q
 from .tube import tubes
+from .xrdstore import XRDStore
 
+# CHANGING THESE RISKS DAMAGE TO THE INSTRUMENT!
 SOURCE_RANGE = (0, 50)
 DETECTOR_RANGE = (0, 55)
 
@@ -100,11 +105,21 @@ def _path(rows):
                 loci.append(curr_coords)
     return loci
 
+def _frame_step(detector_distance):
+    if detector_distance == 20:
+        step = 20
+    else:
+        msg = "Cannot determine step for detector distance {}".format(detector_distance)
+        raise ValueError(msg)
+    return step
+
 def _context(diameter, collimator, coverage, scan_time,
-             number_of_frames, frame_step, two_theta_range,
-             detector_distance, frame_size, center, sample_name, hexadecimal):
-    # Determine step size
+             two_theta_range, detector_distance, frame_size, center,
+             sample_name, hexadecimal):
+    # Calculate some required values
     unit_size = math.sqrt(3) * collimator / 2
+    frame_step = _frame_step(detector_distance=detector_distance)
+    number_of_frames = _number_of_frames(two_theta_range, frame_step=frame_step)
     # (Unit size should be bigger if we're not mapping 100%)
     unit_size = unit_size / math.sqrt(coverage)
     # Prepare mapping path
@@ -170,25 +185,54 @@ def _context(diameter, collimator, coverage, scan_time,
         context['scans'].append(scan_metadata)
     return context
 
-def write_gadds_script(qrange, quiet=False, collimator=0.8, diameter=12.7,
-                       coverage=1, scan_time=300):
+def write_gadds_script(qrange, sample_name, center, file=None,
+                       quiet=False, collimator=0.8, diameter=12.7,
+                       coverage=1, scan_time=300, tube="Cu",
+                       detector_distance=20, hexadecimal=False,
+                       frame_size=1024, hdf_filename=None):
+    wavelength = angstrom(tubes[tube].kalpha)
+    two_theta_range = q_to_twotheta(np.array(qrange), wavelength=wavelength)
     # Import template
     env = jinja2.Environment(loader=jinja2.PackageLoader('scimap', ''))
     template = env.get_template('mapping/mapping-template.slm')
     context = _context(diameter=12.7, collimator=collimator,
-                       coverage=1, scan_time=scan_time)
+                       coverage=1, scan_time=scan_time,
+                       sample_name=sample_name,
+                       two_theta_range=two_theta_range,
+                       detector_distance=detector_distance,
+                       center=center, hexadecimal=hexadecimal,
+                       frame_size=frame_size)
     # Create file and directory if necessary
     if file is None:
-        directory = self.directory()
+        directory = '{}-frames'.format(sample_name)
         if not os.path.exists(directory):
             os.makedirs(directory)
         filename = '{dir}/{samplename}.slm'.format(
-            dir=directory, samplename=self.sample_name
+            dir=directory, samplename=sample_name
         )
         with open(filename, 'w') as file:
             file.write(template.render(**context))
     else:
         file.write(template.render(**context))
+    # Prepare HDF5 file to hold the results
+    if hdf_filename is None:
+        hdf_filename = "{}.h5".format(sample_name)
+    hdfgroup = hdf.prepare_hdf_group(filename=hdf_filename,
+                                     groupname=sample_name,
+                                     dirname=None)
+    xrdstore = XRDStore(hdf_filename=hdf_filename,
+                        groupname=sample_name, mode="r+")
+    positions = [(s['x'], s['y']) for s in context['scans']]
+    xrdstore.positions = np.array(positions)
+    xrdstore.layout = 'hex'
+    file_basenames = np.array([s['filename'] for s in context['scans']])
+    xrdstore.file_basenames = np.array(file_basenames)
+    tube_ = tubes[tube]
+    kalphas = (tube_.kalpha1, tube_.kalpha2)
+    kalphas = np.array([k.num for k in kalphas])
+    xrdstore.wavelength = kalphas
+    xrdstore.group()['wavelength'].attrs['unit'] = "Å"
+    hdfgroup.file.close()
     # Print summary info
     if not quiet:
         msg = "Running {num} scans ({frames} frames each). ETA: {time}."
@@ -201,9 +245,7 @@ def write_gadds_script(qrange, quiet=False, collimator=0.8, diameter=12.7,
         print(msg.format(start=frameStart, end=frameEnd))
     return file
 
-def number_of_frames(qrange, frame_step, tube="Cu", ):
-    wavelength = tubes[tube].kalpha
-    two_theta_range = q_to_twotheta(np.array(qrange), wavelength=wavelength)
+def _number_of_frames(two_theta_range, frame_step):
     angle_range = two_theta_range[1] - two_theta_range[0]
     num_frames = math.ceil(angle_range / frame_step)
     # Check for values outside instrument limits
