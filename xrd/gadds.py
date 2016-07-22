@@ -32,6 +32,7 @@ import jinja2
 import hdf
 from default_units import angstrom
 from mapping.coordinates import Cube
+from utilities import prog
 from .utilities import q_to_twotheta, twotheta_to_q
 from .tube import tubes
 from .xrdstore import XRDStore
@@ -185,11 +186,59 @@ def _context(diameter, collimator, coverage, scan_time,
         context['scans'].append(scan_metadata)
     return context
 
-def write_gadds_script(qrange, sample_name, center, file=None,
-                       quiet=False, collimator=0.8, diameter=12.7,
-                       coverage=1, scan_time=300, tube="Cu",
-                       detector_distance=20, hexadecimal=False,
-                       frame_size=1024, hdf_filename=None):
+def write_gadds_script(qrange, sample_name, center, collimator=0.8,
+                       diameter=12.7, coverage=1, scan_time=300,
+                       tube="Cu", detector_distance=20,
+                       hexadecimal=False, frame_size=1024, file=None,
+                       hdf_filename=None):
+    """Produce a .slm file to control the difractometer for mapping a
+    circular area and a .h5 file to hold the resulting data. After
+    acquisition, the data will need to be imported with
+    `importers.import_gadds_map()`.
+
+    Arguments
+    ---------
+    - qrange : 2-tuple with the starting and ending scattering lengths in Å⁻.
+
+    - sample_name : string with a description of the sample usable in
+      filenames.
+
+    - center : 2-tuple with instrument (x, y) positions of where to
+      start mapping.
+
+    - collimator : The diameter of the collimator, in mm, that is
+      installed on the instrument. Used to determine mapping
+      resolution.
+
+    - diameter : Diameter of the mapping area in mm.
+
+    - coverage : Ratio of how much of the mappable area to actually
+      use. This allows for faster "overview" scans. A value of 1
+      results in full coverage.
+
+    - scan_time : How long to collect each frame, in seconds.
+
+    - tube : String describing the anode material used in the X-ray
+      tube. This determines the wavelength of X-ray radiation.
+
+    - detector_distance : Distance in cm between the sample and the detector
+
+    - hexadecimal : Individual data files include a serial number. If
+                       this argument is true these will be converted
+                       to hexadecimal, resulting in slightly shorter
+                       filenames.
+
+    - frame_size : Size in pixels of the saved GADDS detector
+      images. Choices are 512, 1024 (default) or 2048.
+
+    - file : File-like object into which to write the .slm file. If
+      omitted a new directory and .slm file will be created based on
+      `sample_name`.
+
+    - hdf_filename : String with the filename to save the HDF5
+      file. If omitted, a default will be used based on
+      `sample_name`
+    """
     wavelength = angstrom(tubes[tube].kalpha)
     two_theta_range = q_to_twotheta(np.array(qrange), wavelength=wavelength)
     # Import template
@@ -230,11 +279,11 @@ def write_gadds_script(qrange, sample_name, center, file=None,
     tube_ = tubes[tube]
     kalphas = (tube_.kalpha1, tube_.kalpha2)
     kalphas = np.array([k.num for k in kalphas])
-    xrdstore.wavelength = kalphas
-    xrdstore.group()['wavelength'].attrs['unit'] = "Å"
+    xrdstore.wavelengths = kalphas
+    xrdstore.group()['wavelengths'].attrs['unit'] = "Å"
     hdfgroup.file.close()
     # Print summary info
-    if not quiet:
+    if not prog.quiet:
         msg = "Running {num} scans ({frames} frames each). ETA: {time}."
         print(msg.format(num=context['num_scans'],
                          time=context['total_time'],

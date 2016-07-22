@@ -157,6 +157,24 @@ class BrukerPltFile(XRDAdapter):
     def sample_name(self):
         return self.filename
 
+    def _dataframe(self):
+        df = pd.read_csv(self.filename,
+                         names=['2theta', 'counts'],
+                         sep=' ', index_col=0, comment="!")
+        return df
+
+    def intensities(self):
+        data = self._dataframe()
+        return data['counts'].values
+
+    def scattering_lengths(self, wavelength):
+        """Return scattering length (q) for all Datum elements in the file."""
+        # Find all Datum entries in data tree
+        df = self._dataframe()
+        two_theta = df.index
+        q = twotheta_to_q(two_theta=two_theta, wavelength=wavelength)
+        return q
+
 
 class BrukerBrmlFile(XRDAdapter):
     def __init__(self, filename):
@@ -177,7 +195,6 @@ class BrukerBrmlFile(XRDAdapter):
         name = nameElement.get('Value')
         return name
 
-    @property
     def scattering_lengths(self, wavelength=None):
         """Return scattering length (q) for all Datum elements in the file."""
         # Find all Datum entries in data tree
@@ -186,7 +203,6 @@ class BrukerBrmlFile(XRDAdapter):
         q = twotheta_to_q(two_theta=two_theta, wavelength=self.wavelength.num)
         return q
 
-    @property
     def intensities(self):
         """Return photon counts for all Datum elements in the file."""
         data = self._dataTree.findall('.//Datum')

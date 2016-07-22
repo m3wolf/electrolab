@@ -135,12 +135,22 @@ class XRDStore():
         group['cell_parameters'].attrs['order'] = "(scan, phase, (a, b, c, α, β, γ))"
 
     @property
-    def wavelength(self):
-        return self.group()['wavelength'].value
+    def effective_wavelength(self):
+        wavelengths = self.wavelengths
+        # Combine kα1 and kα2
+        if len(wavelengths) == 2:
+            wl = (wavelengths[0] + 0.5*wavelengths[1]) / 1.5
+        else:
+            wl = wavelengths
+        return wl
 
-    @wavelength.setter
-    def wavelength(self, value):
-        self.replace_dataset('wavelength', data=value)
+    @property
+    def wavelengths(self):
+        return self.group()['wavelengths'].value
+
+    @wavelengths.setter
+    def wavelengths(self, value):
+        self.replace_dataset('wavelengths', data=value)
 
     @property
     def layout(self):
@@ -157,16 +167,16 @@ class XRDStore():
 
     @intensities.setter
     def intensities(self, value):
-        self.group().create_dataset('intensities', dataset=value)
-
-    @intensities.setter
-    def intensities(self, value):
-        self.group().create_dataset('intensities', dataset=value)
+        self.replace_dataset('intensities', data=value)
 
     @property
     def scattering_lengths(self):
-        intensities = self.group()['scattering_lengths'].value
-        return intensities
+        q = self.group()['scattering_lengths'].value
+        return q
+
+    @scattering_lengths.setter
+    def scattering_lengths(self, value):
+        self.replace_dataset('scattering_lengths', data=value)
 
     @property
     def backgrounds(self):

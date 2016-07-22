@@ -26,12 +26,13 @@ import pandas as pd
 
 import hdf
 from default_units import angstrom
+from .adapters import BrukerPltFile
 from .xrdstore import XRDStore
 from .utilities import twotheta_to_q, q_to_twotheta
 
 
-def import_gadds_map(directory: str, tube: str="Cu", hdf_filename:
-                     str=None, hdf_groupname: str=None, hexfilenames=False):
+def import_gadds_map(directory: str, tube: str="Cu",
+                     hdf_filename: str=None, hdf_groupname: str=None):
     """Import a set of diffraction patterns from a map taken on a Bruker
     D8 Discover Series II diffractometer using the GADDS software
     suite.
@@ -56,18 +57,30 @@ def import_gadds_map(directory: str, tube: str="Cu", hdf_filename:
       file.
 
     """
-    # Prepare HDF file
-    sample_group = hdf.prepare_hdf_group(filename=hdf_filename,
-                                         groupname=hdf_groupname,
-                                         dirname=directory)
+    # Open HDF datastore
     xrdstore = XRDStore(hdf_filename=hdf_filename,
-                        groupname=sample_group.name, mode="r+")
-    # Get wavelength
-    # Calculate mapping positions ("loci")
-    # Prepare list of .plt files
-    pltfiles = [p for p in os.listdir(directory) if os.path.splitext(p)[1] == '.plt']
-    # Convert "old-style" hex filenames to new decimal filenames
-    # Prepare list of .jpg files
+                        groupname=hdf_groupname, mode="r+")
+    wavelength = xrdstore.effective_wavelength
+    # Prepare list of .plt and .jpg files
+    basenames = xrdstore.file_basenames
+    filestring = os.path.join(directory, "{base}.{ext}")
+    pltfiles = [filestring.format(base=base.decode(), ext="plt") for base in basenames]
+    jpgfiles = [os.path.join(directory, str(base) + ".jpg") for base in basenames]
+    # Arrays to hold imported results
+    Is, qs = [], []
+    # Read plt data files
+    for filename in pltfiles:
+        plt = BrukerPltFile(filename=filename)
+        Is.append(plt.intensities())
+        qs.append(plt.scattering_lengths(wavelength=wavelength))
+    # Save diffraction data to HDF5 file
+    Is = np.array(Is)
+    xrdstore.intensities = Is
+    qs = np.array(qs)
+    xrdstore.scattering_lengths = qs
+    # Clean up
+    xrdstore.close()
+
 
 
 def import_aps_34IDE_map(directory: str, wavelength: int,
@@ -111,8 +124,8 @@ def import_aps_34IDE_map(directory: str, wavelength: int,
                                          dirname=directory)
     xrdstore = XRDStore(hdf_filename=hdf_filename, groupname=sample_group.name, mode="r+")
     wavelength_AA = angstrom(wavelength).num
-    sample_group.create_dataset('wavelength', data=wavelength_AA)
-    sample_group['wavelength'].attrs['unit'] = 'Å'
+    sample_group.create_dataset('wavelengths', data=wavelength_AA)
+    sample_group['wavelengths'].attrs['unit'] = 'Å'
     # Determine the sample step sizes
     xrdstore.step_size = step_size
     # Calculate mapping positions ("loci")
