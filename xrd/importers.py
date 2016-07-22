@@ -82,7 +82,6 @@ def import_gadds_map(directory: str, tube: str="Cu",
     xrdstore.close()
 
 
-
 def import_aps_34IDE_map(directory: str, wavelength: int,
                          shape: Tuple[int, int], step_size: Union[float, int],
                          hdf_filename=None, hdf_groupname=None,
@@ -140,11 +139,13 @@ def import_aps_34IDE_map(directory: str, wavelength: int,
     intensities = []
     qs = []
     angles = []
+    file_basenames = []
 
     chifiles = [p for p in os.listdir(directory) if os.path.splitext(p)[1] == '.chi']
 
-    for filename in chifiles:
+    for filename in sorted(chifiles):
         path = os.path.join(directory, filename)
+        file_basenames.append(os.path.splitext(path)[0])
         # Get header data
         with open(path) as f:
             lines = f.readlines()
@@ -179,8 +180,10 @@ def import_aps_34IDE_map(directory: str, wavelength: int,
     intensities = np.array(intensities)
     new_shape = (intensities.shape[0], intensities.shape[1])
     intensities = intensities.reshape(new_shape)
+    file_basenames = np.array(file_basenames).astype("S30")
     # Save to hdf file
     sample_group.create_dataset('scattering_lengths', data=qs)
     sample_group['scattering_lengths'].attrs['unit'] = 'Å⁻'
     sample_group.create_dataset('intensities', data=intensities)
+    sample_group.create_dataset('file_basenames', data=file_basenames)
     return qs, intensities

@@ -209,6 +209,7 @@ class GtkMapViewer():
         metric_method = self.builder.get_object('RefinementLabel')
         reliability_raw_label = self.builder.get_object('ReliabilityRawLabel')
         reliability_norm_label = self.builder.get_object('ReliabilityNormLabel')
+        filename_label = self.builder.get_object("FilenameLabel")
         if self.local_mode:
             locus = self.current_locus
             # Set location labels
@@ -220,6 +221,10 @@ class GtkMapViewer():
             # Set metric labels
             metric = self.parent_map.metric(param=self.active_metric, locus=locus)[0]
             metric_raw_label.set_text("{:.03f}".format(metric))
+            # Set miscellaneous data
+            with self.parent_map.store() as store:
+                filename = store.file_basenames[locus].decode()
+            filename_label.set_text(filename)
             # metric_norm_label.set_text("{:.03f}".format(locus.metric_normalized))
             # metric_method.set_text(locus.metric_details)
             # Set reliability labels
@@ -234,6 +239,7 @@ class GtkMapViewer():
             metric_raw_label.set_text(default_text)
             metric_norm_label.set_text(default_text)
             metric_method.set_text("Details unavailable")
+            filename_label.set_text(default_text)
             reliability_raw_label.set_text(default_text)
             reliability_norm_label.set_text(default_text)
 
