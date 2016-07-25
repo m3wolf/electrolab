@@ -235,7 +235,7 @@ class Map():
         self.plot_histogram(ax=histogramAxes)
         return (mapAxes, histogramAxes)
 
-    def plot_locus(self, loc, ax, shape, size, metric: float, alpha: float=1):
+    def plot_locus(self, loc, ax, shape, size, metric: float, color, alpha: float=1):
         """Draw a location on the map.
 
         Arguments
@@ -251,6 +251,8 @@ class Map():
 
         - metric: What value to use for generating a color with the
           colormap self.get_cmap().
+
+        - color: Matplotlib color spec for plotting this locus
         """
         # Adjust xy to account for step size
         with self.store() as store:
@@ -260,7 +262,6 @@ class Map():
             x=loc.x - step / 2,
             y=loc.y - step / 2,
         )
-        color = self.get_cmap()(self.metric_normalizer(metric))
         convertor = colors.ColorConverter()
         color = convertor.to_rgba(color, alpha=alpha)
         if shape in ["square", "rect"]:
@@ -314,7 +315,10 @@ class Map():
         ax.set_ylabel(step_size.unit.name)
         metrics = self.metric(phase_idx=phase_idx, param=metric)
         # Normalize the metrics
-        self.metric_normalizer = colors.Normalize(min(metrics), max(metrics), clip=True)
+        if metric_range is None:
+            metric_normalizer = colors.Normalize(min(metrics), max(metrics), clip=True)
+        else:
+            metric_normalizer = colors.Normalize(min(metric_range), max(metric_range), clip=True)
         # Retrieve alpha values
         if alpha is None:
             alphas = np.ones_like(metrics)
@@ -322,8 +326,9 @@ class Map():
             alphas = self.metric(phase_idx=phase_idx, param=alpha)
         # Plot the actual loci
         for locus, metric, _alpha in prog(zip(self.loci, metrics, alphas), desc='Mapping'):
+            color = self.get_cmap()(metric_normalizer(metric))
             self.plot_locus(locus, ax=ax, shape="square",
-                            size=1, metric=metric, alpha=_alpha)
+                            size=1, metric=metric, color=color, alpha=_alpha)
         # If there's space between beam locations, plot beam location
         if self.coverage != 1:
             for locus in self.loci:
@@ -335,9 +340,9 @@ class Map():
         # Add circle for theoretical edge
         # self.draw_edge(ax, color='red')
         # Add colormap to the side of the axes
-        mappable = cm.ScalarMappable(norm=self.metric_normalizer, cmap=cmap)
-        mappable.set_array(np.arange(self.metric_normalizer.vmin,
-                                     self.metric_normalizer.vmax))
+        mappable = cm.ScalarMappable(norm=metric_normalizer, cmap=cmap)
+        mappable.set_array(np.arange(metric_normalizer.vmin,
+                                     metric_normalizer.vmax))
         pyplot.colorbar(mappable, ax=ax)
         # Adjust x and y limits
         xs = self.loci[:,0]
