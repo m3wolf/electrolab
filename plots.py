@@ -19,8 +19,11 @@
 
 """Helper functions for setting up and displaying plots using matplotlib."""
 
+import numpy as np
 from matplotlib import pyplot
 from matplotlib.ticker import ScalarFormatter
+
+from xrd.utilities import q_to_twotheta
 
 
 class ElectronVoltFormatter(ScalarFormatter):
@@ -106,7 +109,7 @@ def dual_axes(orientation='horizontal'):
     return (ax1, ax2)
 
 
-def plot_scans(scan_list, step_size=0, ax=None, names=[]):
+def plot_scans(scan_list, step_size=0, ax=None, names=[], use_twotheta=False, wavelength=None):
     """Plot a series of XRDScans as a waterfall. step_size controls the
     spacing between the waterfall stacking. Optional keyword arg 'ax'
     plots on a specific Axes.
@@ -118,7 +121,11 @@ def plot_scans(scan_list, step_size=0, ax=None, names=[]):
     for idx, scan in enumerate(scan_list):
         df = scan.diffractogram.copy()
         df.counts = df.counts + step_size * idx
-        lines.append(ax.plot(df.index, df.counts)[0])
+        if use_twotheta:
+            x = q_to_twotheta(np.array(df.index), wavelength=wavelength)
+        else:
+            x = df.index
+        lines.append(ax.plot(x, df.counts)[0])
         # Try and determine a name for this scan
         try:
             scannames.append(names[idx])
@@ -131,8 +138,11 @@ def plot_scans(scan_list, step_size=0, ax=None, names=[]):
     xMin = min([scan.diffractogram.index.min() for scan in scan_list])
     ax.set_xlim(left=xMin, right=xMax)
     # Decorate
-    ax.set_xlabel(r'$2\theta$')
-    ax.xaxis.set_major_formatter(DegreeFormatter())
+    if use_twotheta:
+        ax.set_xlabel(r'$2\theta$')
+        ax.xaxis.set_major_formatter(DegreeFormatter())
+    else:
+        ax.set_xlabel(r'q $/\AA^{-}$')
     ax.set_ylabel('counts')
     return ax
 
