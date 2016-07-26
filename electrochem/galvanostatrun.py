@@ -66,8 +66,8 @@ class GalvanostatRun():
         self._df = run.dataframe
         self.cycles = []
         # Remove the initial resting period
-        restingIndexes = self._df.loc[self._df['mode'] == 3].index
-        self._df.drop(restingIndexes, inplace=True)
+        # restingIndexes = self._df.loc[self._df['mode'] == 3].index
+        # self._df.drop(restingIndexes, inplace=True)
         # Get theoretical capacity from eclab file
         self.theoretical_capacity = self.capacity_from_file()
         # Get currents from eclab file
