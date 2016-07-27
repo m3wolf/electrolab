@@ -85,7 +85,7 @@ def import_gadds_map(directory: str, tube: str="Cu",
 def import_aps_34IDE_map(directory: str, wavelength: int,
                          shape: Tuple[int, int], step_size: Union[float, int],
                          hdf_filename=None, hdf_groupname=None,
-                         beamstop=0):
+                         beamstop=0, qrange=None):
     """Import a set of diffraction patterns from a map taken at APS
     beamline 34-ID-E. The data should be taken in a rectangle.
 
@@ -113,8 +113,11 @@ def import_aps_34IDE_map(directory: str, wavelength: int,
       used. Raises an exception if the group already exists in the HDF
       file.
 
-    - beamstop : A scattering length (q) below which the beam stop
+    - beamstop : [deprecated] A scattering length (q) below which the beam stop
       cuts off the signal.
+
+    - qrange : A scattering length (q) range beyond the signal is cut
+      invalid. This helps remove things like beam stop effects.
 
     """
     # Prepare HDF file
@@ -143,6 +146,9 @@ def import_aps_34IDE_map(directory: str, wavelength: int,
 
     chifiles = [p for p in os.listdir(directory) if os.path.splitext(p)[1] == '.chi']
 
+    if beamstop:
+        warnings.warn(UserWarning("Deprecated, use qrange instead"))
+
     for filename in sorted(chifiles):
         path = os.path.join(directory, filename)
         file_basenames.append(os.path.splitext(path)[0])
@@ -164,7 +170,11 @@ def import_aps_34IDE_map(directory: str, wavelength: int,
         if '2-Theta Angle (Degrees)' in xunits:
             # Remove values obscured by the beam stop
             if beamstop > 0:
+                warnings.warn(UserWarning("Deprecated, use qrange instead"))
                 csv = csv.loc[q_to_twotheta(beamstop, wavelength=wavelength_AA):]
+            elif qrange is not None:
+                angle_range = [q_to_twotheta(q, wavelength=wavelength_AA) for q in qrange]
+                csv = csv.loc[angle_range[0]:angle_range[1]]
             # Convert to scattering factor
             q = twotheta_to_q(csv.index, wavelength=wavelength_AA)
         else:

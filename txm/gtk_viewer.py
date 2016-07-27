@@ -37,46 +37,52 @@ gi.require_version('Gtk', '3.0')
 WATCH_CURSOR = Gdk.Cursor(Gdk.CursorType.WATCH)
 ARROW_CURSOR = Gdk.Cursor(Gdk.CursorType.ARROW)
 
+# print(dir(GObject))
+
 class WatchCursor():
     """Factory returns a function that Perform some slow action `target`
     with a watch cursor over the given `windows`. When writing the
     `target` function, make sure to use GLib.idle_add for anything
     that modifies the UI.
     """
-    WATCH_CURSOR = WATCH_CURSOR
-    ARROW_CUROSR = ARROW_CURSOR
+    _timer = None
+
     def __init__(self, target, windows, threading=True):
         self.target = target
         self.windows = windows
         self.threading = threading
 
-    @staticmethod
-    def disable_watch(windows):
-        for window in windows:
-            real_window = window.get_window()
-            if real_window:
-                real_window.set_cursor(ARROW_CURSOR)
-                window.set_sensitive(True)
-
-    def __call__(self, *args, **kwargs):
-        # Start watch cursor
-        for window in self.windows:
-            real_window = window.get_window()
-            if real_window and self.threading:
-                real_window.set_cursor(WATCH_CURSOR)
-                window.set_sensitive(False)
-        def dostuff(*args, **kwargs):
-            self.target(*args, **kwargs)
+    def __call__(self, *args, delay=0):
+        def dostuff(*args):
+            # Unpack user data
+            windows, target, *more = args
+            # Start watch cursor
+            for window in windows:
+                real_window = window.get_window()
+                if real_window:
+                    real_window.set_cursor(WATCH_CURSOR)
+                    window.set_sensitive(False)
+            # Call the actual function
+            target(*more)
             # Remove watch cursor
-            GLib.idle_add(self.disable_watch, self.windows)
+            for window in windows:
+                real_window = window.get_window()
+                if real_window:
+                    real_window.set_cursor(ARROW_CURSOR)
+                    window.set_sensitive(True)
+            self._timer = None
+            return False
+
         # Start target process
         if self.threading:
-            thread = threading.Thread(target=dostuff,
-                                      args=args, kwargs=kwargs)
-            thread.daemon = True
-            thread.start()
+            # Reset timer
+            if self._timer is not None:
+                GLib.source_remove(self._timer)
+            self._timer = GLib.timeout_add(delay, dostuff,
+                                           self.windows, self.target,
+                                           *args)
         else:
-            self.target(*args, **kwargs)
+            dostuff(self.windows, self.target, *args)
 
 
 class GtkTxmViewer():

@@ -74,12 +74,12 @@ def discrete_fwhm(x, y):
         # rightx = (np.abs(rightx - maxidx)).min()
         rightx = rightx.min()
     else:
-        rightx = math.nan
+        rightx = float("nan")
     if len(leftx) > 0:
         # leftx = -(np.abs(leftx - maxidx)).min()
         leftx = leftx.max()
     else:
-        leftx = math.nan
+        leftx = float("nan")
     # Check for one-sided peaks (such as XAS edge)
     if math.isnan(rightx):
         fwhm = 2 * abs(leftx)

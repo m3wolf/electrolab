@@ -171,7 +171,7 @@ class XRDMap(Map):
         ax.plot(qs, predictions)
         ax.plot(qs, residuals)
         # Annotate axes
-        ax.set_xlabel(r'Scattering Length (q) /AA')
+        ax.set_xlabel(r'Scattering Length (q) $/\AA^{-1}$')
         ax.set_ylabel('Intensity a.u.')
         ax.set_title('Bulk diffractogram')
         # Highlight peaks
@@ -196,6 +196,8 @@ class XRDMap(Map):
         # Highlight background
         for phase in self.background_phases:
             draw_peaks(ax=ax, phase=phase, color='grey')
+        # Set axes limits
+        ax.set_xlim(qs.min(), qs.max())
         return ax
 
     def highlight_beam(self, ax, locus: int):
@@ -302,9 +304,11 @@ class XRDMap(Map):
             locus.metric = phase_scale / total_scale
 
     def valid_metrics(self):
-        """Return a list of the available metrics that a user can map."""
+        """Return a list of the available metrics that a user can map. See
+        XRDMap.metric() docstring for a full explanation.
+        """
         valid = ['a', 'b', 'c', 'alpha', 'beta', 'gamma',
-                 'integral', 'goodness', 'position']
+                 'integral', 'goodness', 'position', 'None']
         return valid
 
     def metric(self, param, phase_idx=0, locus=None):
@@ -314,6 +318,7 @@ class XRDMap(Map):
         - 'integral' to indicate total integrated signal after bg subtraction
         - 'goodness' to use the quality of fit determined during refinement
         - 'position' to give the distance from the origin (for testing purposes)
+        - 'None' or None to give an array of 1's
 
         Returns
         -------
@@ -340,6 +345,10 @@ class XRDMap(Map):
             # Just return the requested store attribute
             with self.store() as store:
                 metric = getattr(store, param)
+        elif param in ['None', None]:
+            # Return a dummy array with all 1's
+            with self.store() as store:
+                metric = np.ones(shape=store.scattering_lengths.shape[0])
         else:
             raise ValueError("Unknown param: {}".format(param))
         # Filter by requested locus

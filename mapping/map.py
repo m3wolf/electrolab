@@ -16,6 +16,17 @@ from plots import new_axes, dual_axes, set_outside_ticks
 from utilities import prog, xycoord
 
 
+def normalizer(data, norm_range):
+    """Factory for creating normalizers for some data to the range
+    given. If norm_range is None, this will norm the data to cover the
+    full range. Returns Normalizer object that is callable on new data.
+    """
+    if norm_range is None:
+        norm = colors.Normalize(min(data), max(data), clip=True)
+    else:
+        norm = colors.Normalize(min(norm_range), max(norm_range), clip=True)
+    return norm
+
 class Map():
     """A physical sample that gets mapped by some scientific process,
     presumed to be circular with center and diameter in
@@ -201,14 +212,14 @@ class Map():
             new_locus.restore_data_dict(dataDict)
             self.loci.append(new_locus)
 
-    def fullrange_normalizer(self):
-        """Determine an appropriate normalizer by looking at the range of
-        metrics."""
-        metrics = [locus.metric for locus in self.loci]
-        new_normalizer = colors.Normalize(min(metrics),
-                                          max(metrics),
-                                          clip=True)
-        return new_normalizer
+    # def fullrange_normalizer(self):
+    #     """Determine an appropriate normalizer by looking at the range of
+    #     metrics."""
+    #     metrics = [locus.metric for locus in self.loci]
+    #     new_normalizer = colors.Normalize(min(metrics),
+    #                                       max(metrics),
+    #                                       clip=True)
+    #     return new_normalizer
 
     def plot_map_with_image(self, scan=None, alpha=None):
         mapAxes, imageAxes = dual_axes()
@@ -235,7 +246,7 @@ class Map():
         self.plot_histogram(ax=histogramAxes)
         return (mapAxes, histogramAxes)
 
-    def plot_locus(self, loc, ax, shape, size, metric: float, alpha: float=1):
+    def plot_locus(self, loc, ax, shape, size, color, alpha: float=1):
         """Draw a location on the map.
 
         Arguments
@@ -249,13 +260,11 @@ class Map():
         - size: How big to make the shape, generally the diameter
           (hex) or length (square or rect).
 
-        - metric: What value to use for generating a color with the
-          colormap self.get_cmap().
+        - color: Matplotlib color spec for plotting this locus
         """
         with self.store() as store:
             step = store.step_size.num
         loc = xycoord(*loc)
-        color = self.get_cmap()(self.metric_normalizer(metric))
         convertor = colors.ColorConverter()
         color = convertor.to_rgba(color, alpha=alpha)
         if shape in ["square", "rect"]:
@@ -265,6 +274,7 @@ class Map():
                 y=loc.y - size / 2,
             )
             patch = patches.Rectangle(xy=corner, width=size, height=size,
+                                      linewidth=0,
                                       facecolor=color, edgecolor=color)
         elif shape in ['hex']:
             patch = patches.RegularPolygon(xy=loc, numVertices=6,
@@ -276,8 +286,9 @@ class Map():
         # Add patch to the axes
         ax.add_patch(patch)
 
-    def plot_map(self, ax=None, phase_idx=0, metric='position', metric_range=None,
-                 highlighted_locus=None, alpha=None):
+    def plot_map(self, metric='position', ax=None, phase_idx=0,
+                 metric_range=None, highlighted_locus=None,
+                 alpha=None, alpha_range=None):
         """Generate a two-dimensional map of the electrode surface. A `metric`
         can and should be given to indicate which quantity should be
         mapped, otherwise the map just shows distance from the origin
@@ -301,8 +312,11 @@ class Map():
         - hightlight_locus : Currently broken!
 
         - alpha : Name of the quantity to be used to determine the
-          opacity of each cell.
+          opacity of each cell. If None, all cells will be opaque.
 
+        - alpha_range : 2-tuple with the values for full transparency
+          and full opacity. Anything outside these bounds will be
+          clipped.
         """
         cmap = self.get_cmap()
         # Plot loci
@@ -320,16 +334,23 @@ class Map():
         ax.set_ylabel(step_size.unit.name)
         metrics = self.metric(phase_idx=phase_idx, param=metric)
         # Normalize the metrics
-        self.metric_normalizer = colors.Normalize(min(metrics), max(metrics), clip=True)
+        metric_normalizer = normalizer(data=metrics, norm_range=metric_range)
         # Retrieve alpha values
         if alpha is None:
+            # Default, all loci are full opaque
             alphas = np.ones_like(metrics)
+            alpha_normalizer = colors.Normalize(0, 1, clip=True)
         else:
             alphas = self.metric(phase_idx=phase_idx, param=alpha)
+            if alpha_range is None:
+                alpha_normalizer = colors.Normalize(min(alphas), max(alphas), clip=True)
+            else:
+                alpha_normalizer = colors.Normalize(min(alpha_range), max(alpha_range), clip=True)
         # Plot the actual loci
-        for locus, metric, _alpha in prog(zip(self.loci, metrics, alphas), desc='Mapping'):
-            self.plot_locus(locus, ax=ax, shape=layout,
-                            size=step_size.num, metric=metric, alpha=_alpha)
+        for locus, metric, _alpha in zip(self.loci, metrics, alphas):
+            self.plot_locus(locus, ax=ax, shape=layout, size=step_size.num,
+                            color=color, alpha=_alpha)
+
         # If there's space between beam locations, plot beam location
         if self.coverage != 1:
             for locus in self.loci:
@@ -341,9 +362,9 @@ class Map():
         # Add circle for theoretical edge
         # self.draw_edge(ax, color='red')
         # Add colormap to the side of the axes
-        mappable = cm.ScalarMappable(norm=self.metric_normalizer, cmap=cmap)
-        mappable.set_array(np.arange(self.metric_normalizer.vmin,
-                                     self.metric_normalizer.vmax))
+        mappable = cm.ScalarMappable(norm=metric_normalizer, cmap=cmap)
+        mappable.set_array(np.arange(metric_normalizer.vmin,
+                                     metric_normalizer.vmax))
         pyplot.colorbar(mappable, ax=ax)
         # Adjust x and y limits
         xs = self.loci[:,0]
@@ -470,7 +491,8 @@ class Map():
         return ax
 
     def plot_histogram(self, metric: str, phase_idx: int=0, ax=None,
-                       bins: int=0):
+                       bins: int=0, weight: str=None,
+                       metric_range=None, weight_range=None):
         """Plot a histogram showing the distribution of the given metric.
 
         Arguments
@@ -487,29 +509,36 @@ class Map():
           values. If zero, the number of bins will be determined
           automatically from the number of loci.
 
+        - weight : String describing which metric to use for weighting
+          each value. See self.metric() for valid choices. If None,
+          all weights will be equal.
+
+        - weight_range : Will be used to normalize the values between
+          1 and 0. If not given, then the full range of values will be
+          used.
         """
-        minimum = self.metric_normalizer.vmin
-        maximum = self.metric_normalizer.vmax
-        metrics = self.metric('position')
-        # metrics = [locus.metric for locus in self.loci]
-        metrics = np.clip(metrics, minimum, maximum)
+        metrics = self.metric(metric)
+        metricnorm = normalizer(data=metrics, norm_range=metric_range)
+        np.clip(metrics, metricnorm.vmin, metricnorm.vmax, out=metrics)
         # Guess number of bins'
         if not bins:
-            bins = int(metrics.shape[0] / 5)
-        # weights = [locus.reliability for locus in self.loci]
-        weights = self.metric(param='goodness')
+            bins = int(metrics.shape[0] / 3)
+        # Get values for weighting the frequencies
+        weights = self.metric(param=weight)
+        weightnorm = normalizer(data=weights, norm_range=weight_range)
+        weights = weightnorm(weights)
         if ax is None:
             ax = new_axes(height=4, width=7)
         # Generate the histogram
-        n, bins, patches = ax.hist(metrics, bins=bins, weights=weights)
+        n, bins, patches = ax.hist(metrics, bins=bins)# , weights=weights)
         # Set the colors based on the metric normalizer
         for patch in patches:
             x_position = patch.get_x()
             cmap = self.get_cmap()
-            color = cmap(self.metric_normalizer(x_position))
+            color = cmap(metricnorm(x_position))
             patch.set_color(color)
-        ax.set_xlim(minimum, maximum)
-        ax.set_xlabel(self.metric_name)
+        ax.set_xlim(metricnorm.vmin, metricnorm.vmax)
+        ax.set_xlabel(metric)
         ax.set_ylabel('Occurrences')
         return ax
 

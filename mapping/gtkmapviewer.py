@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 
 import os
+import math
+import collections
+import threading
 
 import numpy as np
 import gi
@@ -16,6 +19,8 @@ from utilities import xycoord
 
 gi.require_version('Gtk', '3.0')
 
+NormRange = collections.namedtuple('NormRange', ('min', 'max'))
+
 class GtkMapViewer():
     """
     A set of plots for interactive data analysis.
@@ -25,7 +30,9 @@ class GtkMapViewer():
     beam = None
     image_hexagon = None
     composite_hexagon = None
-    active_metric = 'integral'
+    active_metric = 'a'
+    active_alpha = 'integral'
+    _drawing_timer = None
 
     def __init__(self, *args, parent_map, **kwargs):
         self.parent_map = parent_map
@@ -41,8 +48,9 @@ class GtkMapViewer():
         image = '{0}/../images/icon.png'.format(directory)
         self.window.set_icon_from_file(image)
         self.window.set_default_size(1000, 1000)
-        # Populate the combobox with list of available metrics
+        # Populate the combobox with list of available metrics (and alphas)
         self.metric_combo = self.builder.get_object('MetricComboBox')
+        self.alpha_combo = self.builder.get_object("AlphaComboBox")
         self.metric_list = Gtk.ListStore(str, str)
         choices = self.parent_map.valid_metrics()
         for choice in choices:
@@ -50,13 +58,19 @@ class GtkMapViewer():
                 [word.capitalize() for word in choice.split('_')]
             )
             metric_iter = self.metric_list.append([uppercase, choice])
-            # Save active group for later initialization
-            # if rep == self.frameset.default_representation:
-            #     active_rep = rep_iter
+            # Save active metric for later initialization
+            if choice == self.active_metric:
+                active_iter_metric = metric_iter
+            if choice == self.active_alpha:
+                active_iter_alpha = metric_iter
         self.metric_combo.set_model(self.metric_list)
-        self.metric_combo.set_active_iter(metric_iter)
-        # if active_rep:
-        #     self.metric_combo.set_active_iter(active_rep)
+        self.alpha_combo.set_model(self.metric_list)
+        self.metric_combo.set_active_iter(active_iter_metric)
+        self.alpha_combo.set_active_iter(active_iter_alpha)
+
+        # Set ranges for metric and alpha spin buttons
+        self.reset_metric_range()
+        self.reset_alpha_range()
 
         # Prepare mapping figures
         fig = figure.Figure(figsize=(13.8, 10))
@@ -73,11 +87,16 @@ class GtkMapViewer():
         # Connect to mouse click event
         fig.canvas.mpl_connect('button_press_event', self.click_callback)
         # Connect other event handlers
-        handlers = {
-            'change-metric': WatchCursor(self.change_metric,
-                                         windows=[self.window]),
-        }
-        self.builder.connect_signals(handlers)
+        # handlers = {
+        #     'change-metric': WatchCursor(self.change_metric,
+        #                                  windows=[self.window]),
+        #     'change-alpha': WatchCursor(self.change_alpha,
+        #                                  windows=[self.window]),
+        #     'change-norm-range': WatchCursor(self.change_norm_range,
+        #                                      windows=[self.window]),
+        # }
+        # self.builder.connect_signals(handlers)
+        self.builder.connect_signals(self)
         self.window.connect('delete-event', Gtk.main_quit)
         # Set initial text values
         self.update_details()
@@ -86,20 +105,38 @@ class GtkMapViewer():
         self.window.show_all()
         Gtk.main()
 
-    def draw_plots(self, locus=None):
+    def draw_plots(self, widget=None, object=None, delay=0):
+        """(re)draw the plots on the gtk window. This takes place after a
+        short delay to avoid excessive re-drawing (drawing can be
+        slow).
         """
-        (re)draw the plots on the gtk window
-        """
-        xrdMap = self.parent_map
-        self.fig.clear()
-        # Prepare plots
-        self.mapAxes = self.fig.add_subplot(221)
-        xrdMap.plot_map(ax=self.mapAxes, metric=self.active_metric)
-        self.mapAxes.set_aspect(1)
-        self.compositeImageAxes = self.fig.add_subplot(223)
-        xrdMap.plot_composite_image(ax=self.compositeImageAxes)
-        self.locusImageAxes = self.fig.add_subplot(224)
-        self.update_plots()
+        # Set up an asynchronous function
+        def _draw_plots():
+            self.fig.clear()
+            # Prepare plots
+            self.mapAxes = self.fig.add_subplot(221)
+            xrdMap = self.parent_map
+            if self.show_alpha:
+                alpha = self.active_alpha
+            else:
+                alpha = None
+            xrdMap.plot_map(ax=self.mapAxes,
+                            metric=self.active_metric,
+                            metric_range=self.metric_range,
+                            alpha=alpha,
+                            alpha_range=self.alpha_range)
+            self.mapAxes.set_aspect(1)
+            self.compositeImageAxes = self.fig.add_subplot(223)
+            xrdMap.plot_composite_image(ax=self.compositeImageAxes)
+            self.locusImageAxes = self.fig.add_subplot(224)
+            self.update_plots()
+
+        # Prepare a timed watch cursor
+        if getattr(self, '_draw_plots', None) is None:
+            self._draw_plots = WatchCursor(_draw_plots,
+                                           windows=[self.window],
+                                           threading=True)
+        self._draw_plots(delay=delay)
 
     def update_plots(self):
         """Respond to changes in the selected locus."""
@@ -130,8 +167,12 @@ class GtkMapViewer():
         # else:
         #     self.parent_map.plot_histogram(ax=self.locusImageAxes)
         #     self.locusImageAxes.set_aspect('auto')
+        # Plot the histogram
         self.parent_map.plot_histogram(ax=self.locusImageAxes,
-                                       metric=self.active_metric)
+                                       metric=self.active_metric,
+                                       metric_range=self.metric_range,
+                                       weight=self.active_alpha,
+                                       weight_range=self.alpha_range)
         self.locusImageAxes.set_aspect('auto')
         # Highlight the hexagon on the map and composite image
         if activeLocus is not None:
@@ -197,7 +238,110 @@ class GtkMapViewer():
     def change_metric(self, widget, object=None):
         new_metric = self.metric_list[widget.get_active_iter()][1]
         self.active_metric = new_metric
+        self.reset_metric_range()
         self.draw_plots()
+
+    def change_alpha(self, widget, object=None):
+        new_alpha = self.metric_list[widget.get_active_iter()][1]
+        self.active_alpha = new_alpha
+        self.reset_alpha_range()
+        self.draw_plots()
+
+    def change_norm_range(self, widget, object=None):
+        # Triggers the properties to adjust the boundaries automatically
+        self.metric_range = self.metric_range
+        self.alpha_range = self.alpha_range
+        self.draw_plots(delay=500)
+
+    def _set_adjustments(self, adjustments, value_range, spin_buttons):
+        """Take a tuple of min and max GTK adjustments and a tuple of gtk spin
+        buttons and set them to a tuple of values in
+        `value_range`. Returns the step_size between the values.
+        """
+        adj_min, adj_max = adjustments
+        btn_min, btn_max = spin_buttons
+        val_min, val_max = value_range
+        # Determine the adjustment step
+        try:
+            order_of_magnitude = round(math.log((val_max - val_min)/100, 10))
+        except ValueError:
+            order_of_magnitude = 0
+            val_min = 0
+            val_max = 1
+        step = 10 ** order_of_magnitude
+        # Freeze notifications to avoid race conditions
+        f1, f2, f3, f4 = (adj_min.freeze_notify(),
+                          adj_max.freeze_notify(),
+                          adj_min.freeze_notify(),
+                          adj_max.freeze_notify())
+        with f1 as a, f2 as b, f3 as c, f4 as d:
+            # Set minimum ranges
+            if not val_min == adj_min.get_value():
+                adj_min.set_upper(val_max)
+                adj_min.set_lower(val_min - 1000 * step)
+                adj_min.set_value(val_min)
+            # Set maximum ranges
+            if not val_max == adj_max.get_value():
+                adj_max.set_lower(val_min)
+                adj_max.set_upper(val_max + 1000 * step)
+                adj_max.set_value(val_max)
+            # Adjust precision of the buttons
+            adj_min.set_step_increment(step)
+            adj_max.set_step_increment(step)
+            digits = max(0, -order_of_magnitude)
+            btn_min.set_digits(digits)
+            btn_max.set_digits(digits)
+
+    @property
+    def metric_range(self):
+        metricMax = self.builder.get_object('MetricMaxAdjustment')
+        metricMin = self.builder.get_object('MetricMinAdjustment')
+        return NormRange(metricMin.get_value(), metricMax.get_value())
+
+    @metric_range.setter
+    def metric_range(self, value):
+        adj = (self.builder.get_object('MetricMinAdjustment'),
+               self.builder.get_object('MetricMaxAdjustment'))
+        btn = (self.builder.get_object('MetricMin'),
+               self.builder.get_object('MetricMax'))
+        self._set_adjustments(adjustments=adj, value_range=value,
+                              spin_buttons=btn)
+
+    @property
+    def alpha_range(self):
+        alphaMax = self.builder.get_object('AlphaMaxAdjustment')
+        alphaMin = self.builder.get_object('AlphaMinAdjustment')
+        return NormRange(alphaMin.get_value(), alphaMax.get_value())
+
+    @alpha_range.setter
+    def alpha_range(self, value):
+        adj = (self.builder.get_object('AlphaMinAdjustment'),
+               self.builder.get_object('AlphaMaxAdjustment'))
+        btn = (self.builder.get_object('AlphaMin'),
+               self.builder.get_object('AlphaMax'))
+        self._set_adjustments(adjustments=adj, value_range=value,
+                              spin_buttons=btn)
+
+    @property
+    def show_alpha(self):
+        state = self.builder.get_object('AlphaSwitch').get_state()
+        return state
+
+    def reset_metric_range(self):
+        """Look at the ranges for metric values and automatically determine
+        the normalization range, effectively resetting it.
+        """
+        metrics = self.parent_map.metric(param=self.active_metric)
+        self.metric_range = NormRange(min=metrics.min(),
+                                      max=metrics.max())
+
+    def reset_alpha_range(self):
+        """Look at the ranges for alpha values and automatically determine the
+        normalization range, effectively resetting it.
+        """
+        alphas = self.parent_map.metric(param=self.active_alpha)
+        self.alpha_range = NormRange(min=alphas.min(),
+                                     max=alphas.max())
 
     def update_details(self):
         """Set the sidebar text details."""
