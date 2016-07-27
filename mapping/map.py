@@ -252,20 +252,25 @@ class Map():
         - metric: What value to use for generating a color with the
           colormap self.get_cmap().
         """
-        # Adjust xy to account for step size
         with self.store() as store:
             step = store.step_size.num
         loc = xycoord(*loc)
-        corner = xycoord(
-            x=loc.x - step / 2,
-            y=loc.y - step / 2,
-        )
         color = self.get_cmap()(self.metric_normalizer(metric))
         convertor = colors.ColorConverter()
         color = convertor.to_rgba(color, alpha=alpha)
         if shape in ["square", "rect"]:
+            # Adjust xy to account for step size
+            corner = xycoord(
+                x=loc.x - size / 2,
+                y=loc.y - size / 2,
+            )
             patch = patches.Rectangle(xy=corner, width=size, height=size,
                                       facecolor=color, edgecolor=color)
+        elif shape in ['hex']:
+            patch = patches.RegularPolygon(xy=loc, numVertices=6,
+                                           radius=size / 2.4, linewidth=0,
+                                           alpha=1, facecolor=color, edgecolor="black")
+            pass
         else:
             raise ValueError("Unknown value for shape: '{}'".format(shape))
         # Add patch to the axes
@@ -307,6 +312,7 @@ class Map():
         xs, ys = self.loci.swapaxes(0, 1)
         with self.store() as store:
             step_size = store.step_size
+            layout = store.layout
         ax.set_xlim(min(xs), max(xs)+step_size.num)
         ax.set_ylim(min(ys), max(ys)+step_size.num)
         # ax.set_ylim([-xy_lim, xy_lim])
@@ -322,8 +328,8 @@ class Map():
             alphas = self.metric(phase_idx=phase_idx, param=alpha)
         # Plot the actual loci
         for locus, metric, _alpha in prog(zip(self.loci, metrics, alphas), desc='Mapping'):
-            self.plot_locus(locus, ax=ax, shape="square",
-                            size=1, metric=metric, alpha=_alpha)
+            self.plot_locus(locus, ax=ax, shape=layout,
+                            size=step_size.num, metric=metric, alpha=_alpha)
         # If there's space between beam locations, plot beam location
         if self.coverage != 1:
             for locus in self.loci:

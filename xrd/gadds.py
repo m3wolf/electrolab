@@ -26,6 +26,7 @@ done with the importers.import_gadds_map function."""
 import os
 import math
 
+import units
 import numpy as np
 import jinja2
 
@@ -169,6 +170,7 @@ def _context(diameter, collimator, coverage, scan_time,
         'theta1': _source_angle(two_theta_range=two_theta_range),
         'theta2': _detector_start(two_theta_range, frame_width=frame_step),
         'aux': 6,
+        'unit_size': unit_size,
         'scan_time': scan_time,
         'total_time': total_time,
         'sample_name': sample_name,
@@ -279,6 +281,8 @@ def write_gadds_script(qrange, sample_name, center, collimator=0.8,
     tube_ = tubes[tube]
     kalphas = (tube_.kalpha1, tube_.kalpha2)
     kalphas = np.array([k.num for k in kalphas])
+    xrdstore.step_size = units.unit('mm')(context['unit_size'])
+    xrdstore.collimator = collimator
     xrdstore.wavelengths = kalphas
     xrdstore.group()['wavelengths'].attrs['unit'] = "Å"
     hdfgroup.file.close()

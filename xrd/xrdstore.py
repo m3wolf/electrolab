@@ -170,6 +170,16 @@ class XRDStore():
         self.replace_dataset('intensities', data=value)
 
     @property
+    def collimator(self):
+        collimator = self.group()['collimator'].value
+        return collimator
+
+    @collimator.setter
+    def collimator(self, value):
+        self.replace_dataset('collimator', data=value)
+        self.group()['collimator'].attrs['unit'] = 'mm'
+
+    @property
     def scattering_lengths(self):
         q = self.group()['scattering_lengths'].value
         return q
