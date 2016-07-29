@@ -23,7 +23,9 @@ from typing import Union, Tuple
 import h5py
 import numpy as np
 import pandas as pd
+import units
 
+import exceptions
 import hdf
 from default_units import angstrom
 from .adapters import BrukerPltFile
@@ -177,11 +179,14 @@ def import_aps_34IDE_map(directory: str, wavelength: int,
                 csv = csv.loc[angle_range[0]:angle_range[1]]
             # Convert to scattering factor
             q = twotheta_to_q(csv.index, wavelength=wavelength_AA)
-        else:
-            # Data already in q
+        else: # Data in unknown format
+            raise exceptions.FileFormatError("Cannot recognize {}".format(xunits))
             # Remove values obscured by the beam stop
             if beamstop > 0:
-                csv = csv.loc[q_to_twotheta(beamstop):]
+                warnings.warn(UserWarning("Deprecated, use qrange instead"))
+                csv = csv.loc[beamstop:]
+            elif qrange is not None:
+                csv = csv.loc[qrange[0]:qrange[1]]
             q = csv.index
         qs.append(q)
         intensities.append(csv.values)

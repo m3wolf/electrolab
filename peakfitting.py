@@ -71,12 +71,10 @@ def discrete_fwhm(x, y):
     leftx = leftx[lefty < maxheight / 2]
     # Find the nearest datum to halfmax in each half
     if len(rightx) > 0:
-        # rightx = (np.abs(rightx - maxidx)).min()
         rightx = rightx.min()
     else:
         rightx = float("nan")
     if len(leftx) > 0:
-        # leftx = -(np.abs(leftx - maxidx)).min()
         leftx = leftx.max()
     else:
         leftx = float("nan")
