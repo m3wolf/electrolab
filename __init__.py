@@ -54,7 +54,7 @@ from xrd.scan import XRDScan, align_scans
 from xrd.map import XRDMap
 from xrd import gadds
 from xrd.gadds import write_gadds_script
-from xrd.importers import import_aps_34IDE_map
+from xrd.importers import import_aps_34IDE_map, import_gadds_map
 from xrd.utilities import q_to_twotheta, twotheta_to_q
 
 from mapping.coordinates import Cube

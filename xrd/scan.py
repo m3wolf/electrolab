@@ -10,6 +10,7 @@ from filters import fourier_transform
 from .tube import tubes
 from refinement.native import NativeRefinement
 from .adapters import adapter_from_filename
+from .utilities import q_to_twotheta
 
 
 def align_scans(scan_list, peak):
@@ -70,12 +71,12 @@ class XRDScan():
     @property
     def scattering_lengths(self):
         with adapter_from_filename(self.filename) as f:
-            return f.scattering_lengths
+            return f.scattering_lengths()
 
     @property
     def intensities(self):
         with adapter_from_filename(self.filename) as f:
-            return f.intensities
+            return f.intensities()
 
     @property
     def diffractogram(self):
@@ -134,25 +135,46 @@ class XRDScan():
         df['2theta'] = df.index + offset
         df.set_index('2theta', inplace=True)
 
-    def plot_diffractogram(self, ax=None, marker='+', linestyle="None",
-                           *args, **kwargs):
-        """
-        Plot the XRD diffractogram for this scan. Generates a new set of axes
-        unless supplied by the `ax` keyword.
+    def plot_diffractogram(self, ax=None, marker='+',
+                           linestyle="None", use_twotheta=False,
+                           wavelength=None, *args, **kwargs):
+        """Plot the XRD diffractogram for this scan. Generates a new set of
+        axes unless supplied by the `ax` keyword.
+
+        Arguments
+        ---------
+        - ax : A matplotlib axes that will receive the plotted data
+
+        - marker : A string for how to plot each datum. Similar spec
+        to matplotlib.
+
+        - linestyle : A matplotlib linestyle spec for how to connect the dots.
+
+        - use_twotheta : If truthy, the plot will convert scattering
+          lengths to 2θ before plotting. If used, the `wavelength`
+          argument must also be given.
+
+        - wavelength : Wavelength of light to be used for converstion
+          to two_theta.
+
         """
         q = self.scattering_lengths
+        if use_twotheta:
+            x = q_to_twotheta(q, wavelength=wavelength)
+        else:
+            x = q
         y = self.intensities
         if ax is None:
             ax = plots.big_axes()
-        ax.set_xlim(left=q.min(), right=q.max())
-        # ax.xaxis.set_major_formatter(plots.DegreeFormatter())
-        ax.plot(q, y, marker=marker, linestyle=linestyle, *args, **kwargs)
-
-        # Plot refinement
-        # self.refinement.plot(ax=ax)
+        ax.set_xlim(left=x.min(), right=x.max())
+        ax.plot(x, y, marker=marker, linestyle=linestyle, *args, **kwargs)
 
         # Set plot annotations
-        ax.set_xlabel(r'q $/{unit}^{-}$')
+        if use_twotheta:
+            ax.xaxis.set_major_formatter(plots.DegreeFormatter())
+            ax.set_xlabel(r'$2\theta$')
+        else:
+            ax.set_xlabel(r'q $/{unit}^{-}$')
         ax.set_ylabel('Counts')
         ax.set_title(self.axes_title())
         return ax

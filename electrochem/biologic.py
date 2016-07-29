@@ -150,6 +150,7 @@ class MPTFile():
                          *args,
                          skiprows=headerLength,
                          na_values='XXX',
+                         encoding=self.encoding,
                          sep='\t',
                          error_bad_lines=False,
                          **kwargs)
