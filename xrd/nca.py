@@ -21,7 +21,7 @@ class NCA(Phase):
     fullprof_spacegroup = 'R -3 M'
     diagnostic_hkl = '113'
     reflection_list = [
-        Reflection('003', qrange=(1.30, 1.35)),
+        Reflection('003', qrange=(1.30, 1.50)),
         Reflection('101', qrange=(2.50, 2.65)),
         Reflection('006', qrange=(2.60, 2.80)),
         Reflection('102', qrange=(2.62, 2.80)),

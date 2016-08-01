@@ -221,7 +221,7 @@ class FramesetMoviePlotter(FramesetPlotter):
                 )
             else:
                 particle_artists = []
-            all_artists.append((frame_artist, *xanes_artists, *particle_artists))
+            #all_artists.append((frame_artist, *xanes_artists, *particle_artists))
             # all_artists.append((frame_artist,))
         # Prepare animation
         self.frame_animation = animation.ArtistAnimation(fig=self.figure,
@@ -438,8 +438,8 @@ class GtkFramesetPlotter(FramesetPlotter):
                 crosshairs = [xline, yline]
             else:
                 crosshairs = []
-            all_artists.append((frame_artist, *xanes_artists, *particle_artists,
-                                *crosshairs))
+        #    all_artists.append((frame_artist, *xanes_artists, *particle_artists,
+        #                       *crosshairs))
         self.frame_animation.artists = all_artists
         self.frame_canvas.draw()
         return all_artists
