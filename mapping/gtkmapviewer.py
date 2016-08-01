@@ -22,19 +22,35 @@ gi.require_version('Gtk', '3.0')
 NormRange = collections.namedtuple('NormRange', ('min', 'max'))
 
 class GtkMapViewer():
-    """
-    A set of plots for interactive data analysis.
+    """A set of plots for interactive data analysis.
+
+    Arguments
+    ---------
+    - parent_map : A Map() object that contains the data to be mapped.
+
+    - metric : Parameter to map by default. Can be changed within the GUI.
+
+    - metric_range : Starting range for the metric. Can be changed
+      within the GUI. If omitted or None, the full range of metrics
+      will be used.
+
+    - alpha : Parameter to use for transparency by default. Can be
+      changed within the GUI.
+
+    - alpha_range : Starting range for transparency. Can be changed
+      within the GUI. If omitted or None, the full range of values
+      will be used.
+
     """
     local_mode = False
     current_locus = 0
     beam = None
     image_hexagon = None
     composite_hexagon = None
-    active_metric = 'a'
-    active_alpha = 'integral'
     _drawing_timer = None
 
-    def __init__(self, *args, parent_map, **kwargs):
+    def __init__(self, parent_map, metric='a', metric_range=None,
+                 alpha='integral', alpha_range=None, *args, **kwargs):
         self.parent_map = parent_map
         # Build GTK window
         self.builder = Gtk.Builder()
@@ -49,6 +65,8 @@ class GtkMapViewer():
         self.window.set_icon_from_file(image)
         self.window.set_default_size(1000, 1000)
         # Populate the combobox with list of available metrics (and alphas)
+        self.active_metric = metric
+        self.active_alpha = alpha
         self.metric_combo = self.builder.get_object('MetricComboBox')
         self.alpha_combo = self.builder.get_object("AlphaComboBox")
         self.metric_list = Gtk.ListStore(str, str)
@@ -69,8 +87,14 @@ class GtkMapViewer():
         self.alpha_combo.set_active_iter(active_iter_alpha)
 
         # Set ranges for metric and alpha spin buttons
-        self.reset_metric_range()
-        self.reset_alpha_range()
+        if metric_range is None:
+            self.reset_metric_range()
+        else:
+            self.metric_range = metric_range
+        if alpha_range is None:
+            self.reset_alpha_range()
+        else:
+            self.alpha_range = alpha_range
 
         # Prepare mapping figures
         fig = figure.Figure(figsize=(13.8, 10))
@@ -168,10 +192,14 @@ class GtkMapViewer():
         #     self.parent_map.plot_histogram(ax=self.locusImageAxes)
         #     self.locusImageAxes.set_aspect('auto')
         # Plot the histogram
+        if self.show_alpha:
+            real_alpha = self.active_alpha
+        else:
+            real_alpha = None
         self.parent_map.plot_histogram(ax=self.locusImageAxes,
                                        metric=self.active_metric,
                                        metric_range=self.metric_range,
-                                       weight=self.active_alpha,
+                                       weight=real_alpha,
                                        weight_range=self.alpha_range)
         self.locusImageAxes.set_aspect('auto')
         # Highlight the hexagon on the map and composite image

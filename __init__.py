@@ -58,7 +58,7 @@ from xrd.importers import import_aps_34IDE_map, import_gadds_map
 from xrd.utilities import q_to_twotheta, twotheta_to_q
 
 from mapping.coordinates import Cube
-from mapping.map import Map, DummyMap, PeakPositionMap, PhaseRatioMap, FwhmMap
+from mapping.map import Map, PeakPositionMap, PhaseRatioMap, FwhmMap
 from mapping import colormaps
 
 # Electrochemistry methods and classes

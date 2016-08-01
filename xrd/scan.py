@@ -136,7 +136,7 @@ class XRDScan():
         df.set_index('2theta', inplace=True)
 
     def plot_diffractogram(self, ax=None, marker='+',
-                           linestyle="None", use_twotheta=False,
+                           linestyle=":", use_twotheta=False,
                            wavelength=None, *args, **kwargs):
         """Plot the XRD diffractogram for this scan. Generates a new set of
         axes unless supplied by the `ax` keyword.
@@ -174,7 +174,7 @@ class XRDScan():
             ax.xaxis.set_major_formatter(plots.DegreeFormatter())
             ax.set_xlabel(r'$2\theta$')
         else:
-            ax.set_xlabel(r'q $/{unit}^{-}$')
+            ax.set_xlabel(r'q $/\AA^{-}$')
         ax.set_ylabel('Counts')
         ax.set_title(self.axes_title())
         return ax

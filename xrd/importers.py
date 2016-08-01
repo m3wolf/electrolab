@@ -31,8 +31,9 @@ from .xrdstore import XRDStore
 from .utilities import twotheta_to_q, q_to_twotheta
 
 
-def import_gadds_map(directory: str, tube: str="Cu",
-                     hdf_filename: str=None, hdf_groupname: str=None):
+def import_gadds_map(sample_name: str=None, directory: str=None,
+                     tube: str="Cu", hdf_filename: str=None,
+                     hdf_groupname: str=None):
     """Import a set of diffraction patterns from a map taken on a Bruker
     D8 Discover Series II diffractometer using the GADDS software
     suite.
@@ -42,7 +43,12 @@ def import_gadds_map(directory: str, tube: str="Cu",
 
     - directory : Directory where to look for results. It should
     contain .plt files that are 2-theta and intensity data as well as
-    .jpg files of the locus images
+    .jpg files of the locus images.
+
+    - sample_name : String with the name describing this sample. If
+      provided and not None, this can be used to guess the directory,
+      hdf_filename and hdf_groupname arguments (otherwise they must be
+      explicitely provided).
 
     - tube : Anode material used in the X-ray tube. This will be used
       to determine the wavelength for converting two-theta to
@@ -57,6 +63,16 @@ def import_gadds_map(directory: str, tube: str="Cu",
       file.
 
     """
+    # Check that the we have all the right filenames provided in arguments
+    if sample_name is None and None in [hdf_filename, hdf_groupname, directory]:
+        msg = "Either pass `sample_name` or `hdf_filename`, `hdf_groupname` and `directory`"
+        raise ValueError(msg)
+    if hdf_filename is None:
+        hdf_filename = "{}.h5".format(sample_name)
+    if hdf_groupname is None:
+        hdf_groupname = sample_name
+    if directory is None:
+        directory = "{}-frames/".format(sample_name)
     # Open HDF datastore
     xrdstore = XRDStore(hdf_filename=hdf_filename,
                         groupname=hdf_groupname, mode="r+")

@@ -169,7 +169,8 @@ class XRDMap(Map):
         # Plot data
         ax.plot(qs, observations, marker="+", linestyle="None")
         ax.plot(qs, predictions)
-        ax.plot(qs, residuals)
+        ax.plot(qs, bg, color="red")
+        ax.plot(qs, residuals, color="cyan")
         # Annotate axes
         ax.set_xlabel(r'Scattering Length (q) $/\AA^{-1}$')
         ax.set_ylabel('Intensity a.u.')
@@ -211,7 +212,7 @@ class XRDMap(Map):
           taken from the self.store().
         """
         with self.store() as store:
-            diameter = store.step_size
+            diameter = store.step_size.num
             loc = xycoord(*store.positions[locus,:])
         ellipse = patches.Ellipse(
             xy=loc,
@@ -273,7 +274,7 @@ class XRDMap(Map):
                         intensities=subtracted,
                         quiet=True
                     )
-                except (exceptions.RefinementError, exceptions.UnitCellError):
+                except (exceptions.RefinementError, exceptions.UnitCellError, ZeroDivisionError):
                     failed.append(idx)
                     goodness.append(np.nan)
                 else:
@@ -401,9 +402,9 @@ class XRDMap(Map):
         # Now plot the map
         return self.plot_map(*args, **kwargs)
 
-    def plot_map_gtk(self):
+    def plot_map_gtk(self, *args, **kwargs):
         from xrd.gtkmapviewer import GtkXrdMapViewer
-        return super().plot_map_gtk(WindowClass=GtkXrdMapViewer)
+        return super().plot_map_gtk(WindowClass=GtkXrdMapViewer, *args, **kwargs)
 
     def dots_per_mm(self):
         """Determine the width of the scan images based on sample's camera

@@ -19,6 +19,7 @@
 
 import os
 import re
+import chunk
 from collections import namedtuple
 import zipfile
 from xml.etree import ElementTree
@@ -29,6 +30,7 @@ import pandas as pd
 from default_units import angstrom
 from .tube import tubes
 from .utilities import twotheta_to_q, q_to_twotheta
+from utilities import shape, Pixel
 
 
 def adapter_from_filename(filename, *args, **kwargs):
@@ -73,11 +75,9 @@ class XRDAdapter():
     def sample_name(self):
         raise NotImplementedError(self.__class__)
 
-    @property
     def scattering_lengths(self):
         raise NotImplementedError(self.__class__)
 
-    @property
     def intensities(self):
         raise NotImplementedError(self.__class__)
 
@@ -111,13 +111,11 @@ class BrukerXyeFile(XRDAdapter):
     def sample_name(self):
         return self.filename
 
-    @property
     def scattering_lengths(self):
         twotheta = np.array(self._dataframe.index)
         q = twotheta_to_q(twotheta, wavelength=self.wavelength.num)
         return q
 
-    @property
     def intensities(self):
         df = self._dataframe
         return df['counts'].values
@@ -416,7 +414,7 @@ class BrukerGfrmFile():
         """
         data = {}
         cursor = 0
-        for definition in header_definitions:
+        for definition in gfrm_header_definitions:
             # Figure out where to stop
             end = cursor + definition.length
             # Get the data
@@ -436,7 +434,7 @@ class BrukerGfrmFile():
             data[definition.name] = value
         return data
 
-    def import_gadds_frame(mask_radius="auto"):
+    def import_gadds_frame(self, mask_radius="auto"):
         """Import a two-dimensional X-ray diffraction pattern from a
         GADDS system detector, typically using the .gfrm
         extension.
@@ -453,7 +451,7 @@ class BrukerGfrmFile():
             # Read in the header
             header = raw_chunk.read(hdrblks * 512 - 8)
             # Determine image dimensions from header
-            metadata = read_header(header)
+            metadata = self._read_header(header)
             frame_shape = shape(rows=int(metadata['nrows']),
                                 columns=int(metadata['ncols']))
             data_length = frame_shape.rows * frame_shape.columns

@@ -142,8 +142,9 @@ def plot_scans(scan_list, step_size=0, ax=None, names=[], use_twotheta=False, wa
         ax.set_xlabel(r'$2\theta$')
         ax.xaxis.set_major_formatter(DegreeFormatter())
     else:
-        ax.set_xlabel(r'q $/\AA^{-}$')
-    ax.set_ylabel('counts')
+        ax.set_xlabel(r'q /$\AA^{-}$')
+        # ax.set_xlabel('q /⁻')
+    ax.set_ylabel('Counts')
     return ax
 
 

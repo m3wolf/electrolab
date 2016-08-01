@@ -31,6 +31,22 @@ class Map():
     """A physical sample that gets mapped by some scientific process,
     presumed to be circular with center and diameter in
     millimeters. Resolution is the size of each cell, given in mm.
+
+    Arguments
+    ---------
+    - sample_name : A string used for identifying this sample. It is
+    used for decided on directory names and guessing the HDF5 file
+    name if not explicitely provided.
+
+    - diameter : [deprecated]
+
+    - coverage : [deprecated]
+
+    - hdf_filename : String containing the path to the HDF file. If
+      None or omitted, a value will be guessed from the sample_name.
+
+    - resolution : [deprecated]
+
     """
     cmap_name = 'viridis'
     camera_zoom = 1
@@ -39,10 +55,13 @@ class Map():
     metric_name = 'Metric'
     reliability_normalizer = colors.Normalize(0, 1, clip=True)
 
-    def __init__(self, hdf_filename, center=(0, 0), diameter=12.7, coverage=1,
-                 sample_name='unknown', resolution=1):
-        self.hdf_filename = hdf_filename
-        self.center = center
+    def __init__(self, sample_name, diameter=12.7, coverage=1,
+                 hdf_filename=None, resolution=1):
+        if hdf_filename is None:
+            # Guess HDF5 filename from sample_name argument
+            self.hdf_filename = sample_name + ".h5"
+        else:
+            self.hdf_filename = hdf_filename
         self.diameter = diameter
         self.coverage = coverage
         self.sample_name = sample_name
@@ -78,8 +97,8 @@ class Map():
     def loci(self):
         with self.store() as store:
             positions = store.positions
-            step_size = store.step_size
-        return positions * step_size.num
+            # step_size = store.step_size
+        return positions### * step_size.num
 
     def create_loci(self):
         """Populate the loci array with new loci in a hexagonal array."""
@@ -278,8 +297,8 @@ class Map():
                                       facecolor=color, edgecolor=color)
         elif shape in ['hex']:
             patch = patches.RegularPolygon(xy=loc, numVertices=6,
-                                           radius=size / 2.4, linewidth=0,
-                                           alpha=1, facecolor=color, edgecolor="black")
+                                           radius=size/1.60, linewidth=0,
+                                           facecolor=color, edgecolor=color)
             pass
         else:
             raise ValueError("Unknown value for shape: '{}'".format(shape))
@@ -309,7 +328,8 @@ class Map():
         - metric_range : Specifies the bounds for mapping. Anything
           outside these bounds will be clipped to the max or min.
 
-        - hightlight_locus : Currently broken!
+        - hightlight_locus : Index of an XRD scan that will receive a
+          red circle.
 
         - alpha : Name of the quantity to be used to determine the
           opacity of each cell. If None, all cells will be opaque.
@@ -317,6 +337,7 @@ class Map():
         - alpha_range : 2-tuple with the values for full transparency
           and full opacity. Anything outside these bounds will be
           clipped.
+
         """
         cmap = self.get_cmap()
         # Plot loci
@@ -343,29 +364,35 @@ class Map():
         else:
             alphas = self.metric(phase_idx=phase_idx, param=alpha)
             if alpha_range is None:
-                alpha_normalizer = colors.Normalize(min(alphas), max(alphas), clip=True)
+                alpha_normalizer = colors.Normalize(min(alphas),max(alphas), clip=True)
             else:
                 alpha_normalizer = colors.Normalize(min(alpha_range), max(alpha_range), clip=True)
+        # Prepare colors and normalized alpha values
+        colors_ = self.get_cmap()(metric_normalizer(metrics))
+        alphas = alpha_normalizer(alphas)
         # Plot the actual loci
-        for locus, metric, _alpha in zip(self.loci, metrics, alphas):
+        for locus, color, alpha_ in zip(self.loci, colors_, alphas):
             self.plot_locus(locus, ax=ax, shape=layout, size=step_size.num,
-                            color=color, alpha=_alpha)
-
+                            color=color, alpha=alpha_)
         # If there's space between beam locations, plot beam location
         if self.coverage != 1:
-            for locus in self.loci:
-                locus.plot_beam(ax=ax)
+            warnings.warn(UserWarning("coverage not properly displayed"))
         # If a highlighted scan was given, show it in a different color
         if highlighted_locus is not None:
-            warning.warn(UserWarning, "highlighted_locus not implemented")
-            # highlighted_locus.highlight_beam(ax=ax)
+            self.highlight_beam(ax=ax, locus=highlighted_locus)
         # Add circle for theoretical edge
         # self.draw_edge(ax, color='red')
         # Add colormap to the side of the axes
         mappable = cm.ScalarMappable(norm=metric_normalizer, cmap=cmap)
         mappable.set_array(np.arange(metric_normalizer.vmin,
                                      metric_normalizer.vmax))
-        pyplot.colorbar(mappable, ax=ax)
+        cb = pyplot.colorbar(mappable, ax=ax)
+        if metric in ['a', 'b', 'c']:
+            cb.set_label(r'Unit cell parameter {} ($\AA$)'.format(metric))
+        elif metric in ['a', 'b', 'c']:
+            cb.set_label(r'Unit cell parameter {$^{\circ}$}'.format(metric))
+        else:
+            cb.set_label(metric)
         # Adjust x and y limits
         xs = self.loci[:,0]
         ys = self.loci[:,1]
@@ -378,7 +405,7 @@ class Map():
         set_outside_ticks(ax=ax)
         return ax
 
-    def plot_map_gtk(self, WindowClass=None):
+    def plot_map_gtk(self, WindowClass=None, *args, **kwargs):
         """Create a gtk window with plots and images for interactive data
         analysis.
         """
@@ -387,7 +414,7 @@ class Map():
             WindowClass = GtkMapViewer
         # Show GTK window
         title = "Maps for sample '{}'".format(self.sample_name)
-        viewer = WindowClass(parent_map=self, title=title)
+        viewer = WindowClass(parent_map=self, title=title, *args, **kwargs)
         viewer.show()
         # Close the current blank plot
         pyplot.close()
@@ -521,16 +548,17 @@ class Map():
         metricnorm = normalizer(data=metrics, norm_range=metric_range)
         np.clip(metrics, metricnorm.vmin, metricnorm.vmax, out=metrics)
         # Guess number of bins'
-        if not bins:
+        if bins is 0:
             bins = int(metrics.shape[0] / 3)
         # Get values for weighting the frequencies
         weights = self.metric(param=weight)
-        weightnorm = normalizer(data=weights, norm_range=weight_range)
-        weights = weightnorm(weights)
+        if weight_range:
+            weightnorm = normalizer(data=weights, norm_range=weight_range)
+            weights = weightnorm(weights)
         if ax is None:
             ax = new_axes(height=4, width=7)
         # Generate the histogram
-        n, bins, patches = ax.hist(metrics, bins=bins)# , weights=weights)
+        n, bins, patches = ax.hist(metrics, bins=bins, weights=weights)
         # Set the colors based on the metric normalizer
         for patch in patches:
             x_position = patch.get_x()
@@ -547,40 +575,40 @@ class Map():
                                         name=self.sample_name)
 
 
-class DummyMap(Map):
-    """
-    Sample that returns a dummy map for testing.
-    """
+# class DummyMap(Map):
+#     """
+#     Sample that returns a dummy map for testing.
+#     """
 
-    def composite_image(self):
-        # Stub image to show for layout purposes
-        directory = os.path.dirname(os.path.realpath(__file__))
-        # Read a cached composite image from disk
-        image = scipy.misc.imread(
-            '{0}/../images/test-composite-image.png'.format(directory)
-        )
-        return image
+#     def composite_image(self):
+#         # Stub image to show for layout purposes
+#         directory = os.path.dirname(os.path.realpath(__file__))
+#         # Read a cached composite image from disk
+#         image = scipy.misc.imread(
+#             '{0}/../images/test-composite-image.png'.format(directory)
+#         )
+#         return image
 
-    def mapscan_metric(self, scan):
-        # Just return the distance from bottom left to top right
-        p = scan.cube_coords[0]
-        rows = scan.xrd_map.rows
-        r = (p / 2 / rows) + 0.5
-        return r
+#     def mapscan_metric(self, scan):
+#         # Just return the distance from bottom left to top right
+#         p = scan.cube_coords[0]
+#         rows = scan.xrd_map.rows
+#         r = (p / 2 / rows) + 0.5
+#         return r
 
-    def plot_map(self, *args, **kwargs):
-        # Ensure that "diffractogram is loaded" for each scan
-        for locus in self.loci:
-            locus.diffractogram_is_loaded = True
-            p = locus.cube_coords[0]
-            rows = locus.parent_map.rows
-            r = (p / 2 / rows) + 0.5
-            locus.metric = r
-        return super().plot_map(*args, **kwargs)
+#     def plot_map(self, *args, **kwargs):
+#         # Ensure that "diffractogram is loaded" for each scan
+#         for locus in self.loci:
+#             locus.diffractogram_is_loaded = True
+#             p = locus.cube_coords[0]
+#             rows = locus.parent_map.rows
+#             r = (p / 2 / rows) + 0.5
+#             locus.metric = r
+#         return super().plot_map(*args, **kwargs)
 
-    def create_loci(self):
-        """Populate the loci array with new scans in a hexagonal array."""
-        raise NotImplementedError("Use gadds._path()")
+#     def create_loci(self):
+#         """Populate the loci array with new scans in a hexagonal array."""
+#         raise NotImplementedError("Use gadds._path()")
 
 
 class PeakPositionMap(Map):

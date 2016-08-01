@@ -45,7 +45,10 @@ class NativeRefinement(BaseRefinement):
         running_total = 0
         for diff in diffs:
             running_total += diff**2
-        rms_error = math.sqrt(running_total / len(diffs))
+        try:
+            rms_error = math.sqrt(running_total / len(diffs))
+        except ZeroDivisionError:
+            raise exceptions.RefinementError()
         return rms_error
 
     def refine_unit_cells(self, scattering_lengths, intensities, quiet=True):
@@ -121,7 +124,7 @@ class NativeRefinement(BaseRefinement):
         self.spline = UnivariateSpline(
             x=q,
             y=I,
-            s=s,
+            s=s * 25,
             k=3
         )
         # Extrapolate the background for the whole pattern
