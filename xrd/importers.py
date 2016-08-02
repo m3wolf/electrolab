@@ -18,6 +18,7 @@
 # along with Scimap. If not, see <http://www.gnu.org/licenses/>.
 
 import os
+import re
 from typing import Union, Tuple
 
 import h5py
@@ -149,7 +150,9 @@ def import_aps_34IDE_map(directory: str, wavelength: int,
     # Determine the sample step sizes
     xrdstore.step_size = step_size
     # Calculate mapping positions ("loci")
-    xv, yv = np.meshgrid(range(0, shape.columns), range(0, shape.rows))
+    xs = np.arange(0, shape.columns*step_size.num, step_size.num)
+    ys = np.arange(0, shape.rows*step_size.num, step_size.num)
+    xv, yv = np.meshgrid(xs, ys)
     newshape = (shape.rows * shape.columns, 2)
     positions = np.reshape(np.dstack((xv, yv)), newshape=newshape)
     # Shift positions by half a step-size so the location is the center of each square
@@ -167,7 +170,11 @@ def import_aps_34IDE_map(directory: str, wavelength: int,
     if beamstop:
         warnings.warn(UserWarning("Deprecated, use qrange instead"))
 
-    for filename in sorted(chifiles):
+    # Sort filenames
+    convert = lambda text: int(text) if text.isdigit() else text.lower()
+    alphanum_key = lambda key: [ convert(c) for c in re.split('([0-9]+)', key) ] 
+
+    for filename in sorted(chifiles, key=alphanum_key):
         path = os.path.join(directory, filename)
         file_basenames.append(os.path.splitext(path)[0])
         # Get header data

@@ -30,15 +30,18 @@ class NativeRefinement(BaseRefinement):
     data_dict = DataDict(['spline', 'is_refined'])
     spline = None
 
-    def peak_rms_error(self, phase, unit_cell=None):
+    def peak_rms_error(self, phase, unit_cell=None, peak_list=None):
         diffs = []
         predicted_peaks = phase.predicted_peak_positions(unit_cell=unit_cell)
         # Only include those that are within the two_theta range
         phase_idx = self.phases.index(phase)
-        actual_peaks = self._peak_list[phase_idx]
+        if peak_list is None:
+            actual_peaks = [p.center() for p in self._peak_list[phase_idx]]
+        else:
+            actual_peaks = peak_list
         # Prepare list of peak position differences
         for idx, actual_peak in enumerate(actual_peaks):
-            offsets = [abs(p.q-actual_peak.center())
+            offsets = [abs(p.q-actual_peak)
                        for p in predicted_peaks]
             diffs.append(min(offsets))
         # Calculate mean-square-difference
@@ -58,8 +61,22 @@ class NativeRefinement(BaseRefinement):
         (a, b, c, α, β, γ).
         """
         # Fit peaks to Gaussian/Cauchy functions using least squares refinement
-        self.fit_peaks(scattering_lengths=scattering_lengths,
-                       intensities=intensities)
+        # self.fit_peaks(scattering_lengths=scattering_lengths,
+        #                intensities=intensities)
+        # Get a list of peak positions
+        assert len(self.phases) == 1 # Temporary to avoid weird fitting
+        peak_list = []
+        for reflection in self.phases[0].reflection_list:
+            if contains_peak(scattering_lengths, reflection.qrange):
+                left = reflection.qrange[0]
+                right = reflection.qrange[1]
+                idx = np.where(np.logical_and(left < scattering_lengths,
+                                              scattering_lengths < right))
+                xs = scattering_lengths[idx]
+                ys = intensities[idx]
+                maxidx = ys.argmax()
+                xmax = xs[maxidx]
+                peak_list.append(xmax)
         for phase in self.phases:
             # Define an objective function that will be minimized
             def objective(cell_parameters):
@@ -68,7 +85,8 @@ class NativeRefinement(BaseRefinement):
                 unit_cell = phase.unit_cell.__class__()
                 unit_cell.set_cell_parameters_from_list(cell_parameters)
                 residuals = self.peak_rms_error(phase=phase,
-                                                unit_cell=unit_cell)
+                                                unit_cell=unit_cell,
+                                                peak_list = peak_list)
                 return residuals
             # Now minimize objective for each phase
             initial_parameters = phase.unit_cell.cell_parameters
@@ -81,7 +99,7 @@ class NativeRefinement(BaseRefinement):
                 optimized_parameters = result.x
                 phase.unit_cell.set_cell_parameters_from_list(
                     optimized_parameters)
-                residual_error = self.peak_rms_error(phase=phase)
+                residual_error = self.peak_rms_error(phase=phase, peak_list=peak_list)
                 return residual_error
             else:
                 # Optimization failed for some reason
@@ -124,7 +142,7 @@ class NativeRefinement(BaseRefinement):
         self.spline = UnivariateSpline(
             x=q,
             y=I,
-            s=s * 25,
+            s=s / 25,
             k=3
         )
         # Extrapolate the background for the whole pattern
@@ -209,6 +227,7 @@ class NativeRefinement(BaseRefinement):
         Use least squares refinement to fit gaussian/Cauchy/etc functions
         to the predicted reflections.
         """
+        raise NotImplementedError("Disabled due to bad background fitting.")
         self._peak_list = []
         fitMethods = ['pseudo-voigt', 'gaussian', 'cauchy', 'estimated']
         reflection_list = []
@@ -243,6 +262,7 @@ class NativeRefinement(BaseRefinement):
                         # No sucessful fit could be found.
                         msg = "RefinementWarning: peak could not be fit for {}.".format(reflection)
                         warnings.warn(msg, RuntimeWarning)
+                assert False
             self._peak_list.append(phase_peak_list)
         return self._peak_list
 

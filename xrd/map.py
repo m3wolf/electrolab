@@ -226,8 +226,8 @@ class XRDMap(Map):
         ax.add_patch(ellipse)
         return ellipse
 
-    def plot_all_diffractograms(self, ax=None, subtracted=False, xstep=0, ystep=5,
-                                *args, **kwargs):
+    def plot_all_diffractograms(self, ax=None, subtracted=False,
+                                xstep=0, ystep=5, label_scans=True, *args, **kwargs):
         if ax is None:
             ax = new_axes(width=15, height=15)
         with self.store() as store:
@@ -242,10 +242,11 @@ class XRDMap(Map):
                 x += xstep * i
                 y += ystep * i
                 ax.plot(x, y, *args, **kwargs)
-                if i % 5 == 0:
+                if i % 5 == 0 and label_scans:
                     # Plot a text label every 5 plots
                     ax.text(x[-1], y[-1], s=i,
                             verticalalignment="center")
+        return ax
 
     def refine_mapping_data(self):
         """Refine the relevant XRD parameters, such as background, unit-cells,
@@ -282,7 +283,8 @@ class XRDMap(Map):
                 finally:
                     phases = tuple(p.unit_cell.as_tuple() for p in refinement.phases)
                     all_cells.append(phases)
-                fits.append(refinement.predict(qs))
+                fits.append(np.zeros_like(qs))
+                # fits.append(refinement.predict(qs))
             # Store refined data for later
             store.backgrounds = np.array(bgs)
             store.cell_parameters = np.array(all_cells)

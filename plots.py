@@ -91,10 +91,12 @@ def xrd_axes():
     return new_axes(width=8)
 
 
-def dual_axes(orientation='horizontal'):
+def dual_axes(fig=None, orientation='horizontal'):
     """Two new axes for mapping, side-by-side."""
+    if fig is None:
+        fig = pyplot.figure()
     if orientation == 'vertical':
-        fig, (ax1, ax2) = pyplot.subplots(2, 1)
+        fig, (ax1, ax2) = fig.subplots(2, 1)
         fig.set_figwidth(6.9)
         fig.set_figheight(13.8)
     else:
