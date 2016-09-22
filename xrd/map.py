@@ -1,7 +1,5 @@
 # -*- coding: utf-8 --*
 
-import math
-import os
 import warnings
 
 from matplotlib import patches
@@ -9,13 +7,12 @@ import numpy as np
 import scipy
 import pandas
 
-import exceptions
-from mapping.map import Map
-from plots import new_axes, DegreeFormatter
+from .. import exceptions
+from .. mapping.map import Map
 from .locus import XRDLocus
 from .xrdstore import XRDStore
-from refinement.native import NativeRefinement
-from utilities import prog, xycoord
+from ..refinement.native import NativeRefinement
+from ..utilities import prog, xycoord
 
 
 class XRDMap(Map):

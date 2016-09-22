@@ -21,7 +21,7 @@ import math
 
 from units.predefined import define_units
 
-import default_units
+from .. import default_units
 
 define_units()
 

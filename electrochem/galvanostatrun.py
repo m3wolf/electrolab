@@ -26,10 +26,10 @@ import units
 import units.predefined
 import pytz
 
-import exceptions
-from electrochem.cycle import Cycle
-from plots import new_axes
-import default_units
+from .. import exceptions
+from .cycle import Cycle
+from ..plots import new_axes
+from .. import default_units
 from . import biologic
 
 

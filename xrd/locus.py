@@ -1,9 +1,9 @@
 # -*- coding: utf-8 --*
 import os
 
-from mapping.locus import Locus
-from xrd.scan import XRDScan
-from refinement.native import NativeRefinement
+from ..mapping.locus import Locus
+from .scan import XRDScan
+from ..refinement.native import NativeRefinement
 
 
 class XRDLocus(Locus):

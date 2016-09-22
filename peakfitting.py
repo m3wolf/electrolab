@@ -29,8 +29,8 @@ from scipy import optimize
 # import pandas as pd
 from pandas import Series
 
-import exceptions
-import plots
+from . import exceptions
+from . import plots
 
 # How strongly to penalize negative peak heights, etc
 BASE_PENALTY = 300

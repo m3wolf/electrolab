@@ -9,12 +9,12 @@ import scipy
 from scipy.interpolate import UnivariateSpline
 import pandas
 
-import exceptions
-import plots
-from xrd.peak import XRDPeak
-from peakfitting import remove_peak_from_df
-from refinement.base import BaseRefinement
-from mapping.datadict import DataDict
+from .. import exceptions
+from .. import plots
+from ..xrd.peak import XRDPeak
+from ..peakfitting import remove_peak_from_df
+from .base import BaseRefinement
+from ..mapping.datadict import DataDict
 
 
 def contains_peak(scattering_lengths, qrange):

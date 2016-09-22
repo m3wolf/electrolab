@@ -26,9 +26,9 @@ import numpy as np
 import pandas as pd
 import units
 
-import exceptions
-import hdf
-from default_units import angstrom
+from .. import exceptions
+from .. import hdf
+from ..default_units import angstrom
 from .adapters import BrukerPltFile
 from .xrdstore import XRDStore
 from .utilities import twotheta_to_q, q_to_twotheta

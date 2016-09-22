@@ -23,58 +23,44 @@ import sys
 import os
 
 # Make sure this directory is in python path for imports
-sys.path.append(os.path.dirname(__file__))
+# sys.path.append(os.path.dirname(__file__))
 
-import exceptions
-import default_units
-from electrochem.electrochem_units import *
+from .electrochem.electrochem_units import *
 
-from peakfitting import Peak, remove_peak_from_df
+from .peakfitting import Peak, remove_peak_from_df
 # from xrd.peak import XRDPeak
 # from xrdpeak import PeakFit
 
-from plots import (new_axes, big_axes, dual_axes, plot_scans, xrd_axes,
-                   plot_txm_intermediates, new_image_axes)
+from .plots import (new_axes, big_axes, dual_axes, plot_scans, xrd_axes,
+                    plot_txm_intermediates, new_image_axes)
 
-import filters
+from . import filters
 
-from utilities import xycoord, Pixel, shape, prog
+from .utilities import xycoord, Pixel, shape, prog
 
-from peakfitting import Peak
+from .peakfitting import Peak
 
-from refinement import fullprof
+from .refinement import fullprof
 
-from xrd.unitcell import CubicUnitCell, HexagonalUnitCell, TetragonalUnitCell
-from xrd import standards, lmo, nca
-from xrd.lmo import LMOPlateauMap
-from xrd.reflection import Reflection
-from xrd.tube import tubes
-from xrd.peak import XRDPeak
-from xrd.scan import XRDScan, align_scans
-from xrd.map import XRDMap
-from xrd import gadds
-from xrd.gadds import write_gadds_script
-from xrd.importers import import_aps_34IDE_map, import_gadds_map
-from xrd.utilities import q_to_twotheta, twotheta_to_q
+from .xrd.unitcell import CubicUnitCell, HexagonalUnitCell, TetragonalUnitCell
+from .xrd import standards, lmo, nca
+from .xrd.lmo import LMOPlateauMap
+from .xrd.reflection import Reflection
+from .xrd.tube import tubes
+from .xrd.peak import XRDPeak
+from .xrd.scan import XRDScan, align_scans
+from .xrd.map import XRDMap
+from .xrd import gadds
+from .xrd.gadds import write_gadds_script
+from .xrd.importers import import_aps_34IDE_map, import_gadds_map
+from .xrd.utilities import q_to_twotheta, twotheta_to_q
 
-from mapping.coordinates import Cube
-from mapping.map import Map, PeakPositionMap, PhaseRatioMap, FwhmMap
-from mapping import colormaps
+from .mapping.coordinates import Cube
+from .mapping.map import Map, PeakPositionMap, PhaseRatioMap, FwhmMap
+from .mapping import colormaps
 
 # Electrochemistry methods and classes
-from electrochem.electrode import CathodeLaminate, CoinCellElectrode
-from electrochem.galvanostatrun import GalvanostatRun
-from electrochem.cycle import Cycle
-from electrochem.plots import plot_rate_capacities
-
-# X-ray microscopy
-from txm.xradia import XRMFile
-from txm.beamlines import Zoneplate, Detector, sector8_xanes_script, ZoneplatePoint
-from txm.importers import (import_txm_framesets,
-                           import_ssrl_frameset,
-                           import_ptychography_frameset,
-                           import_aps_8BM_frameset)
-from txm.xanes_frameset import XanesFrameset, merge_framesets, PtychoFrameset
-from txm.frame import TXMFrame, calculate_particle_labels, rebin_image, position
-from xas.edges import k_edges, l_edges
-from txm.plotter import FramesetMoviePlotter
+from .electrochem.electrode import CathodeLaminate, CoinCellElectrode
+from .electrochem.galvanostatrun import GalvanostatRun
+from .electrochem.cycle import Cycle
+from .electrochem.plots import plot_rate_capacities

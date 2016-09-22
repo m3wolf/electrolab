@@ -23,7 +23,7 @@ import numpy as np
 from matplotlib import pyplot
 from matplotlib.ticker import ScalarFormatter
 
-from xrd.utilities import q_to_twotheta
+from .xrd.utilities import q_to_twotheta
 
 
 class ElectronVoltFormatter(ScalarFormatter):
@@ -135,9 +135,10 @@ def plot_scans(scan_list, step_size=0, ax=None, names=[], use_twotheta=False, wa
             scannames.append(getattr(scan, 'name', "Pattern {}".format(idx)))
     ax.legend(reversed(lines), reversed(scannames))
     # Set axes limits
-    df = scan_list[0].diffractogram
     xMax = max([scan.diffractogram.index.max() for scan in scan_list])
     xMin = min([scan.diffractogram.index.min() for scan in scan_list])
+    if use_twotheta:
+        xMax, xMin = q_to_twotheta(np.array((xMax, xMin)), wavelength=wavelength)
     ax.set_xlim(left=xMin, right=xMax)
     # Decorate
     if use_twotheta:
@@ -145,6 +146,7 @@ def plot_scans(scan_list, step_size=0, ax=None, names=[], use_twotheta=False, wa
         ax.xaxis.set_major_formatter(DegreeFormatter())
     else:
         ax.set_xlabel(r'q /$\AA^{-}$')
+        ax.set_xlim(left=xMin, right=xMax)
         # ax.set_xlabel('q /⁻')
     ax.set_ylabel('Counts')
     return ax

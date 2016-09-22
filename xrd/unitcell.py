@@ -3,8 +3,8 @@
 from collections import namedtuple
 import math
 
-from exceptions import UnitCellError
-from mapping.datadict import DataDict
+from ..exceptions import UnitCellError
+from ..mapping.datadict import DataDict
 
 
 class UnitCell():

@@ -5,9 +5,9 @@ from pandas import Series
 import numpy as np
 import matplotlib.pyplot as plt
 
-import exceptions
-from xrd.tube import tubes, KALPHA2_RATIO
-from peakfitting import Peak
+from .. import exceptions
+from .tube import tubes, KALPHA2_RATIO
+from ..peakfitting import Peak
 
 
 class XRDPeak(Peak):

@@ -9,11 +9,11 @@ from matplotlib import pyplot, cm, patches, colors
 import numpy as np
 import scipy
 
-from mapping.coordinates import Cube
-from mapping.locus import Locus, DummyLocus
-from mapping.colormaps import cmaps
-from plots import new_axes, dual_axes, set_outside_ticks
-from utilities import prog, xycoord
+from .coordinates import Cube
+from .locus import Locus, DummyLocus
+from .colormaps import cmaps
+from ..plots import new_axes, dual_axes, set_outside_ticks
+from ..utilities import prog, xycoord
 
 
 def normalizer(data, norm_range):

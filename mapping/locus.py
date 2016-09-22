@@ -8,8 +8,8 @@ import scipy
 import pandas
 from matplotlib import patches
 
-from mapping.coordinates import Cube
-from plots import new_axes
+from .coordinates import Cube
+from ..plots import new_axes
 
 
 class cached_property():

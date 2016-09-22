@@ -8,7 +8,7 @@ from .phase import Phase
 from .standards import Aluminum
 from .unitcell import CubicUnitCell, TetragonalUnitCell
 from .reflection import Reflection
-from refinement.fullprof import FullProfPhase, ProfileMatch
+from ..refinement.fullprof import FullProfPhase, ProfileMatch
 
 
 class CubicLMO(Phase):
