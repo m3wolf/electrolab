@@ -126,24 +126,26 @@ class NativeRefinement(BaseRefinement):
         - intensities : Array of intensity values at each q position
 
         - s : Smoothing factor passed to the spline. Default is
-          len(scattering_lengths)
+            the variance of the background.
 
-        - k : Degree of the spline (default quartic spline)
+        - k : Degree of the spline (default quartic spline).
         """
-        if s is None:
-            s = len(scattering_lengths)
         # Remove pre-indexed peaks for background fitting
         phase_list = self.phases + self.background_phases
         q, I = scattering_lengths, intensities
         for phase in phase_list:
             for reflection in phase.reflection_list:
                 q, I = remove_peak_from_df(x=q, y=I, xrange=reflection.qrange)
+        # Get an estimate for s from the non-peak data
+        if s is None:
+            s = np.std(I)
+            print(s)
         # Determine a background line from the noise without peaks
         self.spline = UnivariateSpline(
             x=q,
             y=I,
-            s=s / 25,
-            k=3
+            s=s,
+            k=k,
         )
         # Extrapolate the background for the whole pattern
         background = self.spline(scattering_lengths)

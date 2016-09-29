@@ -81,10 +81,6 @@ class FileFormatError(ValueError):
     """This file is not formatted as expected."""
     pass
 
-
-#########################
-# X-ray microscopy errors
-#########################
 class DataNotFoundError(FileNotFoundError):
     """Expected a directory containing data but found none."""
     pass

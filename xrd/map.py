@@ -402,7 +402,7 @@ class XRDMap(Map):
         return self.plot_map(*args, **kwargs)
 
     def plot_map_gtk(self, *args, **kwargs):
-        from xrd.gtkmapviewer import GtkXrdMapViewer
+        from .gtkmapviewer import GtkXrdMapViewer
         return super().plot_map_gtk(WindowClass=GtkXrdMapViewer, *args, **kwargs)
 
     def dots_per_mm(self):
