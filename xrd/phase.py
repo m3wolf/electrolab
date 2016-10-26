@@ -4,7 +4,7 @@ from collections import namedtuple
 import copy
 import math
 
-from mapping.datadict import DataDict
+from ..mapping.datadict import DataDict
 from .reflection import hkl_to_tuple
 from .unitcell import UnitCell
 

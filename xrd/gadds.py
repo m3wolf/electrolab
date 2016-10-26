@@ -30,10 +30,10 @@ import units
 import numpy as np
 import jinja2
 
-import hdf
-from default_units import angstrom
-from mapping.coordinates import Cube
-from utilities import prog
+from .. import hdf
+from ..default_units import angstrom
+from ..mapping.coordinates import Cube
+from ..utilities import prog
 from .utilities import q_to_twotheta, twotheta_to_q
 from .tube import tubes
 from .xrdstore import XRDStore

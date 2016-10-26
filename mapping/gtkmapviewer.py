@@ -7,19 +7,66 @@ import threading
 
 import numpy as np
 import gi
-from gi.repository import Gtk, Gdk
+gi.require_version('Gtk', '3.0')
+from gi.repository import Gtk, Gdk, GLib
 from matplotlib import figure
 from matplotlib.backends.backend_gtk3agg import FigureCanvasGTK3Agg as FigureCanvas
 
 # noqa
-
-from mapping.coordinates import Cube
-from txm.gtk_viewer import WatchCursor
-from utilities import xycoord
-
 gi.require_version('Gtk', '3.0')
 
 NormRange = collections.namedtuple('NormRange', ('min', 'max'))
+
+WATCH_CURSOR = Gdk.Cursor(Gdk.CursorType.WATCH)
+ARROW_CURSOR = Gdk.Cursor(Gdk.CursorType.ARROW)
+
+
+class WatchCursor():
+    """Factory returns a function that Perform some slow action `target`
+    with a watch cursor over the given `windows`. When writing the
+    `target` function, make sure to use GLib.idle_add for anything
+    that modifies the UI.
+    """
+    _timer = None
+
+    def __init__(self, target, windows, threading=True):
+        self.target = target
+        self.windows = windows
+        self.threading = threading
+
+    def __call__(self, *args, delay=0):
+        """Start the watch cursor with a delay of `delay` in milliseconds."""
+        def dostuff(*args):
+            # Unpack user data
+            windows, target, *more = args
+            # Start watch cursor
+            for window in windows:
+                real_window = window.get_window()
+                if real_window:
+                    real_window.set_cursor(WATCH_CURSOR)
+                    window.set_sensitive(False)
+            # Call the actual function
+            target(*more)
+            # Remove watch cursor
+            for window in windows:
+                real_window = window.get_window()
+                if real_window:
+                    real_window.set_cursor(ARROW_CURSOR)
+                    window.set_sensitive(True)
+            self._timer = None
+            return False
+
+        # Start target process
+        if self.threading:
+            # Reset timer
+            if self._timer is not None:
+                GLib.source_remove(self._timer)
+            self._timer = GLib.timeout_add(delay, dostuff,
+                                           self.windows, self.target,
+                                           *args)
+        else:
+            dostuff(self.windows, self.target, *args)
+
 
 class GtkMapViewer():
     """A set of plots for interactive data analysis.

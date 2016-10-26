@@ -8,7 +8,7 @@ from .phase import Phase
 from .standards import Aluminum
 from .unitcell import CubicUnitCell, TetragonalUnitCell
 from .reflection import Reflection
-from refinement.fullprof import FullProfPhase, ProfileMatch
+from ..refinement.fullprof import FullProfPhase, ProfileMatch
 
 
 class CubicLMO(Phase):
@@ -42,12 +42,12 @@ class CubicLMO(Phase):
                    qrange=(4.29, 4.44)),
         Reflection('442', multiplicity=24, intensity=0.070,
                    qrange=(4.50, 4.62)),
-        Reflection('620', multiplicity=24, intensity=0.031,
-                   qrange=(4.83, 4.91)),
-        Reflection('533', multiplicity=24, intensity=0.449,
-                   qrange=(4.91, 4.99)),
-        Reflection('622', multiplicity=24, intensity=0.185,
-                   qrange=(4.99, 5.07)),
+        # Reflection('620', multiplicity=24, intensity=0.031,
+        #            qrange=(4.83, 4.91)),
+        # Reflection('533', multiplicity=24, intensity=0.449,
+        #            qrange=(4.91, 4.99)),
+        # Reflection('622', multiplicity=24, intensity=0.185,
+        #            qrange=(4.99, 5.07)),
     ]
 
 

@@ -217,3 +217,8 @@ class XRDStore():
         except KeyError:
             pass
         self.group().create_dataset(name, data=value)
+
+    @property
+    def source(self):
+        """Return a string indicating where the data came from."""
+        return self.group().attrs['source']

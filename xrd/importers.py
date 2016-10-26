@@ -26,9 +26,9 @@ import numpy as np
 import pandas as pd
 import units
 
-import exceptions
-import hdf
-from default_units import angstrom
+from .. import exceptions
+from .. import hdf
+from ..default_units import angstrom
 from .adapters import BrukerPltFile
 from .xrdstore import XRDStore
 from .utilities import twotheta_to_q, q_to_twotheta
@@ -44,14 +44,14 @@ def import_gadds_map(sample_name: str=None, directory: str=None,
     Arguments
     ---------
 
-    - directory : Directory where to look for results. It should
-    contain .plt files that are 2-theta and intensity data as well as
-    .jpg files of the locus images.
-
     - sample_name : String with the name describing this sample. If
       provided and not None, this can be used to guess the directory,
       hdf_filename and hdf_groupname arguments (otherwise they must be
       explicitely provided).
+
+    - directory : Directory where to look for results. It should
+      contain .plt files that are 2-theta and intensity data as well as
+      .jpg files of the locus images.
 
     - tube : Anode material used in the X-ray tube. This will be used
       to determine the wavelength for converting two-theta to
@@ -64,7 +64,6 @@ def import_gadds_map(sample_name: str=None, directory: str=None,
       dataset. If omitted or None, the `directory` basename is
       used. Raises an exception if the group already exists in the HDF
       file.
-
     """
     # Check that the we have all the right filenames provided in arguments
     if sample_name is None and None in [hdf_filename, hdf_groupname, directory]:
@@ -76,9 +75,14 @@ def import_gadds_map(sample_name: str=None, directory: str=None,
         hdf_groupname = sample_name
     if directory is None:
         directory = "{}-frames/".format(sample_name)
+    # Make sure the HDF file exists
+    if not os.path.exists(hdf_filename):
+        msg = "HDF file '{}' not found. Did you remember to run `write_gadds_script`?"
+        raise OSError(msg.format(hdf_filename))
     # Open HDF datastore
     xrdstore = XRDStore(hdf_filename=hdf_filename,
                         groupname=hdf_groupname, mode="r+")
+    xrdstore.group().attrs['source'] = "gadds"
     wavelength = xrdstore.effective_wavelength
     # Prepare list of .plt and .jpg files
     basenames = xrdstore.file_basenames
@@ -144,6 +148,7 @@ def import_aps_34IDE_map(directory: str, wavelength: int,
                                          groupname=hdf_groupname,
                                          dirname=directory)
     xrdstore = XRDStore(hdf_filename=hdf_filename, groupname=sample_group.name, mode="r+")
+    xrdstore.group().attrs['source'] = "APS 34-ID-E"
     wavelength_AA = angstrom(wavelength).num
     sample_group.create_dataset('wavelengths', data=wavelength_AA)
     sample_group['wavelengths'].attrs['unit'] = 'Å'

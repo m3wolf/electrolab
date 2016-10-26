@@ -2,7 +2,7 @@
 
 import warnings
 
-from mapping.gtkmapviewer import GtkMapViewer
+from ..mapping.gtkmapviewer import GtkMapViewer
 
 
 class GtkXrdMapViewer(GtkMapViewer):

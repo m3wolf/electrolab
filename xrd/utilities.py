@@ -19,7 +19,7 @@
 
 import numpy as np
 
-from default_units import angstrom
+from ..default_units import angstrom
 
 
 def q_to_twotheta(q, wavelength):

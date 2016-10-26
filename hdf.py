@@ -21,9 +21,8 @@ import os
 
 import h5py
 
-import hdf
-import exceptions
-from utilities import prog
+from . import exceptions
+from .utilities import prog
 
 """HDF is a format for storing large sets of data to disk. These
 classes provide some wrappers around the h5py module.

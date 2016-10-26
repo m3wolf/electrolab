@@ -10,11 +10,11 @@ import jinja2
 import pandas as pd
 from matplotlib.colors import Normalize
 
-import plots
-import exceptions
-from mapping.datadict import DataDict
-from refinement.base import BaseRefinement
-from xrd.phase import Phase
+from .. import plots
+from .. import exceptions
+from ..mapping.datadict import DataDict
+from ..refinement.base import BaseRefinement
+from ..xrd.phase import Phase
 
 
 def load_refined_diffractogram(filename):

@@ -27,10 +27,10 @@ from xml.etree import ElementTree
 import numpy as np
 import pandas as pd
 
-from default_units import angstrom
+from ..default_units import angstrom
 from .tube import tubes
 from .utilities import twotheta_to_q, q_to_twotheta
-from utilities import shape, Pixel
+from ..utilities import shape, Pixel
 
 
 def adapter_from_filename(filename, *args, **kwargs):
