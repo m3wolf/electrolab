@@ -348,8 +348,8 @@ class Map():
         with self.store() as store:
             step_size = store.step_size
             layout = store.layout
-        ax.set_xlim(min(xs), max(xs)+step_size.num)
-        ax.set_ylim(min(ys), max(ys)+step_size.num)
+        ax.set_xlim(min(xs), max(xs) + step_size.num)
+        ax.set_ylim(min(ys), max(ys) + step_size.num)
         # ax.set_ylim([-xy_lim, xy_lim])
         ax.set_xlabel(step_size.unit.name)
         ax.set_ylabel(step_size.unit.name)

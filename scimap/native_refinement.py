@@ -64,7 +64,7 @@ class NativeRefinement(BaseRefinement):
         # self.fit_peaks(scattering_lengths=scattering_lengths,
         #                intensities=intensities)
         # Get a list of peak positions
-        assert len(self.phases) == 1 # Temporary to avoid weird fitting
+        # assert len(self.phases) == 1 # Temporary to avoid weird fitting
         peak_list = []
         for reflection in self.phases[0].reflection_list:
             if contains_peak(scattering_lengths, reflection.qrange):
