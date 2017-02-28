@@ -34,9 +34,8 @@ class XRDMap(Map):
     THETA2_MIN = 0 # Detector limits based on geometry
     THETA2_MAX = 55
     camera_zoom = 6
-    two_theta_range = (10, 80)
     frame_step = 20  # How much to move detector by in degrees
-    frame_width = 20  # 2-theta coverage of detector face
+    frame_width = 20  # 2-theta coverage of detector face in degrees
     scan_time = 300  # In seconds
     Phases = []
     background_phases = []
@@ -296,12 +295,12 @@ class XRDMap(Map):
             msg = "Could not refine unit cell for loci: {}".format(failed)
             warnings.warn(msg, RuntimeWarning)
 
-    def set_metric_phase_ratio(self, phase_idx=0):
-        """Set the plotting metric as the proportion of given phase."""
-        for locus in prog(self.loci, desc='Calculating metrics'):
-            phase_scale = locus.phases[phase_idx].scale_factor
-            total_scale = sum([phase.scale_factor for phase in locus.phases])
-            locus.metric = phase_scale / total_scale
+    # def set_metric_phase_ratio(self, phase_idx=0):
+    #     """Set the plotting metric as the proportion of given phase."""
+    #     for locus in prog(self.loci, desc='Calculating metrics'):
+    #         phase_scale = locus.phases[phase_idx].scale_factor
+    #         total_scale = sum([phase.scale_factor for phase in locus.phases])
+    #         locus.metric = phase_scale / total_scale
 
     def valid_metrics(self):
         """Return a list of the available metrics that a user can map. See
@@ -357,49 +356,54 @@ class XRDMap(Map):
         return metric
 
     def plot_phase_ratio(self, phase_idx=0, *args, **kwargs):
-        """Plot a map of the ratio of the given phase index to all the phases"""
-        self.set_metric_phase_ratio(phase_idx=0)
-        self.metric_name = 'Phase ratio'
-        # Determine normalization range
-        if self.phase_ratio_normalizer is None:
-            self.metric_normalizer = self.fullrange_normalizer()
-            self.calculate_normalizer()
-        else:
-            self.metric_normalizer = self.phase_ratio_normalizer
-        # Plot the map
-        ax = self.plot_map(*args, **kwargs)
-        return ax
+        warnings.warn(UserWarning("Use `Map.plot_map(metric='phase_ratio')` instead"))
+        # """Plot a map of the ratio of the given phase index to all the phases"""
+        # self.set_metric_phase_ratio(phase_idx=0)
+        # self.metric_name = 'Phase ratio'
+        # # Determine normalization range
+        # if self.phase_ratio_normalizer is None:
+        #     self.metric_normalizer = self.fullrange_normalizer()
+        #     self.calculate_normalizer()
+        # else:
+        #     self.metric_normalizer = self.phase_ratio_normalizer
+        # # Plot the map
+        # ax = self.plot_map(*args, **kwargs)
+        # return ax
 
-    def set_metric_cell_parameter(self, parameter='a', phase_idx=0):
-        for locus in prog(self.loci, desc='Calculating cell parameters'):
-            phase = locus.phases[phase_idx]
-            locus.metric = getattr(phase.unit_cell, parameter)
+    # def set_metric_cell_parameter(self, parameter='a', phase_idx=0):
+    #     for locus in prog(self.loci, desc='Calculating cell parameters'):
+    #         phase = locus.phases[phase_idx]
+    #         locus.metric = getattr(phase.unit_cell, parameter)
 
     def plot_cell_parameter(self, parameter='a', phase_idx=0, *args, **kwargs):
-        self.set_metric_cell_parameter(parameter, phase_idx)
-        self.metric_name = 'Unit-cell parameter {0} Å'.format(parameter)
-        # Determine normalization range
-        if self.cell_parameter_normalizer is None:
-            self.metric_normalizer = self.fullrange_normalizer()
-        else:
-            self.metric_normalizer = self.cell_parameter_normalizer
-        # Now plot the map
-        return self.plot_map(*args, **kwargs)
+        warnings.warn(UserWarning(
+            "Use `Map.plot_map(metric='{}')` instead".format(parameter)
+        ))
+        # self.set_metric_cell_parameter(parameter, phase_idx)
+        # self.metric_name = 'Unit-cell parameter {0} Å'.format(parameter)
+        # # Determine normalization range
+        # if self.cell_parameter_normalizer is None:
+        #     self.metric_normalizer = self.fullrange_normalizer()
+        # else:
+        #     self.metric_normalizer = self.cell_parameter_normalizer
+        # # Now plot the map
+        # return self.plot_map(*args, **kwargs)
 
-    def set_metric_fwhm(self, phase_idx=0):
-        for locus in prog(self.loci, desc='Calculating peak widths'):
-            locus.metric = locus.refinement.fwhm()
+    # def set_metric_fwhm(self, phase_idx=0):
+    #     for locus in prog(self.loci, desc='Calculating peak widths'):
+    #         locus.metric = locus.refinement.fwhm()
 
     def plot_fwhm(self, phase_idx=0, *args, **kwargs):
-        self.set_metric_fwhm(phase_idx=phase_idx)
-        self.metric_name = 'Full-width half max (°)'
-        # Determine normalization range
-        if self.fwhm_normalizer is None:
-            self.metric_normalizer = self.fullrange_normalizer()
-        else:
-            self.metric_normalizer = self.fwhm_normalizer
-        # Now plot the map
-        return self.plot_map(*args, **kwargs)
+        warnings.warn(UserWarning("Use `Map.plot_map(metric='fwhm')` instead"))
+        # self.set_metric_fwhm(phase_idx=phase_idx)
+        # self.metric_name = 'Full-width half max (°)'
+        # # Determine normalization range
+        # if self.fwhm_normalizer is None:
+        #     self.metric_normalizer = self.fullrange_normalizer()
+        # else:
+        #     self.metric_normalizer = self.fwhm_normalizer
+        # # Now plot the map
+        # return self.plot_map(*args, **kwargs)
 
     def plot_map_gtk(self, *args, **kwargs):
         from .gtkmapviewer import GtkXrdMapViewer
@@ -416,7 +420,7 @@ class XRDMap(Map):
         return dots_per_mm
 
     def prepare_mapping_data(self):
-        warnings.warn(DeprecationWarning("Use `xrd.imports.import_gadds_map`"))
+        warnings.warn(UserWarning("Use `Map.refine_mapping_data() instead`"))
         # for locus in self.loci:
         #     locus.load_diffractogram()
         # self.refine_scans()
@@ -427,29 +431,30 @@ class XRDMap(Map):
         Refine a series of parameters on each scan. Continue if an
         exceptions.RefinementError occurs.
         """
-        for locus in prog(self.loci, desc='Reticulating splines'):
-            try:
-                current_step = 'background'
-                locus.refinement.refine_background()
-                current_step = 'displacement'
-                locus.refinement.refine_displacement()
-                current_step = 'peak_widths'
-                locus.refinement.refine_peak_widths()
-                current_step = 'unit cells'
-                locus.refinement.refine_unit_cells()
-                # if len(locus.phases) > 2:
-                current_step = 'scale factors'
-                locus.refinement.refine_scale_factors()
-            except exceptions.SingularMatrixError as e:
-                # Display an error message on exception and then coninue fitting
-                msg = "{coords}: {msg}".format(coords=locus.cube_coords, msg=e)
-                print(msg)
-            except exceptions.DivergenceError as e:
-                msg = "{coords}: DivergenceError while refining {step}".format(
-                    coords=locus.cube_coords,
-                    step=current_step
-                )
-                print(msg)
-            except exceptions.PCRFileError as e:
-                msg = "Could not read resulting pcr file: {}".format(e)
-                print(msg)
+        warnings.warn(UserWarning("Use `Map.refine_mapping_data() instead`"))
+        # for locus in prog(self.loci, desc='Reticulating splines'):
+        #     try:
+        #         current_step = 'background'
+        #         locus.refinement.refine_background()
+        #         current_step = 'displacement'
+        #         locus.refinement.refine_displacement()
+        #         current_step = 'peak_widths'
+        #         locus.refinement.refine_peak_widths()
+        #         current_step = 'unit cells'
+        #         locus.refinement.refine_unit_cells()
+        #         # if len(locus.phases) > 2:
+        #         current_step = 'scale factors'
+        #         locus.refinement.refine_scale_factors()
+        #     except exceptions.SingularMatrixError as e:
+        #         # Display an error message on exception and then coninue fitting
+        #         msg = "{coords}: {msg}".format(coords=locus.cube_coords, msg=e)
+        #         print(msg)
+        #     except exceptions.DivergenceError as e:
+        #         msg = "{coords}: DivergenceError while refining {step}".format(
+        #             coords=locus.cube_coords,
+        #             step=current_step
+        #         )
+        #         print(msg)
+        #     except exceptions.PCRFileError as e:
+        #         msg = "Could not read resulting pcr file: {}".format(e)
+        #         print(msg)
