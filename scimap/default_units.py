@@ -17,31 +17,29 @@
 # You should have received a copy of the GNU General Public License
 # along with Foobar.  If not, see <http://www.gnu.org/licenses/>.
 
-"""
-Define common units across the whole application. Dataframes
-assume the following units and can convert after calculation.
+"""Define common units across the whole application. Dataframes
+assume the following units and can convert after calculation. This
+module star-imports everything from sympy.physics.units.
+
 """
 
-import units
-import units.predefined
+from sympy.physics.units import *
 
 # Define default units
-units.predefined.define_units()
-# Distances
-angstrom = units.scaled_unit('Å', 'm', 1e-10)
-um = units.unit('um')
-# Grams
-mass = units.unit('g')
-# Time (hours)
-time = units.unit('h')
-# Milli-amp hours
-capacity = units.unit('mA') * units.unit('h')
-# Milli-amp hours per gram
-specific_capacity = units.unit('mA') * units.unit('h') / units.unit('g')
-# Volts
-potential = units.unit('V')
-# Electrode mass loading
-cm = units.unit('cm')
-electrode_loading = units.unit('mg') / (cm * cm)
-# Beam energy
-energy = units.unit('eV')
+
+mass = gram
+
+# time = hour
+
+# capacity = milli * ampere * hour
+
+# specific_capacity = milli * ampere * hour / gram
+
+# potential = volts
+
+# electrode_loading = mg / (cm * cm)
+
+# energy = eV
+
+angstrom = meter * (1e-10)
+# wavelength = angstrom

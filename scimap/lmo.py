@@ -3,12 +3,12 @@
 
 from matplotlib.colors import Normalize
 
-from .map import XRDMap
+from .xrd_map import XRDMap
 from .phase import Phase
 from .standards import Aluminum
 from .unitcell import CubicUnitCell, TetragonalUnitCell
 from .reflection import Reflection
-from ..refinement.fullprof import FullProfPhase, ProfileMatch
+from .fullprof_refinement import FullProfPhase, ProfileMatch
 
 
 class CubicLMO(Phase):

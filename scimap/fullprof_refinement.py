@@ -10,11 +10,10 @@ import jinja2
 import pandas as pd
 from matplotlib.colors import Normalize
 
-from .. import plots
-from .. import exceptions
-from ..mapping.datadict import DataDict
-from ..refinement.base import BaseRefinement
-from ..xrd.phase import Phase
+from . import plots
+from . import exceptions
+from .base_refinement import BaseRefinement
+from .phase import Phase
 
 
 def load_refined_diffractogram(filename):
@@ -69,8 +68,8 @@ class ProfileMatch(BaseRefinement):
     zero = 0  # Instrument non-centrality
     displacement = 0.00032  # cos (θ) dependence
     transparency = -0.00810  # sin (θ) dependence
-    data_dict = DataDict(['bg_coeffs', 'zero', 'displacement',
-                          'transparency', 'chi_squared', 'is_refined'])
+    # data_dict = DataDict(['bg_coeffs', 'zero', 'displacement',
+    #                       'transparency', 'chi_squared', 'is_refined'])
     # Regular expressions for reading output summary files
     success_re = re.compile(
         '==> RESULTS OF REFINEMENT:')

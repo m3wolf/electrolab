@@ -23,7 +23,8 @@ import numpy as np
 from matplotlib import pyplot
 from matplotlib.ticker import ScalarFormatter
 
-from .xrd.utilities import q_to_twotheta
+from .utilities import q_to_twotheta
+# from .xrd.utilities import q_to_twotheta
 
 
 class ElectronVoltFormatter(ScalarFormatter):

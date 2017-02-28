@@ -18,7 +18,7 @@
 # along with Scimap. If not, see <http://www.gnu.org/licenses/>.
 
 import h5py
-import units
+# import units
 
 
 class XRDStore():

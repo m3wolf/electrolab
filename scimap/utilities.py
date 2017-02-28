@@ -23,29 +23,76 @@ describing coordinates.
 """
 
 from collections import namedtuple
+import math
 import sys
 
 from tqdm import tqdm
 import numpy as np
+from sympy.physics import units
 
 xycoord = namedtuple('xycoord', ('x', 'y'))
 Pixel = namedtuple('Pixel', ('vertical', 'horizontal'))
 shape = namedtuple('shape', ('rows', 'columns'))
 
 
-def component(data, name):
-    """If complex, turn to given component, otherwise return original data."""
-    if np.any(data.imag):
-        # Sort out complex components
-        if name == "modulus":
-            data = np.abs(data)
-        elif name == "phase":
-            data = np.angle(data)
-        elif name == "real":
-            data = data.real
-        elif name == "imag":
-            data = data.imag
-    return data
+def q_to_twotheta(q, wavelength):
+    """Converts a numpy array or value in scattering length (q) into
+    2θ angle.
+
+    Parameters
+    ----------
+    q
+      Number or numpy array of scattering lengths.
+    wavelength
+      Wavelength of the radiation. This parameter can (and should) use
+      ``sympy.physics.units``
+
+    Returns
+    -------
+    Number or numpy array of two theta values in degrees.
+
+    """
+    inner = (q * wavelength / 4 / np.pi)
+    try:
+        # If it's a numpy array, convert to a float
+        inner = inner.astype(np.float)
+    except AttributeError as e:
+        # Probably a float or integer
+        inner = float(inner)
+    except SystemError as e:
+        raise SystemError("Did you remember to put units on q?", e)
+    twotheta = np.degrees(2 * np.arcsin(inner))
+    return twotheta
+
+
+def twotheta_to_q(two_theta, wavelength, degrees=True):
+    """Converts a numpy array or value in 2θ angle into
+    scattering length (q). 
+    
+    Parameters
+    ----------
+    two_theta
+      Number or numpy array of diffraction angles in degrees.
+    wavelength
+      Wavelength of the radiation. It can (and probably should) have a
+      unit from ``sympy.physics.units``
+    degrees
+      If true, the value of two_theta is assumed to be in
+      degrees, otherwise it is in radians.
+    
+    Returns
+    -------
+    Number or numpy array of scattering lengths in inverse angstroms.
+    
+    """
+    # Convert to radians if necessary
+    if degrees:
+        radians = np.radians(two_theta)
+    else:
+        radians = two_theta
+    # Convert radians to scattering lengths
+    q = 4 * np.pi / wavelength * np.sin(radians / 2)
+    return q
 
 
 class Prog:

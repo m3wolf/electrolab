@@ -24,11 +24,9 @@ from typing import Union, Tuple
 import h5py
 import numpy as np
 import pandas as pd
-import units
 
-from .. import exceptions
-from .. import hdf
-from ..default_units import angstrom
+from . import exceptions
+from . import hdf
 from .adapters import BrukerPltFile
 from .xrdstore import XRDStore
 from .utilities import twotheta_to_q, q_to_twotheta

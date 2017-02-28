@@ -20,6 +20,7 @@
 import os
 import re
 import chunk
+import codecs
 from collections import namedtuple
 import zipfile
 from xml.etree import ElementTree
@@ -27,10 +28,10 @@ from xml.etree import ElementTree
 import numpy as np
 import pandas as pd
 
-from ..default_units import angstrom
+from . import exceptions, default_units as units
 from .tube import tubes
 from .utilities import twotheta_to_q, q_to_twotheta
-from ..utilities import shape, Pixel
+from .utilities import shape, Pixel
 
 
 def adapter_from_filename(filename, *args, **kwargs):
@@ -113,7 +114,7 @@ class BrukerXyeFile(XRDAdapter):
 
     def scattering_lengths(self):
         twotheta = np.array(self._dataframe.index)
-        q = twotheta_to_q(twotheta, wavelength=self.wavelength.num)
+        q = twotheta_to_q(twotheta, wavelength=self.wavelength)
         return q
 
     def intensities(self):
@@ -129,15 +130,15 @@ class BrukerXyeFile(XRDAdapter):
             # Try and find anode type from file
             with open(self.filename, mode='r') as f:
                 header = f.readline()
-            m = re.search(r"Anode: ([A-Za-z]+)", header)
-            if m:
-                anode = m.group(1)
+            match = re.search(r"Anode: ([A-Za-z]+)", header)
+            if match:
+                anode = match.group(1)
                 try:
                     wl = tubes[anode].kalpha
                 except KeyError:
                     msg = 'No definition for {} X-ray tube.'.format(anode)
                     raise exceptions.FileFormatError(msg)
-        return angstrom(wl)
+        return wl
 
     @property
     def _dataframe(self):
@@ -198,7 +199,7 @@ class BrukerBrmlFile(XRDAdapter):
         # Find all Datum entries in data tree
         data = self._dataTree.findall('.//Datum')
         two_theta = np.array([float(d.text.split(',')[2]) for d in data])
-        q = twotheta_to_q(two_theta=two_theta, wavelength=self.wavelength.num)
+        q = twotheta_to_q(two_theta=two_theta, wavelength=self.wavelength)
         return q
 
     def intensities(self):
@@ -211,14 +212,14 @@ class BrukerBrmlFile(XRDAdapter):
     def wavelength(self):
         """Wavelength of the incoming radiation in Angstroms."""
         tubeElement = self._dataTree.find('.//WaveLengthAverage')
-        unit = tubeElement.get('Unit')
+        unit_str = tubeElement.get('Unit')
         num = float(tubeElement.get('Value'))
-        if unit == 'Å': # Special character copied from brml file
-            wavelength = angstrom(num)
+        if unit_str == 'Å': # Special character copied from brml file
+            wavelength = num * units.angstrom
         else:
-            msg = 'Unrecognized unit "{}"'.format(unit)
-            raise exceptions.BrmlReadError(msg)
-        return wavelength
+            wavelength = num * getattr(units, unit_str)
+        result = float(wavelength / units.angstrom)
+        return result
 
 
 

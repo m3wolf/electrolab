@@ -3,8 +3,7 @@
 from collections import namedtuple
 import math
 
-from ..exceptions import UnitCellError
-from ..mapping.datadict import DataDict
+from .exceptions import UnitCellError
 
 
 class UnitCell():
@@ -21,7 +20,6 @@ class UnitCell():
     alpha = 90
     beta = 90
     gamma = 90
-    data_dict = DataDict(['a', 'b', 'c', 'alpha', 'beta', 'gamma'])
 
     def __init__(self, a=None, b=None, c=None,
                  alpha=None, beta=None, gamma=None):

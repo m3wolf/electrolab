@@ -9,12 +9,11 @@ import scipy
 from scipy.interpolate import UnivariateSpline
 import pandas
 
-from .. import exceptions
-from .. import plots
-from ..xrd.peak import XRDPeak
-from ..peakfitting import remove_peak_from_df
-from .base import BaseRefinement
-from ..mapping.datadict import DataDict
+from . import exceptions
+from . import plots
+from .peak import XRDPeak
+from .peakfitting import remove_peak_from_df
+from .base_refinement import BaseRefinement
 
 
 def contains_peak(scattering_lengths, qrange):
@@ -27,7 +26,6 @@ def contains_peak(scattering_lengths, qrange):
 
 
 class NativeRefinement(BaseRefinement):
-    data_dict = DataDict(['spline', 'is_refined'])
     spline = None
 
     def peak_rms_error(self, phase, unit_cell=None, peak_list=None):
@@ -108,7 +106,9 @@ class NativeRefinement(BaseRefinement):
     def refine_scale_factors(self):
         # Make sure background is refined first
         if not self.is_refined['background']:
-            self.refine_background()
+            self.refine_background(
+                self.scan.scattering_lengths,
+                self.scan.intensities)
         # Scale factor is just the ratio of peak area of diagnostic reflection
         for phase in self.scan.phases:
             reflection = phase.diagnostic_reflection
@@ -139,7 +139,6 @@ class NativeRefinement(BaseRefinement):
         # Get an estimate for s from the non-peak data
         if s is None:
             s = np.std(I)
-            print(s)
         # Determine a background line from the noise without peaks
         self.spline = UnivariateSpline(
             x=q,

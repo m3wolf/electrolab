@@ -6,12 +6,12 @@ LiNi_{0.8}Co_{0.15}Al_{0.05}O_2
 
 from matplotlib.colors import Normalize
 
-from .map import XRDMap
+from .xrd_map import XRDMap
 from .phase import Phase
 from .standards import Aluminum
 from .unitcell import CubicUnitCell, TetragonalUnitCell, HexagonalUnitCell
 from .reflection import Reflection
-from ..refinement.fullprof import FullProfPhase, ProfileMatch
+from .fullprof_refinement import FullProfPhase, ProfileMatch
 
 
 class NCA(Phase):

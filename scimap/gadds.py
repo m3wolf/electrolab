@@ -26,14 +26,13 @@ done with the importers.import_gadds_map function."""
 import os
 import math
 
-import units
+from sympy.physics import units
 import numpy as np
 import jinja2
 
-from .. import hdf
-from ..default_units import angstrom
-from ..mapping.coordinates import Cube
-from ..utilities import prog
+from . import hdf, default_units as units
+from .coordinates import Cube
+from .utilities import prog
 from .utilities import q_to_twotheta, twotheta_to_q
 from .tube import tubes
 from .xrdstore import XRDStore
@@ -198,21 +197,22 @@ def write_gadds_script(qrange, sample_name, center, collimator=0.8,
     acquisition, the data will need to be imported with
     `importers.import_gadds_map()`.
 
-    Arguments
-    ---------
-    - qrange : 2-tuple with the starting and ending scattering lengths in Å⁻.
-
-    - sample_name : string with a description of the sample usable in
-      filenames.
-
-    - center : 2-tuple with instrument (x, y) positions of where to
+    Parameters
+    ----------
+    qrange
+      2-tuple with the starting and ending scattering lengths in
+      similar units to the X-ray wavelength Å⁻.
+    sample_name : str
+      A description of the sample, usable in filenames.
+    center
+      2-tuple with instrument (x, y) positions of where to
       start mapping.
-
-    - collimator : The diameter of the collimator, in mm, that is
+    collimator : float, optional
+      The diameter of the collimator, in mm, that is
       installed on the instrument. Used to determine mapping
       resolution.
-
-    - diameter : Diameter of the mapping area in mm.
+    diameter : float, int
+      Diameter of the mapping area in mm.
 
     - coverage : Ratio of how much of the mappable area to actually
       use. This allows for faster "overview" scans. A value of 1
@@ -240,12 +240,13 @@ def write_gadds_script(qrange, sample_name, center, collimator=0.8,
     - hdf_filename : String with the filename to save the HDF5
       file. If omitted, a default will be used based on
       `sample_name`
+
     """
-    wavelength = angstrom(tubes[tube].kalpha)
+    wavelength = tubes[tube].kalpha
     two_theta_range = q_to_twotheta(np.array(qrange), wavelength=wavelength)
     # Import template
     env = jinja2.Environment(loader=jinja2.PackageLoader('scimap', ''))
-    template = env.get_template('mapping/mapping-template.slm')
+    template = env.get_template('templates/mapping-template.slm')
     context = _context(diameter=12.7, collimator=collimator,
                        coverage=1, scan_time=scan_time,
                        sample_name=sample_name,
@@ -280,8 +281,8 @@ def write_gadds_script(qrange, sample_name, center, collimator=0.8,
     xrdstore.file_basenames = np.array(file_basenames)
     tube_ = tubes[tube]
     kalphas = (tube_.kalpha1, tube_.kalpha2)
-    kalphas = np.array([k.num for k in kalphas])
-    xrdstore.step_size = units.unit('mm')(context['unit_size'])
+    kalphas = np.array([k for k in kalphas])
+    xrdstore.step_size =  context['unit_size']
     xrdstore.collimator = collimator
     xrdstore.wavelengths = kalphas
     xrdstore.group()['wavelengths'].attrs['unit'] = "Å"

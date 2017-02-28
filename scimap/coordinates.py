@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import math
 
-from ..utilities import xycoord
+from .utilities import xycoord
 
 class Cube():
     """Cubic coordinates of a hexagon"""

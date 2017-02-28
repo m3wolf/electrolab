@@ -5,10 +5,10 @@ from functools import lru_cache
 import pandas as pd
 from matplotlib import pyplot
 
-from .. import plots
-from ..filters import fourier_transform
+from . import plots
+from .filters import fourier_transform
 from .tube import tubes
-from ..refinement.native import NativeRefinement
+from .native_refinement import NativeRefinement
 from .adapters import adapter_from_filename
 from .utilities import q_to_twotheta
 

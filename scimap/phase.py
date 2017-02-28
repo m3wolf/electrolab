@@ -4,23 +4,21 @@ from collections import namedtuple
 import copy
 import math
 
-from ..mapping.datadict import DataDict
 from .reflection import hkl_to_tuple
 from .unitcell import UnitCell
 
+# class PhaseDataDict(DataDict):
 
-class PhaseDataDict(DataDict):
+#     def __get__(self, obj, cls):
+#         new_dict = super().__get__(obj, cls)
+#         new_dict['unit_cell'] = obj.unit_cell.data_dict
+#         return new_dict
 
-    def __get__(self, obj, cls):
-        new_dict = super().__get__(obj, cls)
-        new_dict['unit_cell'] = obj.unit_cell.data_dict
-        return new_dict
-
-    def __set__(self, obj, new_dict):
-        if 'unit_cell' in new_dict.keys():
-            obj.unit_cell.data_dict = new_dict['unit_cell']
-            del new_dict['unit_cell']
-        return super().__set__(obj, new_dict)
+#     def __set__(self, obj, new_dict):
+#         if 'unit_cell' in new_dict.keys():
+#             obj.unit_cell.data_dict = new_dict['unit_cell']
+#             del new_dict['unit_cell']
+#         return super().__set__(obj, new_dict)
 
 
 class Phase():
@@ -30,7 +28,7 @@ class Phase():
     spacegroup = ''
     scale_factor = 1
     unit_cell = UnitCell
-    data_dict = PhaseDataDict(['scale_factor', 'u', 'v', 'w'])
+    # data_dict = PhaseDataDict(['scale_factor', 'u', 'v', 'w'])
     # Profile peak-width parameters (fwhm = u*(tan θ)^2 + v*tan θ + w)
     u = 0
     v = 0
