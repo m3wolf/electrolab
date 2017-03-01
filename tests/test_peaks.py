@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from cases import ScimapTestCase
-from peakfitting import Peak, discrete_fwhm
+from scimap.peakfitting import Peak, discrete_fwhm
 
 # flake8: noqa
 
