@@ -25,11 +25,10 @@ import h5py
 import numpy as np
 import pandas as pd
 
-from . import exceptions
-from . import hdf
+from . import exceptions, hdf, utilities, default_units as units
+from .utilities import twotheta_to_q, q_to_twotheta
 from .adapters import BrukerPltFile
 from .xrdstore import XRDStore
-from .utilities import twotheta_to_q, q_to_twotheta
 
 
 def import_gadds_map(sample_name: str=None, directory: str=None,
@@ -141,25 +140,33 @@ def import_aps_34IDE_map(directory: str, wavelength: int,
       invalid. This helps remove things like beam stop effects.
 
     """
+    print(hdf_filename)
+    if hdf_filename is None:
+        # Set a default filename based on the directory name
+        dirnames = directory.split('/')
+        dirnames.remove('')
+        hdf_filename = dirnames[-1] + ".h5"
     # Prepare HDF file
+    print(hdf_filename)
     sample_group = hdf.prepare_hdf_group(filename=hdf_filename,
                                          groupname=hdf_groupname,
                                          dirname=directory)
     xrdstore = XRDStore(hdf_filename=hdf_filename, groupname=sample_group.name, mode="r+")
     xrdstore.group().attrs['source'] = "APS 34-ID-E"
-    wavelength_AA = angstrom(wavelength).num
+    wavelength_AA = wavelength
     sample_group.create_dataset('wavelengths', data=wavelength_AA)
     sample_group['wavelengths'].attrs['unit'] = 'Å'
     # Determine the sample step sizes
     xrdstore.step_size = step_size
     # Calculate mapping positions ("loci")
-    xs = np.arange(0, shape.columns*step_size.num, step_size.num)
-    ys = np.arange(0, shape.rows*step_size.num, step_size.num)
+    shape = utilities.shape(*shape)
+    xs = np.arange(0, shape.columns*step_size, step_size)
+    ys = np.arange(0, shape.rows*step_size, step_size)
     xv, yv = np.meshgrid(xs, ys)
     newshape = (shape.rows * shape.columns, 2)
     positions = np.reshape(np.dstack((xv, yv)), newshape=newshape)
     # Shift positions by half a step-size so the location is the center of each square
-    positions = np.add(positions, step_size.num / 2)
+    positions = np.add(positions, step_size / 2)
     xrdstore.positions = positions
     xrdstore.layout = 'rect'
 
@@ -205,15 +212,17 @@ def import_aps_34IDE_map(directory: str, wavelength: int,
                 csv = csv.loc[angle_range[0]:angle_range[1]]
             # Convert to scattering factor
             q = twotheta_to_q(csv.index, wavelength=wavelength_AA)
+        elif 'Q (Inverse Nanometres)' in xunits:
+            # Convert from inverse nanometers to inverse angstroms
+            
+            if qrange is not None:
+                _qrange = tuple(_q * float(units.nm / units.angstrom) for _q in qrange)
+                csv = csv.loc[_qrange[0]:_qrange[1]]
+            q = csv.index
+            q = q * float(units.angstrom / units.nm)
         else: # Data in unknown format
             raise exceptions.FileFormatError("Cannot recognize {}".format(xunits))
             # Remove values obscured by the beam stop
-            if beamstop > 0:
-                warnings.warn(UserWarning("Deprecated, use qrange instead"))
-                csv = csv.loc[beamstop:]
-            elif qrange is not None:
-                csv = csv.loc[qrange[0]:qrange[1]]
-            q = csv.index
         qs.append(q)
         intensities.append(csv.values)
     # Convert to properly shaped numpy arrays
@@ -227,4 +236,4 @@ def import_aps_34IDE_map(directory: str, wavelength: int,
     sample_group['scattering_lengths'].attrs['unit'] = 'Å⁻'
     sample_group.create_dataset('intensities', data=intensities)
     sample_group.create_dataset('file_basenames', data=file_basenames)
-    return qs, intensities
+    # return qs, intensities
