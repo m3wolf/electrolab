@@ -20,6 +20,7 @@
 import unittest
 import os
 import h5py
+import sys
 
 # Set backend so matplotlib doesn't try and show plots
 import matplotlib
@@ -43,24 +44,20 @@ class ImportGaddsTest(unittest.TestCase):
                              hdf_groupname=GADDS_NAME)
 
     def test_hdf_properties(self):
-        self.assertTrue(os.path.exists(GADDS_HDF))
+        self.assertTrue(os.path.exists(GADDS_HDF), GADDS_HDF)
         import_gadds_map(sample_name=GADDS_NAME,
                          directory=GADDS_DIR,
                          hdf_filename=GADDS_HDF,
                          hdf_groupname=GADDS_NAME)
         with h5py.File(GADDS_HDF) as f:
             grp = f[GADDS_NAME]
-            print(list(grp.attrs.keys()))
             # self.assertEqual(grp.attrs
 
 if __name__ == '__main__':
 
     # Look for tests in files in subdirectories
-    runner = unittest.TextTestRunner()
-    loader = unittest.TestLoader()
-    suite = loader.discover(start_dir='.')
-    # suite = loader.discover(start_dir='tests')
-    runner.run(suite)
-
-    # Uncomment this line if this file contains actual tests
-    unittest.main()
+    start_dir = os.path.dirname(__file__)
+    tests = unittest.defaultTestLoader.discover(start_dir)
+    runner = unittest.runner.TextTestRunner(buffer=False)
+    result = runner.run(tests)
+    sys.exit(not result.wasSuccessful())
