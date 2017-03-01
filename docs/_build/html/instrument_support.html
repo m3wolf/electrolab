@@ -1,0 +1,157 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>Instrument and Beamline Support &#8212; scimap 0.1 documentation</title>
+    
+    <link rel="stylesheet" href="_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '0.1',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true,
+        SOURCELINK_SUFFIX: '.txt'
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <script type="text/javascript" src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="prev" title="Introduction" href="intro.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head>
+  <body role="document">
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="instrument-and-beamline-support">
+<h1>Instrument and Beamline Support<a class="headerlink" href="#instrument-and-beamline-support" title="Permalink to this headline">¶</a></h1>
+<div class="section" id="bruker-gadds-diffractometers">
+<h2>Bruker GADDS Diffractometers<a class="headerlink" href="#bruker-gadds-diffractometers" title="Permalink to this headline">¶</a></h2>
+<p>Bruker has a software package that is shipped with &#8220;Series II&#8221;
+diffractometers. While this software has many limitations, it does
+have a scripting language that allows for control of the instrument
+via scimap.</p>
+<p>Use of Bruker GADDS system with scimap has three main components</p>
+<div class="section" id="data-acquisition">
+<h3>Data Acquisition<a class="headerlink" href="#data-acquisition" title="Permalink to this headline">¶</a></h3>
+<p>This is where the user will prepare a &#8220;slm file&#8221; which can be run in
+GADDS. It will instruct the instrument to trace out a desired path and
+save both 2D and 1D diffractograms.</p>
+<div class="code python highlight-default"><div class="highlight"><pre><span></span><span class="n">scimap</span><span class="o">.</span><span class="n">write_gadds_script</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="section" id="importing-and-pre-processing">
+<h3>Importing and Pre-Processing<a class="headerlink" href="#importing-and-pre-processing" title="Permalink to this headline">¶</a></h3>
+</div>
+<div class="section" id="analysis-and-visualization">
+<h3>Analysis and Visualization<a class="headerlink" href="#analysis-and-visualization" title="Permalink to this headline">¶</a></h3>
+</div>
+</div>
+<div class="section" id="bruker-davinci-diffractometers">
+<h2>Bruker DaVinci Diffractometers<a class="headerlink" href="#bruker-davinci-diffractometers" title="Permalink to this headline">¶</a></h2>
+</div>
+<div class="section" id="aps-beamline-34-id-e">
+<h2>APS Beamline 34-ID-E<a class="headerlink" href="#aps-beamline-34-id-e" title="Permalink to this headline">¶</a></h2>
+<p>Scimap can import integrated data obtained from the 34-ID-E
+microdiffraction beamline at the Advanced Photon Source. The
+two-dimensional diffraction patterns must first be integrated to
+one-dimensional patterns using the <code class="docutils literal"><span class="pre">Fit2D</span></code> application. Once
+<code class="docutils literal"><span class="pre">.chi</span></code> files are prepared, they can be imported into scimap.</p>
+<div class="code python highlight-default"><div class="highlight"><pre><span></span><span class="n">scimap</span><span class="o">.</span><span class="n">import_aps_34IDE_map</span><span class="p">(</span><span class="n">directory</span><span class="o">=</span><span class="s1">&#39;example_frames/&#39;</span><span class="p">,</span>
+                            <span class="n">wavelength</span><span class="o">=</span><span class="mf">0.516</span><span class="p">,</span> <span class="n">shape</span><span class="o">=</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mi">10</span><span class="p">),</span>
+                            <span class="n">step_size</span><span class="o">=</span><span class="mf">0.10</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Where the wavelength is given in angstroms. Ideally, the .chi files
+should use scattering lengths, but any files in 20 will be
+automatically converted to scattering length $q$.</p>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+  <h3><a href="index.html">Table Of Contents</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">Instrument and Beamline Support</a><ul>
+<li><a class="reference internal" href="#bruker-gadds-diffractometers">Bruker GADDS Diffractometers</a><ul>
+<li><a class="reference internal" href="#data-acquisition">Data Acquisition</a></li>
+<li><a class="reference internal" href="#importing-and-pre-processing">Importing and Pre-Processing</a></li>
+<li><a class="reference internal" href="#analysis-and-visualization">Analysis and Visualization</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#bruker-davinci-diffractometers">Bruker DaVinci Diffractometers</a></li>
+<li><a class="reference internal" href="#aps-beamline-34-id-e">APS Beamline 34-ID-E</a></li>
+</ul>
+</li>
+</ul>
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="intro.html" title="previous chapter">Introduction</a></li>
+  </ul></li>
+</ul>
+</div>
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="_sources/instrument_support.rst.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="search.html" method="get">
+      <div><input type="text" name="q" /></div>
+      <div><input type="submit" value="Go" /></div>
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2017, Mark Wolf.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 1.5.2</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.9</a>
+      
+      |
+      <a href="_sources/instrument_support.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>
