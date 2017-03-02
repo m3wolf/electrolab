@@ -6,9 +6,9 @@
   <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
     
-    <title>Instrument and Beamline Support &#8212; scimap 0.1 documentation</title>
+    <title>Instrumentation and Beamline Support &#8212; scimap 0.1 documentation</title>
     
-    <link rel="stylesheet" href="_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="_static/classic.css" type="text/css" />
     <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
     
     <script type="text/javascript">
@@ -27,49 +27,77 @@
     <script type="text/javascript" src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="prev" title="Introduction" href="intro.html" />
-   
-  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
-  
-  
-  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
-
+    <link rel="next" title="Materials" href="materials.html" />
+    <link rel="prev" title="Introduction" href="intro.html" /> 
   </head>
   <body role="document">
-  
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="materials.html" title="Materials"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="intro.html" title="Introduction"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">scimap 0.1 documentation</a> &#187;</li> 
+      </ul>
+    </div>  
 
     <div class="document">
       <div class="documentwrapper">
         <div class="bodywrapper">
           <div class="body" role="main">
             
-  <div class="section" id="instrument-and-beamline-support">
-<h1>Instrument and Beamline Support<a class="headerlink" href="#instrument-and-beamline-support" title="Permalink to this headline">¶</a></h1>
+  <div class="section" id="instrumentation-and-beamline-support">
+<h1>Instrumentation and Beamline Support<a class="headerlink" href="#instrumentation-and-beamline-support" title="Permalink to this headline">¶</a></h1>
 <div class="section" id="bruker-gadds-diffractometers">
 <h2>Bruker GADDS Diffractometers<a class="headerlink" href="#bruker-gadds-diffractometers" title="Permalink to this headline">¶</a></h2>
 <p>Bruker has a software package that is shipped with &#8220;Series II&#8221;
-diffractometers. While this software has many limitations, it does
-have a scripting language that allows for control of the instrument
-via scimap.</p>
+diffractometers, called &#8220;GADDS&#8221;. While this software is being replaced
+by an overhauled suite, it does have a scripting language that allows
+for control of the instrument via scimap.</p>
 <p>Use of Bruker GADDS system with scimap has three main components</p>
-<div class="section" id="data-acquisition">
-<h3>Data Acquisition<a class="headerlink" href="#data-acquisition" title="Permalink to this headline">¶</a></h3>
+<div class="section" id="data-acquisition-script">
+<h3>Data Acquisition Script<a class="headerlink" href="#data-acquisition-script" title="Permalink to this headline">¶</a></h3>
 <p>This is where the user will prepare a &#8220;slm file&#8221; which can be run in
 GADDS. It will instruct the instrument to trace out a desired path and
-save both 2D and 1D diffractograms.</p>
-<div class="code python highlight-default"><div class="highlight"><pre><span></span><span class="n">scimap</span><span class="o">.</span><span class="n">write_gadds_script</span><span class="p">()</span>
+save both 2D and 1D diffractograms, as well as a .jpg of the camera&#8217;s
+view.</p>
+<div class="code python highlight-default"><div class="highlight"><pre><span></span><span class="n">scimap</span><span class="o">.</span><span class="n">write_gadds_script</span><span class="p">(</span><span class="n">qrange</span><span class="o">=</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">5</span><span class="p">),</span> <span class="n">sample_name</span><span class="o">=</span><span class="s1">&#39;example&#39;</span><span class="p">,</span>
+                          <span class="n">center</span><span class="o">=</span><span class="p">(</span><span class="mf">1.32</span><span class="p">,</span> <span class="o">-</span><span class="mf">44.78</span><span class="p">),</span> <span class="n">collimator</span><span class="o">=</span><span class="mf">0.8</span><span class="p">)</span>
 </pre></div>
 </div>
+<p>This will create an <code class="docutils literal"><span class="pre">example-frames/example.slm</span></code> file that can
+be run using GADDS. It will also create some supporting files that
+will be used in the subsequent analysis.</p>
 </div>
 <div class="section" id="importing-and-pre-processing">
 <h3>Importing and Pre-Processing<a class="headerlink" href="#importing-and-pre-processing" title="Permalink to this headline">¶</a></h3>
+<p>Once the GADDS script has been run, the data can then be imported into
+the HDF file for further analysis.</p>
+<div class="code python highlight-default"><div class="highlight"><pre><span></span><span class="n">scimap</span><span class="o">.</span><span class="n">import_gadds_map</span><span class="p">(</span><span class="n">sample_name</span><span class="o">=</span><span class="s2">&quot;example&quot;</span><span class="p">,</span>
+                        <span class="n">directory</span><span class="o">=</span><span class="s2">&quot;example_frames&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>The value for <code class="docutils literal"><span class="pre">sample_name</span></code> should match that passed to the
+<code class="docutils literal"><span class="pre">write_gadds_script</span></code> function called above. After calling this
+function, the file <code class="docutils literal"><span class="pre">example.h5</span></code> contains the imported data.</p>
 </div>
 <div class="section" id="analysis-and-visualization">
 <h3>Analysis and Visualization<a class="headerlink" href="#analysis-and-visualization" title="Permalink to this headline">¶</a></h3>
+<p>Coming soon.</p>
 </div>
 </div>
 <div class="section" id="bruker-davinci-diffractometers">
 <h2>Bruker DaVinci Diffractometers<a class="headerlink" href="#bruker-davinci-diffractometers" title="Permalink to this headline">¶</a></h2>
+<p>As of this writing, the modern Bruker diffractometer family does not
+support scripting and so mapping through scimap is not
+possible. Support for individual Bruker BRML files is available
+through <code class="docutils literal"><span class="pre">scimap.XRDScan</span></code> objects.</p>
 </div>
 <div class="section" id="aps-beamline-34-id-e">
 <h2>APS Beamline 34-ID-E<a class="headerlink" href="#aps-beamline-34-id-e" title="Permalink to this headline">¶</a></h2>
@@ -85,7 +113,7 @@ one-dimensional patterns using the <code class="docutils literal"><span class="p
 </div>
 <p>Where the wavelength is given in angstroms. Ideally, the .chi files
 should use scattering lengths, but any files in 20 will be
-automatically converted to scattering length $q$.</p>
+automatically converted to scattering length (<em>q</em>).</p>
 </div>
 </div>
 
@@ -97,9 +125,9 @@ automatically converted to scattering length $q$.</p>
         <div class="sphinxsidebarwrapper">
   <h3><a href="index.html">Table Of Contents</a></h3>
   <ul>
-<li><a class="reference internal" href="#">Instrument and Beamline Support</a><ul>
+<li><a class="reference internal" href="#">Instrumentation and Beamline Support</a><ul>
 <li><a class="reference internal" href="#bruker-gadds-diffractometers">Bruker GADDS Diffractometers</a><ul>
-<li><a class="reference internal" href="#data-acquisition">Data Acquisition</a></li>
+<li><a class="reference internal" href="#data-acquisition-script">Data Acquisition Script</a></li>
 <li><a class="reference internal" href="#importing-and-pre-processing">Importing and Pre-Processing</a></li>
 <li><a class="reference internal" href="#analysis-and-visualization">Analysis and Visualization</a></li>
 </ul>
@@ -109,14 +137,13 @@ automatically converted to scattering length $q$.</p>
 </ul>
 </li>
 </ul>
-<div class="relations">
-<h3>Related Topics</h3>
-<ul>
-  <li><a href="index.html">Documentation overview</a><ul>
-      <li>Previous: <a href="intro.html" title="previous chapter">Introduction</a></li>
-  </ul></li>
-</ul>
-</div>
+
+  <h4>Previous topic</h4>
+  <p class="topless"><a href="intro.html"
+                        title="previous chapter">Introduction</a></p>
+  <h4>Next topic</h4>
+  <p class="topless"><a href="materials.html"
+                        title="next chapter">Materials</a></p>
   <div role="note" aria-label="source link">
     <h3>This Page</h3>
     <ul class="this-page-menu">
@@ -138,20 +165,24 @@ automatically converted to scattering length $q$.</p>
       </div>
       <div class="clearer"></div>
     </div>
-    <div class="footer">
-      &copy;2017, Mark Wolf.
-      
-      |
-      Powered by <a href="http://sphinx-doc.org/">Sphinx 1.5.2</a>
-      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.9</a>
-      
-      |
-      <a href="_sources/instrument_support.rst.txt"
-          rel="nofollow">Page source</a>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="materials.html" title="Materials"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="intro.html" title="Introduction"
+             >previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">scimap 0.1 documentation</a> &#187;</li> 
+      </ul>
     </div>
-
-    
-
-    
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2017, Mark Wolf.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.5.3.
+    </div>
   </body>
 </html>

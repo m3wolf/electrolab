@@ -6,13 +6,16 @@
 Welcome to scimap's documentation!
 ==================================
 
+
+
 .. toctree::
    :maxdepth: 2
    :caption: Contents:
 
    intro
    instrument_support
-   workflow
+   workflows
+   materials
    
 
 Indices and tables
