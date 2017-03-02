@@ -8,7 +8,7 @@
     
     <title>Introduction &#8212; scimap 0.1 documentation</title>
     
-    <link rel="stylesheet" href="_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="_static/classic.css" type="text/css" />
     <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
     
     <script type="text/javascript">
@@ -27,16 +27,25 @@
     <script type="text/javascript" src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="prev" title="Welcome to scimap’s documentation!" href="index.html" />
-   
-  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
-  
-  
-  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
-
+    <link rel="next" title="Instrumentation and Beamline Support" href="instrument_support.html" />
+    <link rel="prev" title="Welcome to scimap’s documentation!" href="index.html" /> 
   </head>
   <body role="document">
-  
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="instrument_support.html" title="Instrumentation and Beamline Support"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="index.html" title="Welcome to scimap’s documentation!"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">scimap 0.1 documentation</a> &#187;</li> 
+      </ul>
+    </div>  
 
     <div class="document">
       <div class="documentwrapper">
@@ -45,7 +54,43 @@
             
   <div class="section" id="introduction">
 <h1>Introduction<a class="headerlink" href="#introduction" title="Permalink to this headline">¶</a></h1>
-<p>Hello, world.</p>
+<div class="section" id="motivation">
+<h2>Motivation<a class="headerlink" href="#motivation" title="Permalink to this headline">¶</a></h2>
+<p>Sorry, all out of motivation for today. Check back tomorrow.</p>
+</div>
+<div class="section" id="installation">
+<h2>Installation<a class="headerlink" href="#installation" title="Permalink to this headline">¶</a></h2>
+<p>The easiest way to run the development version is to use pip&#8217;s
+<strong>developer mode</strong> (-e). First download the repository then install using
+pip. Be aware that downloading the repository may take a while as the
+test data can be very large.</p>
+<div class="code bash highlight-default"><div class="highlight"><pre><span></span>$ git clone https://github.com/m3wolf/scimap.git
+$ pip install -r scimap/requirements.txt
+$ pip install -e scimap/
+</pre></div>
+</div>
+<p>Now you should be able to import scimap in your python interpreter.</p>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">scimap</span>
+</pre></div>
+</div>
+<div class="section" id="running-tests">
+<h3>Running Tests<a class="headerlink" href="#running-tests" title="Permalink to this headline">¶</a></h3>
+<p>There is a set of unit tests and example data that accompany this
+project. To run the tests, install the project as described above then
+execute the test runner:</p>
+<div class="code bash highlight-default"><div class="highlight"><pre><span></span>$ python scimap/tests/tests.py
+</pre></div>
+</div>
+<p>and you should see the following output:</p>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="o">...........</span><span class="n">x</span><span class="o">......</span><span class="n">x</span><span class="o">..</span><span class="n">x</span><span class="o">.</span><span class="n">xxx</span><span class="o">....</span><span class="n">xxxx</span><span class="o">.</span><span class="n">xxx</span><span class="o">.</span><span class="n">xxx</span><span class="o">......</span><span class="n">xx</span><span class="o">....</span><span class="n">x</span><span class="o">.........</span>
+<span class="o">----------------------------------------------------------------------</span>
+<span class="n">Ran</span> <span class="mi">64</span> <span class="n">tests</span> <span class="ow">in</span> <span class="mf">31.432</span><span class="n">s</span>
+
+<span class="n">OK</span> <span class="p">(</span><span class="n">expected</span> <span class="n">failures</span><span class="o">=</span><span class="mi">19</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+</div>
 </div>
 
 
@@ -53,14 +98,25 @@
         </div>
       </div>
       <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
-        <div class="sphinxsidebarwrapper"><div class="relations">
-<h3>Related Topics</h3>
-<ul>
-  <li><a href="index.html">Documentation overview</a><ul>
-      <li>Previous: <a href="index.html" title="previous chapter">Welcome to scimap&#8217;s documentation!</a></li>
-  </ul></li>
+        <div class="sphinxsidebarwrapper">
+  <h3><a href="index.html">Table Of Contents</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">Introduction</a><ul>
+<li><a class="reference internal" href="#motivation">Motivation</a></li>
+<li><a class="reference internal" href="#installation">Installation</a><ul>
+<li><a class="reference internal" href="#running-tests">Running Tests</a></li>
 </ul>
-</div>
+</li>
+</ul>
+</li>
+</ul>
+
+  <h4>Previous topic</h4>
+  <p class="topless"><a href="index.html"
+                        title="previous chapter">Welcome to scimap&#8217;s documentation!</a></p>
+  <h4>Next topic</h4>
+  <p class="topless"><a href="instrument_support.html"
+                        title="next chapter">Instrumentation and Beamline Support</a></p>
   <div role="note" aria-label="source link">
     <h3>This Page</h3>
     <ul class="this-page-menu">
@@ -82,20 +138,24 @@
       </div>
       <div class="clearer"></div>
     </div>
-    <div class="footer">
-      &copy;2017, Mark Wolf.
-      
-      |
-      Powered by <a href="http://sphinx-doc.org/">Sphinx 1.5.2</a>
-      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.9</a>
-      
-      |
-      <a href="_sources/intro.rst.txt"
-          rel="nofollow">Page source</a>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="instrument_support.html" title="Instrumentation and Beamline Support"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="index.html" title="Welcome to scimap’s documentation!"
+             >previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">scimap 0.1 documentation</a> &#187;</li> 
+      </ul>
     </div>
-
-    
-
-    
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2017, Mark Wolf.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.5.3.
+    </div>
   </body>
 </html>
