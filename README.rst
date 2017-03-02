@@ -1,9 +1,10 @@
 SciMap: Scientific Mapping for Python
 =====================================
 
-.. image:: https://readthedocs.org/projects/scimap/badge/?version=latest
-:target: http://scimap.readthedocs.io/en/latest/?badge=latest
-:alt: Documentation Status
+.. image::
+   https://readthedocs.org/projects/scimap/badge/?version=latest
+   :target: http://scimap.readthedocs.io/en/latest/?badge=latest
+   :alt: Documentation Status
 
 Motivation
 ----------
@@ -18,7 +19,7 @@ Graphical User Interface
 Several modules provide a GUI for viewing computed data. These
 sections make use of **GTK3** at the moment, since that's what is
 installed on my system. Installing this dependency is not
-straight-forward on non-*nix systems so the necesarry import
+straight-forward on non-\*nix systems so the necesarry import
 statements are only executed when the relevant methods are called.
 
 Installation
