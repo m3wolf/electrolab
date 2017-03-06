@@ -51,7 +51,39 @@
   <div class="section" id="materials">
 <h1>Materials<a class="headerlink" href="#materials" title="Permalink to this headline">¶</a></h1>
 <p>Having a proper understanding of the material structure being studied
-is key to extracting usable information to map.</p>
+is key to extracting usable information to map. The
+<code class="docutils literal"><span class="pre">scimap.XRDMap()</span></code> class accepts a <code class="docutils literal"><span class="pre">Phases=[]</span></code> argument, which is a
+list of <code class="docutils literal"><span class="pre">scimap.Phase</span></code> subclasses. The modules <code class="docutils literal"><span class="pre">scimap.lmo</span></code> and
+<code class="docutils literal"><span class="pre">scimap.nca</span></code> include pre-defined phases for LiMn<sub>2</sub>O<sub>4</sub> and LiNi<sub>0.8</sub>Co<sub>0.15</sub>Al<sub>0.05</sub>O<sub>2</sub>
+respectively. Unless you happen to be working with these materials,
+you will likely need to define some classes in order to perform a
+thorough analysis.</p>
+<div class="code python highlight-default"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">scimap</span> <span class="k">import</span> <span class="n">Phase</span><span class="p">,</span> <span class="n">TetragonalUnitCell</span><span class="p">,</span> <span class="n">XRDMap</span>
+
+<span class="c1"># Create a new class for our material</span>
+<span class="k">class</span> <span class="nc">Unobtainium</span><span class="p">(</span><span class="n">Phase</span><span class="p">):</span>
+    <span class="n">unit_cell</span> <span class="o">=</span> <span class="n">TetragonalUnitCell</span><span class="p">()</span>
+    <span class="c1"># Define a list of hkl planes that define this strcture</span>
+    <span class="n">reflection_list</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="n">Reflection</span><span class="p">(</span><span class="s1">&#39;000&#39;</span><span class="p">,</span> <span class="n">qrange</span><span class="o">=</span><span class="p">(</span><span class="mf">2.75</span><span class="p">,</span> <span class="mf">2.82</span><span class="p">)),</span>
+    <span class="p">]</span>
+
+ <span class="c1"># Now use our new class to analyze mapping data</span>
+ <span class="n">mymap</span> <span class="o">=</span> <span class="n">XRDMap</span><span class="p">(</span><span class="n">Phases</span><span class="o">=</span><span class="p">[</span><span class="n">Unobtainium</span><span class="p">])</span>
+</pre></div>
+</div>
+<p>Notice that the <cite>Unobtainium</cite> class is not instantiated before being
+passed to <cite>XRDMap</cite>. This is because each mapping position gets a new
+phase object that can be refined.</p>
+<p>The <cite>reflection_list</cite> attribute describes the crystallographic
+reflection planes for this crystal system. Each entry in this list is
+a <cite>Reflection</cite> object. The first argument is a string with the hkl
+indices. Additionally, a <cite>qrange</cite> argument (2-tuple) should be given
+that gives the scattering vector (q) limits. Q can be calculated from
+2θ values at a given wavelength λ:</p>
+<div class="math">
+\[q = \frac{4\pi}{\lambda} sin \Big(\frac{2\theta}{2}\Big)\]</div>
+<p>As a shortcut, the function <code class="docutils literal"><span class="pre">scimap.twotheta_to_q</span></code> can also be used.</p>
 </div>
 
 
