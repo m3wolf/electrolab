@@ -1,6 +1,6 @@
-==============
- Introduction
-==============
+=============================
+ Introduction & Installation
+============================
 
 Motivation
 ==========
@@ -38,7 +38,7 @@ execute the test runner:
 
    $ python scimap/tests/tests.py
 
-and you should see the following output::
+and you should see something similar to::
   
    ...........x......x..x.xxx....xxxx.xxx.xxx......xx....x.........
    ----------------------------------------------------------------------
@@ -46,4 +46,27 @@ and you should see the following output::
 
    OK (expected failures=19)
 
+Building Documentaion
+---------------------
 
+The documentation for scimap is in the ``docs/`` directory (the html
+output is in ``docs/_build/html/``). You will need the sphinx package
+installed in order to build it:
+
+.. code:: bash
+
+   $ pip install sphinx
+
+After making changes to the documentation source files (eg
+``docs/intro.rst``), re-build the documentation with:
+
+.. code:: bash
+
+   $ cd scimap/docs/
+   $ make html
+
+and view the result (eg ``docs/_build/html/intro.html``). See the
+reStructuredText_ documentation for more information on the formatting
+of these .rst source files.
+
+.. _reStructuredText: http://docutils.sourceforge.net/rst.html

@@ -35,6 +35,7 @@ from .unitcell import CubicUnitCell, HexagonalUnitCell, TetragonalUnitCell
 from .lmo import LMOPlateauMap
 from .reflection import Reflection
 from .tube import tubes
+from .phase import Phase
 from .peak import XRDPeak
 from .scan import XRDScan, align_scans
 from .gadds import write_gadds_script

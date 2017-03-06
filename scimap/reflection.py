@@ -11,16 +11,16 @@ def hkl_to_tuple(hkl_input):
     unmodified."""
     # Convert hkl to tuple dependent on form
     hklTuple = None
-    if isinstance(hkl_input, tuple):
-        # Already a tuple, no action
-        hklTuple = hkl_input
-    elif isinstance(hkl_input, str):
+    if isinstance(hkl_input, str):
         # String to tuple
         hklTuple = HKL(
             h=int(hkl_input[0]),
             k=int(hkl_input[1]),
             l=int(hkl_input[2])
         )
+    else:
+        # Already a tuple, no action
+        hklTuple = hkl_input
     return hklTuple
 
 

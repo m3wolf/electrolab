@@ -6,7 +6,7 @@
   <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
     
-    <title>Introduction &#8212; scimap 0.1 documentation</title>
+    <title>Motivation &#8212; scimap 0.1 documentation</title>
     
     <link rel="stylesheet" href="_static/classic.css" type="text/css" />
     <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
@@ -52,14 +52,12 @@
         <div class="bodywrapper">
           <div class="body" role="main">
             
-  <div class="section" id="introduction">
-<h1>Introduction<a class="headerlink" href="#introduction" title="Permalink to this headline">¶</a></h1>
-<div class="section" id="motivation">
-<h2>Motivation<a class="headerlink" href="#motivation" title="Permalink to this headline">¶</a></h2>
+  <div class="section" id="motivation">
+<h1>Motivation<a class="headerlink" href="#motivation" title="Permalink to this headline">¶</a></h1>
 <p>Sorry, all out of motivation for today. Check back tomorrow.</p>
 </div>
 <div class="section" id="installation">
-<h2>Installation<a class="headerlink" href="#installation" title="Permalink to this headline">¶</a></h2>
+<h1>Installation<a class="headerlink" href="#installation" title="Permalink to this headline">¶</a></h1>
 <p>The easiest way to run the development version is to use pip&#8217;s
 <strong>developer mode</strong> (-e). First download the repository then install using
 pip. Be aware that downloading the repository may take a while as the
@@ -74,14 +72,14 @@ $ pip install -e scimap/
 </pre></div>
 </div>
 <div class="section" id="running-tests">
-<h3>Running Tests<a class="headerlink" href="#running-tests" title="Permalink to this headline">¶</a></h3>
+<h2>Running Tests<a class="headerlink" href="#running-tests" title="Permalink to this headline">¶</a></h2>
 <p>There is a set of unit tests and example data that accompany this
 project. To run the tests, install the project as described above then
 execute the test runner:</p>
 <div class="code bash highlight-default"><div class="highlight"><pre><span></span>$ python scimap/tests/tests.py
 </pre></div>
 </div>
-<p>and you should see the following output:</p>
+<p>and you should see something similar to:</p>
 <div class="highlight-default"><div class="highlight"><pre><span></span><span class="o">...........</span><span class="n">x</span><span class="o">......</span><span class="n">x</span><span class="o">..</span><span class="n">x</span><span class="o">.</span><span class="n">xxx</span><span class="o">....</span><span class="n">xxxx</span><span class="o">.</span><span class="n">xxx</span><span class="o">.</span><span class="n">xxx</span><span class="o">......</span><span class="n">xx</span><span class="o">....</span><span class="n">x</span><span class="o">.........</span>
 <span class="o">----------------------------------------------------------------------</span>
 <span class="n">Ran</span> <span class="mi">64</span> <span class="n">tests</span> <span class="ow">in</span> <span class="mf">31.432</span><span class="n">s</span>
@@ -90,6 +88,23 @@ execute the test runner:</p>
 </pre></div>
 </div>
 </div>
+<div class="section" id="building-documentaion">
+<h2>Building Documentaion<a class="headerlink" href="#building-documentaion" title="Permalink to this headline">¶</a></h2>
+<p>The documentation for scimap is in the <code class="docutils literal"><span class="pre">docs/</span></code> directory (the html
+output is in <code class="docutils literal"><span class="pre">docs/_build/html/</span></code>). You will need the sphinx package
+installed in order to build it:</p>
+<div class="code bash highlight-default"><div class="highlight"><pre><span></span>$ pip install sphinx
+</pre></div>
+</div>
+<p>After making changes to the documentation source files (eg
+<code class="docutils literal"><span class="pre">docs/intro.rst</span></code>), re-build the documentation with:</p>
+<div class="code bash highlight-default"><div class="highlight"><pre><span></span>$ cd scimap/docs/
+$ make html
+</pre></div>
+</div>
+<p>and view the result (eg <code class="docutils literal"><span class="pre">docs/_build/html/intro.html</span></code>). See the
+<a class="reference external" href="http://docutils.sourceforge.net/rst.html">reStructuredText</a> documentation for more information on the formatting
+of these .rst source files.</p>
 </div>
 </div>
 
@@ -101,12 +116,10 @@ execute the test runner:</p>
         <div class="sphinxsidebarwrapper">
   <h3><a href="index.html">Table Of Contents</a></h3>
   <ul>
-<li><a class="reference internal" href="#">Introduction</a><ul>
-<li><a class="reference internal" href="#motivation">Motivation</a></li>
+<li><a class="reference internal" href="#">Motivation</a></li>
 <li><a class="reference internal" href="#installation">Installation</a><ul>
 <li><a class="reference internal" href="#running-tests">Running Tests</a></li>
-</ul>
-</li>
+<li><a class="reference internal" href="#building-documentaion">Building Documentaion</a></li>
 </ul>
 </li>
 </ul>
