@@ -15,6 +15,7 @@ Welcome to scimap's documentation!
    intro
    instrument_support
    workflows
+   hdf_data
    materials
    
 
