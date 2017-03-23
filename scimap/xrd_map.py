@@ -73,10 +73,6 @@ class Map():
         unit_size = unit_size / math.sqrt(self.coverage)
         return unit_size
 
-    def new_locus(self, *, location, filebase):
-        """Create a new mapping cell with the given attributes."""
-        raise NotImplementedError()
-
     @property
     def loci(self):
         with self.store() as store:
@@ -92,16 +88,6 @@ class Map():
             filebase = "map-{n:x}".format(n=idx)
             new_locus = self.new_locus(location=coords, filebase=filebase)
             self.loci.append(new_locus)
-
-    # def locus(self, cube_coords):
-    #     """Find a mapping cell in the array give a set of cubic coordinates"""
-    #     result = None
-    #     cube_coords = Cube(*cube_coords)
-    #     for locus in self.loci:
-    #         if locus.cube_coords == cube_coords:
-    #             result = locus
-    #             break
-    #     return result
 
     def locus_by_xy(self, xy):
         """Find the index of the nearest locus by set of xy coords."""
@@ -621,20 +607,6 @@ class XRDMap(Map):
         """Convert the object to a dictionary for the templating engine."""
         raise NotImplementedError("Use gadds._context()")
 
-    def new_locus(self, *, location, filebase):
-        """Create a new XRD Mapping cell with the given attributes as well as
-        associated crystallographic phases."""
-        raise NotImplementedError()
-        # Initialize list of crystallographic phases
-        # phases = [Phase() for Phase in self.phases]
-        # background_phases = [Phase() for Phase in self.background_phases]
-        # # Create mapping locus
-        # new_locus = XRDLocus(location=location, parent_map=self, filebase=filebase,
-        #                      phases=phases, background_phases=background_phases,
-        #                      two_theta_range=self.two_theta_range,
-        #                      refinement=self.refinement)
-        # return new_locus
-
     def write_script(self, file=None, quiet=False):
         """
         Format the sample into a slam file that GADDS can process.
@@ -643,7 +615,7 @@ class XRDMap(Map):
 
     @property
     def diffractogram(self):
-        """Returns self.bulk_diffractogram(). Polymorphism for XRDScan."""
+        """Returns self.bulk_diffractogram()."""
         bulk_series = self.bulk_diffractogram()
         df = pandas.DataFrame(bulk_series, columns=['counts'])
         return df
