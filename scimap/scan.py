@@ -170,7 +170,7 @@ class XRDScan():
             x = q
         y = self.intensities
         if ax is None:
-            ax = plots.big_axes()
+            ax = plots.xrd_axes()
         ax.set_xlim(left=x.min(), right=x.max())
         ax.plot(x, y, marker=marker, linestyle=linestyle, *args, **kwargs)
 
