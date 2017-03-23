@@ -155,10 +155,15 @@ class XRDScan():
           argument must also be given.
 
         - wavelength : Wavelength of light to be used for converstion
-          to two_theta.
+          to two_theta. If wavelength is `None` (default), the scan
+          wavelength will be used.
 
         """
         q = self.scattering_lengths
+        # Set default radiation wavelength
+        if wavelength is None:
+            wavelength = self.wavelength
+        # Convert q to 2θ if requested
         if use_twotheta:
             x = q_to_twotheta(q, wavelength=wavelength)
         else:
@@ -174,7 +179,7 @@ class XRDScan():
             ax.xaxis.set_major_formatter(plots.DegreeFormatter())
             ax.set_xlabel(r'$2\theta$')
         else:
-            ax.set_xlabel(r'q $/\AA^{-}$')
+            ax.set_xlabel(r'q /$A^{-}$')
         ax.set_ylabel('Counts')
         ax.set_title(self.axes_title())
         return ax
@@ -183,7 +188,7 @@ class XRDScan():
         if ax is None:
             ax = plots.new_image_axes()
         adapter = adapter_from_filename(self.filename)
-        img = adapter.image()
+        img = adapter.detector_image()
         img_ax = ax.imshow(img, cmap="viridis")
         return img_ax
 
