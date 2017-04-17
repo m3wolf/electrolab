@@ -6,6 +6,7 @@ from matplotlib import patches, colors
 import numpy as np
 import scipy
 import pandas
+from matplotlib import pyplot
 
 from . import exceptions
 from .xrdstore import XRDStore
@@ -121,12 +122,9 @@ class Map():
 
     def get_cmap(self):
         """Return a function that converts values in range 0 to 1 to colors."""
-        if self.cmap_name in ['magma', 'inferno', 'plasma', 'viridis']:
-            # Non-standard color maps
-            cmap = cmaps[self.cmap_name]
-        else:
-            # Matplotlib built-in colormap
-            cmap = pyplot.get_cmap(self.cmap_name)
+        # Matplotlib built-in colormaps (viridis et al have been
+        # merged in now)
+        cmap = pyplot.get_cmap(self.cmap_name)
         return cmap
 
     def prepare_mapping_data(self):

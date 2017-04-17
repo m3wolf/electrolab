@@ -17,6 +17,7 @@
 # You should have received a copy of the GNU General Public License
 # along with Scimap. If not, see <http://www.gnu.org/licenses/>.
 
+from sympy.physics import units
 import h5py
 
 
@@ -65,9 +66,10 @@ class XRDStore():
 
     @property
     def step_size(self):
-        unit = units.unit(self.group()['step_size'].attrs['unit'])
+        unit_name = self.group()['step_size'].attrs['unit']
+        unit = getattr(units, unit_name)
         val = self.group()['step_size'].value
-        return unit(val)
+        return val * unit
 
     @step_size.setter
     def step_size(self, value):

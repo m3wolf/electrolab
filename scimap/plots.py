@@ -112,10 +112,31 @@ def dual_axes(fig=None, orientation='horizontal'):
     return (ax1, ax2)
 
 
-def plot_scans(scan_list, step_size=0, ax=None, names=[], use_twotheta=False, wavelength=None):
-    """Plot a series of XRDScans as a waterfall. step_size controls the
-    spacing between the waterfall stacking. Optional keyword arg 'ax'
-    plots on a specific Axes.
+def plot_scans(scan_list, step_size=0, ax=None, names=[],
+               use_twotheta=False, wavelength=None, *args, **kwargs):
+    """Plot a series of XRDScans as a waterfall.
+
+    Parameters
+    ==========
+    scan_list : list
+      The ``XRDScan`` objects to be plotted.
+    step_size : float, int, optional
+      How much space to put between successive scans.
+    ax : Axes, optional
+      The matplotlib Axes object to receive the plots. If omitted, a
+      new Axes will be created.
+    names : list(str), optional
+      Legend entries to use for these scans. If omitted, the names
+      will be retried from the XRDScan objects.
+    use_twotheta : bool, optional
+      If true, the results will be plotted with 2θ on the x-axis,
+      otherwise scattering length (q) will be used.
+    wavelength : float, optional
+      The wavelength of radiation to use for converting q to 2θ. Only
+      needed if ``use_twotheta`` is truthy.
+    *args, **kwargs :
+      Passed to matplotlib plot routine.
+
     """
     if ax is None:
         ax = big_axes()
@@ -128,7 +149,8 @@ def plot_scans(scan_list, step_size=0, ax=None, names=[], use_twotheta=False, wa
             x = q_to_twotheta(np.array(df.index), wavelength=wavelength)
         else:
             x = df.index
-        lines.append(ax.plot(x, df.counts)[0])
+        # Do the plotting
+        lines.append(ax.plot(x, df.counts, *args, **kwargs)[0])
         # Try and determine a name for this scan
         try:
             scannames.append(names[idx])
