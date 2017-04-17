@@ -283,6 +283,7 @@ def write_gadds_script(qrange, sample_name, center, collimator=0.8,
     kalphas = (tube_.kalpha1, tube_.kalpha2)
     kalphas = np.array([k for k in kalphas])
     xrdstore.step_size =  context['unit_size']
+    
     xrdstore.collimator = collimator
     xrdstore.wavelengths = kalphas
     xrdstore.group()['wavelengths'].attrs['unit'] = "Å"

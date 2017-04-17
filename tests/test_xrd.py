@@ -481,30 +481,6 @@ class LMOSolidSolutionTest(ScimapTestCase):
         )
 
 
-class MapRefinementTest(ScimapTestCase):
-    def setUp(self):
-        # Create a temporary copy of the hdf data file for testing
-        self.h5file = os.path.join(TESTDIR, "xrd-map-gadds-temp.h5")
-        if os.path.exists(self.h5file):
-            os.remove(self.h5file)
-        shutil.copy(GADDS_HDFFILE, self.h5file)
-
-    def tearDown(self):
-        if os.path.exists(self.h5file):
-            os.remove(self.h5file)
-
-    def xrdmap(self):
-        return XRDMap(sample_name=GADDS_SAMPLE,
-                      hdf_filename=self.h5file,
-                      Phases=[lmo.MidVPhase, lmo.HighVPhase])
-
-    def test_refine_phase_ratio(self):
-        xrdmap = self.xrdmap()
-        # Check that the right groups are no created before refining
-        # with h5py.File(self.h5file) as f:
-        #     self.assertIn(
-        # xrdmap.refine_mapping_data()
-
 @unittest.expectedFailure
 class NativeRefinementTest(ScimapTestCase):
     def setUp(self):
@@ -790,83 +766,6 @@ class XRDLocusTest(unittest.TestCase):
     #         dataDict['metric'],
     #         scan.metric
     #     )
-
-
-class XRDMapTest(unittest.TestCase):
-    def setUp(self):
-        self.test_map = XRDMap(Phases=[Corundum],
-                               sample_name=group_34IDE,
-                               hdf_filename=hdf_34IDE)
-        self.savefile = 'test-sample.map'
-
-    def tearDown(self):
-        try:
-            os.remove(self.savefile)
-        except FileNotFoundError:
-            pass
-
-    def test_set_phases(self):
-        """Verify that phases are passed to all the necessary composited objects."""
-        new_map = XRDMap(Phases=[NCA], hdf_filename=hdf_34IDE,
-                         sample_name=group_34IDE)
-        self.assertTrue(
-            isinstance(new_map.Phases[0](), NCA)
-        )
-
-    # def test_pass_filename(self):
-    #     self.assertEqual(
-    #         self.test_map.loci[0].filename,
-    #         self.test_map.loci[0].xrdscan.filename
-    #     )
-
-    # def test_save_map(self):
-    #     # Set some new data
-    #     self.test_map.diameter = 5
-    #     self.test_map.coverage = 0.33
-    #     self.test_map.save()
-    #     # Make sure savefile was created
-    #     self.assertTrue(
-    #         os.path.isfile(self.savefile)
-    #     )
-    #     # Load from file
-    #     new_map = XRDMap()
-    #     new_map.load(filename=self.savefile)
-    #     self.assertEqual(new_map.diameter, self.test_map.diameter)
-    #     self.assertEqual(new_map.coverage, self.test_map.coverage)
-
-    # def test_save_loci(self):
-    #     """Does the save routine properly save the loci list."""
-    #     original_locus = self.test_map.loci[0]
-    #     original_locus.metric = 200
-    #     original_locus.filebase = 'nonsense'
-    #     original_locus.cube_coords = Cube(20, 20, 20)
-    #     original_locus.diffractogram = 'Gibberish'
-    #     self.test_map.save()
-    #     new_map = XRDMap()
-    #     new_map.load(self.savefile)
-    #     new_locus = new_map.loci[0]
-    #     self.assertEqual(new_locus.metric, original_locus.metric)
-    #     self.assertEqual(new_locus.filebase, original_locus.filebase)
-    #     self.assertEqual(new_locus.cube_coords, original_locus.cube_coords)
-    #     self.assertEqual(new_locus.diffractogram, original_locus.diffractogram)
-
-    # def test_save_refinement(self):
-    #     original = self.test_map.loci[0].refinement
-    #     original.spline = (1, 3, 5)
-    #     self.test_map.save()
-    #     new_map = XRDMap()
-    #     new_map.load(self.savefile)
-    #     new_refinement = new_map.loci[0].refinement
-    #     self.assertEqual(new_refinement.spline, original.spline)
-
-    # def test_save_phases(self):
-    #     original = self.test_map.loci[0].phases[0]
-    #     original.scale_factor = 100
-    #     self.test_map.save()
-    #     new_map = XRDMap(phases=[Corundum])
-    #     new_map.load(self.savefile)
-    #     new_phase = new_map.loci[0].phases[0]
-    #     self.assertEqual(new_phase.scale_factor, original.scale_factor)
 
 
 class ReflectionTest(unittest.TestCase):
