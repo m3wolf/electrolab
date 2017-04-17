@@ -79,10 +79,12 @@ class XRDStore():
             step_size_unit = value.unit.name
         else:
             step_size_value = value
-            step_size_unit = 'm'
+            step_size_unit = 'mm'
         # Save values to HDF5 file
         self.replace_dataset('step_size', data=step_size_value)
         self.group()['step_size'].attrs['unit'] = step_size_unit
+
+        
 
     @property
     def positions(self):

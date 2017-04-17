@@ -7,6 +7,7 @@ import numpy as np
 import scipy
 import pandas
 from matplotlib import pyplot
+from sympy.physics import units
 
 from . import exceptions
 from .xrdstore import XRDStore
@@ -81,14 +82,14 @@ class Map():
             # step_size = store.step_size
         return positions### * step_size.num
 
-    def create_loci(self):
-        """Populate the loci array with new loci in a hexagonal array."""
-        self.loci = []
-        for idx, coords in enumerate(self.path(self.rows)):
-            # Try and determine filename from the sample name
-            filebase = "map-{n:x}".format(n=idx)
-            new_locus = self.new_locus(location=coords, filebase=filebase)
-            self.loci.append(new_locus)
+    # def create_loci(self):
+    #     """Populate the loci array with new loci in a hexagonal array."""
+    #     self.loci = []
+    #     for idx, coords in enumerate(self.path(self.rows)):
+    #         # Try and determine filename from the sample name
+    #         filebase = "map-{n:x}".format(n=idx)
+    #         new_locus = self.new_locus(location=coords, filebase=filebase)
+    #         self.loci.append(new_locus)
 
     def locus_by_xy(self, xy):
         """Find the index of the nearest locus by set of xy coords."""
@@ -181,23 +182,23 @@ class Map():
         with open(filename, 'wb') as saveFile:
             pickle.dump(data, saveFile)
 
-    def load(self, filename=None):
-        """Load a .map file of previously processed data."""
-        # Generate filename if not supplied
-        if filename is None:
-            filename = "{sample_name}.map".format(sample_name=self.sample_name)
-        # Get the data from disk
-        with open(filename, 'rb') as loadFile:
-            data = pickle.load(loadFile)
-        self.diameter = data['diameter']
-        self.coverage = data['coverage']
-        # Create scan list
-        self.create_loci()
-        # Restore each scan
-        for idx, dataDict in enumerate(data['loci']):
-            new_locus = self.loci[idx]
-            new_locus.restore_data_dict(dataDict)
-            self.loci.append(new_locus)
+    # def load(self, filename=None):
+    #     """Load a .map file of previously processed data."""
+    #     # Generate filename if not supplied
+    #     if filename is None:
+    #         filename = "{sample_name}.map".format(sample_name=self.sample_name)
+    #     # Get the data from disk
+    #     with open(filename, 'rb') as loadFile:
+    #         data = pickle.load(loadFile)
+    #     self.diameter = data['diameter']
+    #     self.coverage = data['coverage']
+    #     # Create scan list
+    #     self.create_loci()
+    #     # Restore each scan
+    #     for idx, dataDict in enumerate(data['loci']):
+    #         new_locus = self.loci[idx]
+    #         new_locus.restore_data_dict(dataDict)
+    #         self.loci.append(new_locus)
 
     # def fullrange_normalizer(self):
     #     """Determine an appropriate normalizer by looking at the range of
@@ -314,13 +315,15 @@ class Map():
             ax = new_axes()
         xs, ys = self.loci.swapaxes(0, 1)
         with self.store() as store:
-            step_size = store.step_size
+            step_size = float(store.step_size / units.mm)
             layout = store.layout
-        ax.set_xlim(min(xs), max(xs) + step_size.num)
-        ax.set_ylim(min(ys), max(ys) + step_size.num)
+        print(min(xs).__class__, max(xs).__class__, step_size.__class__)
+        # Set axes limits
+        ax.set_xlim(min(xs) - step_size, max(xs) + step_size)
+        ax.set_ylim(min(ys) - step_size, max(ys) + step_size)
         # ax.set_ylim([-xy_lim, xy_lim])
-        ax.set_xlabel(step_size.unit.name)
-        ax.set_ylabel(step_size.unit.name)
+        ax.set_xlabel('mm')
+        ax.set_ylabel('mm')
         metrics = self.metric(phase_idx=phase_idx, param=metric)
         # Normalize the metrics
         metric_normalizer = normalizer(data=metrics, norm_range=metric_range)
@@ -571,8 +574,7 @@ class XRDMap(Map):
     def __init__(self, *args, collimator=0.5, qrange=None,
                  scan_time=None, detector_distance=20,
                  frame_size=1024, Phases=[], phases=None,
-                 background_phases=[],
-                 refinement=NativeRefinement, **kwargs):
+                 background_phases=[], **kwargs):
         # Old-style mapping format deprecation
         if phases is not None:
             warnings.warn(DeprecationWarning(), "Use 'Phases=' instead")
@@ -587,7 +589,6 @@ class XRDMap(Map):
             self.background_phases = background_phases
         if scan_time is not None:
             self.scan_time = scan_time
-        self.refinement = refinement
         if qrange is not None:
             self.qrange = qrange
         # Unless otherwise specified, the collimator sets the resolution
@@ -759,20 +760,45 @@ class XRDMap(Map):
                             verticalalignment="center")
         return ax
 
-    def refine_mapping_data(self):
+    def refine_mapping_data(self, backend='native'):
         """Refine the relevant XRD parameters, such as background, unit-cells,
-        etc. This will save the refined data to the HDF file."""
+        etc. This will save the refined data to the HDF file.
+
+        Parameters
+        ----------
+        backend : str, Refinement
+
+          The style of refinement to perform. The default 'native'
+          uses built-in numerical computations. Other methods will be
+          added in the future. A user-created subclass of
+          ``BaseRefinement`` can also be supplied.
+        """
         bgs = []
         fits = []
         all_cells = []
         failed = []
         goodness = []
+        # Retrieve the refinement method based on the given parameter
+        backends = {
+            'native': NativeRefinement
+        }
+        if backend in backends.keys():
+            Refinement = backends[backend]
+        elif issubclass(backend, BaseRefinement):
+            Refinement = backend
+        else:
+            # Invalid refinement backend, throw exception
+            msg = "Invalid backend {given}. Must be one of {strings} "
+            msg += "or subclass of ``BaseRefinement``."
+            msg = msg.format(given=backend, string=backends.keys())
+            raise ValueError(msg)
+        # Open the data storage and start the refining
         with self.store(mode='r+') as store:
             scans = zip(store.scattering_lengths[:], store.intensities[:])
             total = len(store.scattering_lengths)
             for idx, (qs, Is) in enumerate(prog(scans, total=total)):
                 phases = [P() for P in self.Phases]
-                refinement = self.refinement(phases=phases)
+                refinement = Refinement(phases=phases)
                 # Refine background
                 bg = refinement.refine_background(scattering_lengths=qs,
                                                   intensities=Is,
