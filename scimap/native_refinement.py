@@ -5,8 +5,9 @@ import warnings
 
 import matplotlib.pyplot as plt
 import numpy as np
+from numpy.polynomial.chebyshev import Chebyshev
 import scipy
-from scipy.interpolate import UnivariateSpline
+from scipy.interpolate import UnivariateSpline, InterpolatedUnivariateSpline, splrep, splev
 import pandas
 
 from . import exceptions
@@ -103,20 +104,52 @@ class NativeRefinement(BaseRefinement):
                 # Optimization failed for some reason
                 raise exceptions.RefinementError(result.message)
 
+    def refine_phase_fractions(self, scattering_lengths, intensities):
+        """Calculate the relative strengths of each phase in a diffractogram.
+
+        The simplest approach is to calculate the peak area for each
+        phases's diagnostic reflection. The fraction is then the ratio
+        of each phases's reflection over the sum of all phases. This
+        makes the assumption that the phases behave similarly and that
+        the structure factor of the diagnostic reflections are also
+        similar. By default this method does not remove the
+        background.
+
+        Parameters
+        ----------
+        scattering_lengths : np.ndarray
+          Dependent variable for the diffractogram.
+        intensities : np.ndarray
+          Independent variable for the diffractogram. Must be the same
+          shape as ``scattering_lengths``.
+
+        Returns
+        -------
+        phase_fractions : np.ndarray
+          The relative weight of each phase as determined by the
+          diffraction pattern.
+
+        """
+        areas = [0 for p in self.phases]
+        phase_fractions = areas
+        return phase_fractions
+
     def refine_scale_factors(self):
-        # Make sure background is refined first
-        if not self.is_refined['background']:
-            self.refine_background(
-                self.scan.scattering_lengths,
-                self.scan.intensities)
-        # Scale factor is just the ratio of peak area of diagnostic reflection
-        for phase in self.scan.phases:
-            reflection = phase.diagnostic_reflection
-            area = self.net_area(two_theta_range=reflection.two_theta_range)
-            phase.scale_factor = area
-        self.is_refined['scale_factors'] = True
+        raise NotImplementedError("Use ``refine_phase_fractions`` instead")
+        # # Make sure background is refined first
+        # if not self.is_refined['background']:
+        #     self.refine_background(
+        #         self.scan.scattering_lengths,
+        #         self.scan.intensities)
+        # # Scale factor is just the ratio of peak area of diagnostic reflection
+        # for phase in self.scan.phases:
+        #     reflection = phase.diagnostic_reflection
+        #     area = self.net_area(two_theta_range=reflection.two_theta_range)
+        #     phase.scale_factor = area
+        # self.is_refined['scale_factors'] = True
 
     def refine_background(self, scattering_lengths, intensities, s=None, k=4):
+
         """Fit a univariate spline to the background data.
 
         Arguments
@@ -140,13 +173,18 @@ class NativeRefinement(BaseRefinement):
         if s is None:
             s = np.std(I)
         # Determine a background line from the noise without peaks
-        self.spline = UnivariateSpline(
-            x=q,
-            y=I,
-            s=s,
-            k=k,
-        )
+        # self.spline = UnivariateSpline(
+        #     x=q,
+        #     y=I,
+        #     s=s / 25,
+        #     k=k,
+        # )
+        self.spline = Chebyshev(coef=np.ones((20,)))
+        self.spline = self.spline.fit(q, I, 21)
+        # background = self.spline.cast(scattering_lengths)
+        # self.spline = splrep(q, I)
         # Extrapolate the background for the whole pattern
+        # background = self.spline(scattering_lengths)
         background = self.spline(scattering_lengths)
         return background
 

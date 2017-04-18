@@ -27,12 +27,12 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardi
 import matplotlib.pyplot as plt
 
 from scimap import XRDScan, standards
-# from scimap import fit_background
+from scimap.peakfitting import remove_peak_from_df
+from scimap.native_refinement import NativeRefinement
 
 
 class NativeRefinementTest(unittest.TestCase):
 
-    @unittest.expectedFailure
     def test_fit_background(self):
         corundum = standards.Corundum()
         # Get sample data from Mew XRD
@@ -45,5 +45,14 @@ class NativeRefinementTest(unittest.TestCase):
         for reflection in corundum.reflection_list:
             q, I = remove_peak_from_df(x=q, y=I, xrange=reflection.qrange)
         # Do the background fitting
-        bg = fit_background(q, I)
-        assert False, "TODO: Write a test for making sure the bg fit is good"
+        refinement = NativeRefinement(phases=[corundum])
+        bg = refinement.refine_background(q, I)
+        print(bg)
+        # assert False, "TODO: Write a test for making sure the bg fit is good"
+        plt.plot(q, I)
+        plt.plot(q, bg)
+        plt.show()
+
+
+if __name__ == '__main__':
+    unittest.main()
