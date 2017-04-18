@@ -19,6 +19,12 @@ class Corundum(Phase):
         Reflection('113', qrange=(2.95, 3.05)),
         Reflection('024', qrange=(3.57, 3.70)),
         Reflection('116', qrange=(3.83, 4.01)),
+        Reflection('211', qrange=(4.02, 4.09)),
+        Reflection('214', qrange=(4.11, 4.25)),
+        Reflection('300', qrange=(4.45, 4.50)),
+        Reflection('125', qrange=(4.55, 4.60)),
+        Reflection('208', qrange=(4.85, 4.97)),
+        Reflection('1010', qrange=(5, 5.15)),
     ]
 
 

@@ -773,11 +773,13 @@ class XRDMap(Map):
           added in the future. A user-created subclass of
           ``BaseRefinement`` can also be supplied.
         """
+        # Empty arrays to hold results
         bgs = []
         fits = []
         all_cells = []
         failed = []
         goodness = []
+        fractions = []
         # Retrieve the refinement method based on the given parameter
         backends = {
             'native': NativeRefinement
@@ -796,7 +798,7 @@ class XRDMap(Map):
         with self.store(mode='r+') as store:
             scans = zip(store.scattering_lengths[:], store.intensities[:])
             total = len(store.scattering_lengths)
-            for idx, (qs, Is) in enumerate(prog(scans, total=total)):
+            for idx, (qs, Is) in enumerate(prog(scans, total=total, desc="Refining")):
                 phases = [P() for P in self.Phases]
                 refinement = Refinement(phases=phases)
                 # Refine background
@@ -820,12 +822,20 @@ class XRDMap(Map):
                 finally:
                     phases = tuple(p.unit_cell.as_tuple() for p in refinement.phases)
                     all_cells.append(phases)
+                # Refine the phase fractions
+                frac = refinement.refine_phase_fractions(
+                    scattering_lengths=qs,
+                    intensities=subtracted
+                )
+                fractions.append(frac)
+                # Append the fitted diffraction pattern
                 fits.append(np.zeros_like(qs))
                 # fits.append(refinement.predict(qs))
             # Store refined data for later
             store.backgrounds = np.array(bgs)
             store.cell_parameters = np.array(all_cells)
             store.fits = np.array(fits)
+            store.phase_fractions = fractions
             # Normalize goodnesses of fit values to be between 0 and 1
             max_ = np.nanmax(goodness)
             min_ = np.nanmin(goodness)

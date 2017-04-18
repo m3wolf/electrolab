@@ -23,6 +23,7 @@
 import unittest
 import os
 import shutil
+import h5py
 
 from scimap import XRDMap
 from scimap.standards import Corundum
@@ -61,7 +62,7 @@ class XRDMapTest(unittest.TestCase):
         )
 
     def test_metric(self):
-        new_map = XRDMap(Phases=[NCA], hdf_filename=hdf_34IDE,
+        new_map = XRDMap(Phases=[nca.NCA], hdf_filename=hdf_34IDE,
                          sample_name=group_34IDE)
         new_map.metric('phase_ratio')
 
@@ -139,7 +140,19 @@ class MapRefinementTest(unittest.TestCase):
 
     def test_refine_phase_ratio(self):
         xrdmap = self.xrdmap()
-        # Check that the right groups are no created before refining
-        # with h5py.File(self.h5file) as f:
-        #     self.assertIn(
-        # xrdmap.refine_mapping_data()
+        # Check that the right groups are not created before refining
+        with h5py.File(self.h5file) as f:
+            group = f['xrd-map-gadds']
+            self.assertNotIn('background', group.keys())
+            self.assertNotIn('cell_parameters', group.keys())
+            self.assertNotIn('goodness_of_fit', group.keys())
+            self.assertNotIn('phase_fractions', group.keys())
+        # Do the actual refinement
+        xrdmap.refine_mapping_data()
+        # Check that the new groups have been created
+        with h5py.File(self.h5file) as f:
+            group = f['xrd-map-gadds']
+            self.assertIn('backgrounds', group.keys())
+            self.assertIn('cell_parameters', group.keys())
+            self.assertIn('goodness_of_fit', group.keys())
+            self.assertIn('phase_fractions', group.keys())
