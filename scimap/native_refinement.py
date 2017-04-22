@@ -74,19 +74,25 @@ class NativeRefinement(BaseRefinement):
         #                intensities=intensities)
         # Get a list of peak positions
         # assert len(self.phases) == 1 # Temporary to avoid weird fitting
-        peak_list = []
-        for reflection in self.phases[0].reflection_list:
-            if contains_peak(scattering_lengths, reflection.qrange):
-                left = reflection.qrange[0]
-                right = reflection.qrange[1]
-                idx = np.where(np.logical_and(left < scattering_lengths,
-                                              scattering_lengths < right))
-                xs = scattering_lengths[idx]
-                ys = intensities[idx]
-                maxidx = ys.argmax()
-                xmax = xs[maxidx]
-                peak_list.append(xmax)
+        def peak_positions(scattering_lengths, intensities, phase):
+            """Return a list of peak positions for the given phase."""
+            peak_list = []
+            for reflection in phase.reflection_list:
+                if contains_peak(scattering_lengths, reflection.qrange):
+                    left = reflection.qrange[0]
+                    right = reflection.qrange[1]
+                    idx = np.where(np.logical_and(left < scattering_lengths,
+                                                  scattering_lengths < right))
+                    xs = scattering_lengths[idx]
+                    ys = intensities[idx]
+                    maxidx = ys.argmax()
+                    xmax = xs[maxidx]
+                    peak_list.append(xmax)
+            return peak_list
+        # Do a refinement for each phase
+        residual_error = 0
         for phase in self.phases:
+            peak_list = peak_positions(scattering_lengths, intensities, phase)
             # Define an objective function that will be minimized
             def objective(cell_parameters):
                 # Determine cell parameters from numpy array
@@ -108,11 +114,11 @@ class NativeRefinement(BaseRefinement):
                 optimized_parameters = result.x
                 phase.unit_cell.set_cell_parameters_from_list(
                     optimized_parameters)
-                residual_error = self.peak_rms_error(phase=phase, peak_list=peak_list)
-                return residual_error
+                residual_error += self.peak_rms_error(phase=phase, peak_list=peak_list)
             else:
                 # Optimization failed for some reason
                 raise exceptions.RefinementError(result.message)
+        return residual_error
 
     def refine_phase_fractions(self, scattering_lengths, intensities):
         """Calculate the relative strengths of each phase in a diffractogram.

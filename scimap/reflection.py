@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 
 from collections import namedtuple
+import re
+
+from . import exceptions
 
 HKL = namedtuple('HKL', ('h', 'k', 'l'))
 
@@ -11,16 +14,28 @@ def hkl_to_tuple(hkl_input):
     unmodified."""
     # Convert hkl to tuple dependent on form
     hklTuple = None
-    if isinstance(hkl_input, str):
-        # String to tuple
-        hklTuple = HKL(
-            h=int(hkl_input[0]),
-            k=int(hkl_input[1]),
-            l=int(hkl_input[2])
-        )
-    else:
+    if not isinstance(hkl_input, str):
         # Already a tuple, no action
         hklTuple = hkl_input
+    elif len(hkl_input) == 4:
+        # Vaguly formed index eg (1010)
+        msg = 'Ambiguous hkl value "{}". Use spaces or commas as separators.'
+        msg = msg.format(hkl_input)
+        raise exceptions.HKLFormatError(msg)
+    elif len(hkl_input) == 3:
+        # Simple (hkl) string to tuple
+        hkl = [int(x) for x in hkl_input]
+        hklTuple = HKL(*hkl)
+    else:
+        # The index probably contains separators
+        regex = '(\d+)[, ](\d+)[, ](\d+)'
+        result = re.match(regex, hkl_input)
+        if not result:
+            msg = 'Malformed hkl value "{}".'.format(hkl_input)
+            raise exceptions.HKLFormatError(msg)
+        hkl = [int(x) for x in result.groups()]
+        hklTuple = HKL(*hkl)
+
     return hklTuple
 
 

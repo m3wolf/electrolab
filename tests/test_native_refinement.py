@@ -31,13 +31,15 @@ from scimap import XRDScan, standards
 from scimap.peakfitting import remove_peak_from_df
 from scimap.native_refinement import NativeRefinement, contains_peak, peak_area
 
+TESTDIR = os.path.join(os.path.dirname(__file__), "test-data-xrd")
+COR_BRML = os.path.join(TESTDIR, 'corundum.brml')
 
 class NativeRefinementTest(unittest.TestCase):
 
     def test_fit_background(self):
         corundum = standards.Corundum()
         # Get sample data from Mew XRD
-        scan = XRDScan(filename="test-data-xrd/corundum.brml",
+        scan = XRDScan(filename=COR_BRML,
                        phase=corundum)
         df = scan.diffractogram
         q = df.index
@@ -65,7 +67,7 @@ class NativeRefinementTest(unittest.TestCase):
     def test_phase_ratios(self):
         corundum = standards.Corundum()
         # Get sample data from Mew XRD
-        scan = XRDScan(filename="test-data-xrd/corundum.brml",
+        scan = XRDScan(filename=COR_BRML,
                        phases=[corundum, corundum])
         df = scan.diffractogram
         q = df.index
@@ -84,7 +86,7 @@ class NativeRefinementTest(unittest.TestCase):
         np.testing.assert_equal(result, [0.5, 0.5])
 
     def test_net_area(self):
-        scan = XRDScan(filename="test-data-xrd/corundum.brml",
+        scan = XRDScan(filename=COR_BRML,
                        phases=[])
         df = scan.diffractogram
         q = df.index
@@ -103,7 +105,7 @@ class NativeRefinementTest(unittest.TestCase):
         self.assertEqual(area, 0)
 
     def test_contains_peak(self):
-        scan = XRDScan(filename="test-data-xrd/corundum.brml",
+        scan = XRDScan(filename=COR_BRML,
                        phases=[])
         df = scan.diffractogram
         q = df.index
