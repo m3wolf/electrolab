@@ -2,14 +2,14 @@
 
 import warnings
 
-from matplotlib import patches, colors
+from matplotlib import pyplot, patches, colors, cm
 import numpy as np
 import scipy
 import pandas
-from matplotlib import pyplot
 from sympy.physics import units
 
 from . import exceptions
+from .plots import new_axes, set_outside_ticks
 from .xrdstore import XRDStore
 from .native_refinement import NativeRefinement
 from .utilities import prog, xycoord
@@ -250,8 +250,6 @@ class Map():
 
         - color: Matplotlib color spec for plotting this locus
         """
-        with self.store() as store:
-            step = store.step_size.num
         loc = xycoord(*loc)
         convertor = colors.ColorConverter()
         color = convertor.to_rgba(color, alpha=alpha)
@@ -275,7 +273,7 @@ class Map():
         ax.add_patch(patch)
 
     def plot_map(self, metric='position', ax=None, phase_idx=0,
-                 metric_range=None, highlighted_locus=None,
+                 metric_range=(None, None), highlighted_locus=None,
                  alpha=None, alpha_range=None):
         """Generate a two-dimensional map of the electrode surface. A `metric`
         can and should be given to indicate which quantity should be
@@ -286,7 +284,8 @@ class Map():
         Arguments
         ---------
         - ax : A matplotlib Axes object onto which the map will be
-          drawn. If omitted, a new Axes object will be created.
+          drawn. If omitted, a new Axes object will be created. A new
+          colorbar will only be added if this argument is None.
 
         - phase_idx : Controls which phase will be used for generating
           the metric (eg. cell parameter). Not relevant for all
@@ -295,7 +294,9 @@ class Map():
         - metric : Name of the quantity to be used for determining color.
 
         - metric_range : Specifies the bounds for mapping. Anything
-          outside these bounds will be clipped to the max or min.
+          outside these bounds will be clipped to the max or min. If
+          either value is None, that bound will be set to the range of
+          metric values.
 
         - hightlight_locus : Index of an XRD scan that will receive a
           red circle.
@@ -310,14 +311,16 @@ class Map():
         """
         cmap = self.get_cmap()
         # Plot loci
-        if not ax:
+        if ax is None:
             # New axes unless one was already created
+            add_colorbar = True
             ax = new_axes()
+        else:
+            add_colorbar = False
         xs, ys = self.loci.swapaxes(0, 1)
         with self.store() as store:
             step_size = float(store.step_size / units.mm)
             layout = store.layout
-        print(min(xs).__class__, max(xs).__class__, step_size.__class__)
         # Set axes limits
         ax.set_xlim(min(xs) - step_size, max(xs) + step_size)
         ax.set_ylim(min(ys) - step_size, max(ys) + step_size)
@@ -326,7 +329,8 @@ class Map():
         ax.set_ylabel('mm')
         metrics = self.metric(phase_idx=phase_idx, param=metric)
         # Normalize the metrics
-        metric_normalizer = normalizer(data=metrics, norm_range=metric_range)
+        metric_normalizer = colors.Normalize(*metric_range)
+        # metric_normalizer = normalizer(data=metrics, norm_range=metric_range)
         # Retrieve alpha values
         if alpha is None:
             # Default, all loci are full opaque
@@ -343,7 +347,7 @@ class Map():
         alphas = alpha_normalizer(alphas)
         # Plot the actual loci
         for locus, color, alpha_ in zip(self.loci, colors_, alphas):
-            self.plot_locus(locus, ax=ax, shape=layout, size=step_size.num,
+            self.plot_locus(locus, ax=ax, shape=layout, size=step_size,
                             color=color, alpha=alpha_)
         # If there's space between beam locations, plot beam location
         if self.coverage != 1:
@@ -353,22 +357,23 @@ class Map():
             self.highlight_beam(ax=ax, locus=highlighted_locus)
         # Add circle for theoretical edge
         # self.draw_edge(ax, color='red')
-        # Add colormap to the side of the axes
-        mappable = cm.ScalarMappable(norm=metric_normalizer, cmap=cmap)
-        mappable.set_array(np.arange(metric_normalizer.vmin,
-                                     metric_normalizer.vmax))
-        cb = pyplot.colorbar(mappable, ax=ax)
-        if metric in ['a', 'b', 'c']:
-            cb.set_label(r'Unit cell parameter {} ($\AA$)'.format(metric))
-        elif metric in ['a', 'b', 'c']:
-            cb.set_label(r'Unit cell parameter {$^{\circ}$}'.format(metric))
-        else:
-            cb.set_label(metric)
+        # Add colorbar to the side of the axes
+        if add_colorbar:
+            mappable = cm.ScalarMappable(norm=metric_normalizer, cmap=cmap)
+            mappable.set_array(np.arange(metric_normalizer.vmin,
+                                         metric_normalizer.vmax))
+            cb = pyplot.colorbar(mappable, ax=ax)
+            if metric in ['a', 'b', 'c']:
+                cb.set_label(r'Unit cell parameter {} ($\AA$)'.format(metric))
+            elif metric in ['a', 'b', 'c']:
+                cb.set_label(r'Unit cell parameter {$^{\circ}$}'.format(metric))
+            else:
+                cb.set_label(metric)
         # Adjust x and y limits
         xs = self.loci[:,0]
         ys = self.loci[:,1]
-        xrange_ = (xs.min() - step_size.num / 2, xs.max() + step_size.num / 2)
-        yrange_ = (ys.min() - step_size.num / 2, ys.max() + step_size.num / 2)
+        xrange_ = (xs.min() - step_size / 2, xs.max() + step_size / 2)
+        yrange_ = (ys.min() - step_size / 2, ys.max() + step_size / 2)
         ax.set_xlim(*xrange_)
         ax.set_ylim(*yrange_)
         ax.set_aspect('equal', adjustable="box")
@@ -490,7 +495,7 @@ class Map():
 
     def plot_histogram(self, metric: str, phase_idx: int=0, ax=None,
                        bins: int=0, weight: str=None,
-                       metric_range=None, weight_range=None):
+                       metric_range=(None, None), weight_range=(None, None)):
         """Plot a histogram showing the distribution of the given metric.
 
         Arguments
@@ -516,15 +521,20 @@ class Map():
           used.
         """
         metrics = self.metric(metric)
-        metricnorm = normalizer(data=metrics, norm_range=metric_range)
+        metricnorm = colors.Normalize(*metric_range)
+        metricnorm.autoscale_None(metrics)
         np.clip(metrics, metricnorm.vmin, metricnorm.vmax, out=metrics)
         # Guess number of bins'
         if bins is 0:
             bins = int(metrics.shape[0] / 3)
         # Get values for weighting the frequencies
-        weights = self.metric(param=weight)
+        if weight is not None:
+            weights = self.metric(param=weight)
+        else:
+            weights = np.ones_like(metrics)
+            weight_range = (0, 1)
         if weight_range:
-            weightnorm = normalizer(data=weights, norm_range=weight_range)
+            weightnorm = colors.Normalize(*weight_range)
             weights = weightnorm(weights)
         if ax is None:
             ax = new_axes(height=4, width=7)

@@ -18,9 +18,11 @@
 # along with Scimap.  If not, see <http://www.gnu.org/licenses/>.
 
 import unittest
+import os
 
 from scimap import XRDScan
 
+TESTDIR = os.path.join(os.path.dirname(__file__), "test-data-xrd")
 
 class XRDScanTest(unittest.TestCase):
 
@@ -33,9 +35,9 @@ class XRDScanTest(unittest.TestCase):
 
     def test_get_scattering_lengths(self):
         # Check for a .brml file
-        scan = XRDScan(filename='test-data-xrd/corundum.brml')
+        scan = XRDScan(filename=os.path.join(TESTDIR, 'corundum.brml'))
         q = scan.scattering_lengths
         self.assertEqual(q.shape, (6851,))
         # Check for a .plt file
-        scan = XRDScan(filename='test-data-xrd/LMO-sample-data.plt')
+        scan = XRDScan(filename=os.path.join(TESTDIR, 'LMO-sample-data.plt'))
         q = scan.scattering_lengths

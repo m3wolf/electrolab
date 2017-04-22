@@ -18,23 +18,24 @@
 # along with Scimap.  If not, see <http://www.gnu.org/licenses/>.
 
 import unittest
-
-from sympy.physics import units
+import os
 
 from scimap.xrdstore import XRDStore
 
+TESTDIR = os.path.join(os.path.dirname(__file__), "test-data-xrd")
+GADDS_HDFFILE = os.path.join(TESTDIR, 'xrd-map-gadds.h5')
 
 class XRDStoreTests(unittest.TestCase):
 
     def test_step_size(self):
-        store = XRDStore(hdf_filename="test-data-xrd/xrd-map-gadds.h5",
+        store = XRDStore(hdf_filename=GADDS_HDFFILE,
                          groupname="xrd-map-gadds")
         # For now, just check that the value can be retrieved without
         # throwing an error
         step_size = store.step_size
 
     def test_step_unit(self):
-        store = XRDStore(hdf_filename="test-data-xrd/xrd-map-gadds.h5",
+        store = XRDStore(hdf_filename=GADDS_HDFFILE,
                          groupname="xrd-map-gadds")
         store.step_unit = 'um'
         step_unit = store.step_unit

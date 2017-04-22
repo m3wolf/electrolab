@@ -779,6 +779,19 @@ class ReflectionTest(unittest.TestCase):
             newHkl,
             (3, 1, 5)
         )
+        newHkl = hkl_to_tuple('1 0 10')
+        self.assertEqual(
+            newHkl,
+            (1, 0, 10)
+        )
+
+    def test_vague_hkl(self):
+        # One of these indices is a 10 but it's not clear which one
+        with self.assertRaises(exceptions.HKLFormatError):
+            newHkl = hkl_to_tuple('1010')
+        # This one's just nonsensical
+        with self.assertRaises(exceptions.HKLFormatError):
+            newHkl = hkl_to_tuple('1 d 10')
 
 
 class PhaseTest(ScimapTestCase):
@@ -803,7 +816,8 @@ class ExperimentalDataTest(ScimapTestCase):
         self.phase = Corundum()
 
     def test_predicted_peak_positions(self):
-        # Predicted peaks were calculated using celref with the R-3C space group
+        # Predicted peaks up to (116) were calculated using celref
+        # with the R-3C space group
         predicted_peaks = self.phase.predicted_peak_positions()
         celref_peaks = [ # (hkl, d, q)
             ('012', 3.4746228816945104, 1.8083071231360195),
@@ -818,7 +832,7 @@ class ExperimentalDataTest(ScimapTestCase):
             ('300', 1.3712068893253610, 4.5822299728022350),
             ('125', 1.3339201035011320, 4.7103160756691110),
             ('208', 1.2739840368877122, 4.9319183955625810),
-            ('1010', 1.2380134239217553, 5.07521581),
+            ('1010', 1.2380134239217553, 5.075215814119230),
         ]
         # Old 2-theta values
         # celref_peaks = [

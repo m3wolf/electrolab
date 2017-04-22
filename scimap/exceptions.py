@@ -36,6 +36,10 @@ class UnitCellError(ValueError):
     """
     pass
 
+class HKLFormatError(ValueError):
+    """The given hkl index is vague of malformed."""
+    pass
+
 class RefinementError(Exception):
     """Generic error: we tried to refine something but it didn't work."""
     pass

@@ -112,9 +112,11 @@ class BrukerXyeFile(XRDAdapter):
     def sample_name(self):
         return self.filename
 
-    def scattering_lengths(self):
+    def scattering_lengths(self, wavelength=None):
+        if wavelength is None:
+            wavelength = self.wavelength
         twotheta = np.array(self._dataframe.index)
-        q = twotheta_to_q(twotheta, wavelength=self.wavelength)
+        q = twotheta_to_q(twotheta, wavelength=wavelength)
         return q
 
     def intensities(self):
