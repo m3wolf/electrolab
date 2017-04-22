@@ -141,7 +141,7 @@ class XRDStore():
     def phase_fractions(self):
         return self.group()['phase_fractions']
 
-    @cell_parameters.setter
+    @phase_fractions.setter
     def phase_fractions(self, value):
         self.replace_dataset('phase_fractions', data=value)
         

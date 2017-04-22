@@ -38,4 +38,4 @@ class XRDStoreTests(unittest.TestCase):
                          groupname="xrd-map-gadds")
         store.step_unit = 'um'
         step_unit = store.step_unit
-        self.assertEqual(step_unit, units.um)
+        self.assertEqual(step_unit, 'um')

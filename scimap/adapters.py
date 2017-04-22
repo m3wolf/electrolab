@@ -195,7 +195,18 @@ class BrukerBrmlFile(XRDAdapter):
         return name
 
     def scattering_lengths(self, wavelength=None):
-        """Return scattering length (q) for all Datum elements in the file."""
+        """Return scattering length (q) for all Datum elements in the file.
+        
+        The wavelength is retrieved from the file; the argument is
+        included only for interface compatibility.
+
+        Returns
+        -------
+        q : np.ndarray
+          The scattering lengths in reciprocal angstroms, derived from
+          measured 2θ values
+
+        """
         # Find all Datum entries in data tree
         data = self._dataTree.findall('.//Datum')
         two_theta = np.array([float(d.text.split(',')[2]) for d in data])
@@ -203,7 +214,7 @@ class BrukerBrmlFile(XRDAdapter):
         return q
 
     def intensities(self):
-        """Return photon counts for all Datum elements in the file."""
+        """Return photon counts for all elements in the file."""
         data = self._dataTree.findall('.//Datum')
         counts = np.array([int(d.text.split(',')[4]) for d in data])
         return counts

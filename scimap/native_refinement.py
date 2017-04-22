@@ -8,7 +8,7 @@ import numpy as np
 from numpy.polynomial.chebyshev import Chebyshev
 import scipy
 from scipy.interpolate import UnivariateSpline, InterpolatedUnivariateSpline, splrep, splev
-import pandas
+import pandas as pd
 
 from . import exceptions
 from . import plots
@@ -24,6 +24,16 @@ def contains_peak(scattering_lengths, qrange):
     isInRange = (qmin < qrange[0] < qmax or
                  qmin < qrange[1] < qmax)
     return isInRange
+
+
+def peak_area(scattering_lengths, intensities, qrange):
+    """Area under the scan diffractogram within the given range of
+    scattering lengths (q)."""
+    df = pd.Series(intensities, index=scattering_lengths)
+    netDF = df.loc[qrange[0]:qrange[1]]
+    # Integrate peak
+    area = np.trapz(x=netDF.index, y=netDF)
+    return area
 
 
 class NativeRefinement(BaseRefinement):
@@ -130,8 +140,16 @@ class NativeRefinement(BaseRefinement):
           diffraction pattern.
 
         """
-        areas = [0 for p in self.phases]
-        phase_fractions = areas
+        # Calculate the diagnistic peak area for each phase
+        areas = []
+        for p in self.phases:
+            reflection = p.diagnostic_reflection
+            area = peak_area(scattering_lengths, intensities, reflection.qrange)
+            areas.append(area)
+        # Divide by the total area to get relative phase fractions
+        areas = np.array(areas)
+        total_area = np.sum(areas)
+        phase_fractions = areas / total_area
         return phase_fractions
 
     def refine_scale_factors(self):
@@ -213,19 +231,6 @@ class NativeRefinement(BaseRefinement):
     def refine_displacement(self):
         """Not implemented yet."""
         pass
-
-    def net_area(self, two_theta_range):
-        """Area under the scan diffractogram after background subtraction."""
-        # fullDF = self.scan.diffractogram
-        df = self.subtracted
-        # Get peak dataframe for integration
-        if self.contains_peak(scattering_lengths, two_theta_range):
-            netDF = df.loc[two_theta_range[0]:two_theta_range[1]]
-            # Integrate peak
-            area = np.trapz(x=netDF.index, y=netDF)
-        else:
-            area = 0
-        return area
 
     def details(self):
         return "Native refinement"

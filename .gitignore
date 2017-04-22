@@ -7,3 +7,5 @@ tests/.ipynb_checkpoints
 .venv/
 scimap.egg-info/
 test_map_gadds-frames/
+scimap/bin/
+docs/_build/
