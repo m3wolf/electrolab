@@ -13,8 +13,9 @@ class BaseRefinement():
         'scale_factors': False,
     }
 
-    def __init__(self, phases=[], background_phases=[]):
+    def __init__(self, phases=[], background_phases=[], scan=None):
         self.phases = phases
+        self.scan = scan
         self.background_phases = background_phases
 
     def refine_background(self):

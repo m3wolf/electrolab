@@ -56,7 +56,6 @@ from scimap.native_refinement import NativeRefinement, contains_peak
 from scimap.adapters import BrukerRawFile, BrukerBrmlFile, BrukerXyeFile, BrukerPltFile
 
 TESTDIR = os.path.join(os.path.dirname(__file__), "test-data-xrd")
-GADDS_HDFFILE = os.path.join(TESTDIR, "xrd-map-gadds.h5")
 GADDS_SAMPLE = "xrd-map-gadds"
 
 
@@ -814,6 +813,12 @@ class ExperimentalDataTest(ScimapTestCase):
             ('113', 2.0820345582756135, 3.0178102866762490),
             ('024', 1.7373114408472552, 3.6166142462720390),
             ('116', 1.5994489779586798, 3.9283436944631980),
+            ('211', 1.5437700478607450, 4.0700266959359720),
+            ('214', 1.4022018390633044, 4.4809421383849170),
+            ('300', 1.3712068893253610, 4.5822299728022350),
+            ('125', 1.3339201035011320, 4.7103160756691110),
+            ('208', 1.2739840368877122, 4.9319183955625810),
+            ('1010', 1.2380134239217553, 5.07521581),
         ]
         # Old 2-theta values
         # celref_peaks = [

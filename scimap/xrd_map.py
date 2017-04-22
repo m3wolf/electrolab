@@ -868,6 +868,7 @@ class XRDMap(Map):
         - 'integral' to indicate total integrated signal after bg subtraction
         - 'goodness' to use the quality of fit determined during refinement
         - 'position' to give the distance from the origin (for testing purposes)
+        - 'phase_ratio' to give the fraction of the given ``phase_idx``
         - 'None' or None to give an array of 1's
 
         Returns
@@ -895,6 +896,9 @@ class XRDMap(Map):
             # Just return the requested store attribute
             with self.store() as store:
                 metric = getattr(store, param)
+        elif param == 'phase_fraction':
+            with self.store() as store:
+                metric = store.phase_fractions[:,phase_idx]
         elif param in ['None', None]:
             # Return a dummy array with all 1's
             with self.store() as store:

@@ -27,10 +27,29 @@ def align_scans(scan_list, peak):
 
 
 class XRDScan():
-    """
-    A set of data collected on an x-ray diffractometer, 2theta dispersive.
-    'refinement' argument accepts a refinement class that is used for
-    backend calculations.
+    """A set of data collected on an x-ray diffractometer or synchrotron
+    beamline.
+
+    Parameters
+    ----------
+    filename : str
+      Path to the data file to load
+    name : str, optional
+      Human-readable name to use for plot legends etc.
+    phases : list, optional
+      Instances of the ``Phase`` class to use for refinement.
+    background_phases : list, optional
+      Instances of the ``Phase`` class to ignore during refinement
+    tube : str, optional
+      X-ray tube material, this will be used to determine the
+      wavelength if not explicitly given by the ``wavelength`` argument.
+    wavelength : float, optional
+      Radiation wavelength in angstroms. If given, this will override
+      the ``tube`` argument.
+    Refinement : optional
+      A subclass of ``BaseRefinement``, it will be used for refining
+      the XRD data.
+
     """
     _df = None  # Replaced by load_diffractogram() method
     diffractogram_is_loaded = False
@@ -51,8 +70,11 @@ class XRDScan():
         self.refinement = Refinement(phases=self.phases)
         self._two_theta_range = two_theta_range
         # Determine wavelength from tube type
-        self.tube = tubes[tube]
-        self.wavelength = self.tube.kalpha
+        if wavelength is not None:
+            self.wavelength = wavelength
+        else:
+            self.tube = tubes[tube]
+            self.wavelength = self.tube.kalpha
         # Load diffractogram from file
         self.name = name
 
@@ -71,7 +93,7 @@ class XRDScan():
     @property
     def scattering_lengths(self):
         with adapter_from_filename(self.filename) as f:
-            return f.scattering_lengths()
+            return f.scattering_lengths(wavelength=self.wavelength)
 
     @property
     def intensities(self):

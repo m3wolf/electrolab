@@ -25,10 +25,11 @@ import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
 
 import matplotlib.pyplot as plt
+import numpy as np
 
 from scimap import XRDScan, standards
 from scimap.peakfitting import remove_peak_from_df
-from scimap.native_refinement import NativeRefinement
+from scimap.native_refinement import NativeRefinement, contains_peak, peak_area
 
 
 class NativeRefinementTest(unittest.TestCase):
@@ -44,15 +45,75 @@ class NativeRefinementTest(unittest.TestCase):
         # Remove expected XRD peaks
         for reflection in corundum.reflection_list:
             q, I = remove_peak_from_df(x=q, y=I, xrange=reflection.qrange)
-        # Do the background fitting
+            # Do the background fitting
         refinement = NativeRefinement(phases=[corundum])
         bg = refinement.refine_background(q, I)
-        print(bg)
-        # assert False, "TODO: Write a test for making sure the bg fit is good"
-        plt.plot(q, I)
-        plt.plot(q, bg)
-        plt.show()
+        # plt.plot(q, I)
+        # plt.plot(q, bg)
+        # plt.show()
+        
+        # Spot-check some values on the resulting background
+        new_bg = refinement.background(df.index)
+        # plt.plot(df.counts.values)
+        # plt.plot(new_bg)
+        # plt.show()
+        self.assertAlmostEqual(new_bg[2465], 141.6, places=1)
+        self.assertAlmostEqual(new_bg[3270], 116.8, places=1)
+        self.assertAlmostEqual(new_bg[4650], 129.4, places=1)
+        self.assertAlmostEqual(new_bg[6565], 123.5, places=1)
 
+    def test_phase_ratios(self):
+        corundum = standards.Corundum()
+        # Get sample data from Mew XRD
+        scan = XRDScan(filename="test-data-xrd/corundum.brml",
+                       phases=[corundum, corundum])
+        df = scan.diffractogram
+        q = df.index
+        I = df.counts
+        # Remove expected XRD peaks
+        for reflection in corundum.reflection_list:
+            q, I = remove_peak_from_df(x=q, y=I, xrange=reflection.qrange)
+        # Do the background fitting
+        refinement = NativeRefinement(phases=[corundum, corundum])
+        q = df.index
+        bg = refinement.refine_background(df.index, df.counts.values)
+        subtracted = df.counts.values - bg
+
+        # Do phase fraction refinement
+        result = refinement.refine_phase_fractions(q, subtracted)
+        np.testing.assert_equal(result, [0.5, 0.5])
+
+    def test_net_area(self):
+        scan = XRDScan(filename="test-data-xrd/corundum.brml",
+                       phases=[])
+        df = scan.diffractogram
+        q = df.index
+        I = df.counts.values
+        # Pick an arbitrary q range
+        idx1 = 2400; idx2 = 2500
+        qrange = (q[idx1], q[idx2])
+        # Find expected area (idx2+1 to make it inclusive)
+        expected = np.trapz(x=q[idx1:idx2+1], y=I[idx1:idx2+1])
+        # Calculate the net area and compare
+        area = peak_area(q, I, qrange=qrange)
+        self.assertEqual(area, expected)
+        # Choose something outside the qrange (should be zero)
+        qrange = (0, 0.5)
+        area = peak_area(q, I, qrange=qrange)
+        self.assertEqual(area, 0)
+
+    def test_contains_peak(self):
+        scan = XRDScan(filename="test-data-xrd/corundum.brml",
+                       phases=[])
+        df = scan.diffractogram
+        q = df.index
+        I = df.counts
+        # Check for an existent peak
+        self.assertTrue(contains_peak(q, (1, 2)))
+        # Check for a nonexistent peak
+        self.assertFalse(contains_peak(q, (8, 9)))
+        # Check for a partially existent peak
+        self.assertTrue(contains_peak(q, (0, 1)))
 
 if __name__ == '__main__':
     unittest.main()
