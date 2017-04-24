@@ -64,7 +64,8 @@ class XRDMapTest(unittest.TestCase):
     def test_metric(self):
         new_map = XRDMap(Phases=[nca.NCA], hdf_filename=hdf_34IDE,
                          sample_name=group_34IDE)
-        result = new_map.metric('phase_fraction')
+        fractions = new_map.metric('phase_fraction')
+        weights = new_map.metric('scale_factor')
 
     # def test_pass_filename(self):
     #     self.assertEqual(

@@ -66,6 +66,7 @@ def import_gadds_map(sample_name: str=None, directory: str=None,
     if sample_name is None and None in [hdf_filename, hdf_groupname, directory]:
         msg = "Either pass `sample_name` or `hdf_filename`, `hdf_groupname` and `directory`"
         raise ValueError(msg)
+    print(hdf_filename)
     if hdf_filename is None:
         hdf_filename = "{}.h5".format(sample_name)
     if hdf_groupname is None:

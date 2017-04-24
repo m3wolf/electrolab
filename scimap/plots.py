@@ -20,7 +20,7 @@
 """Helper functions for setting up and displaying plots using matplotlib."""
 
 import numpy as np
-from matplotlib import pyplot
+from matplotlib import pyplot, cm
 from matplotlib.ticker import ScalarFormatter
 
 from .utilities import q_to_twotheta
@@ -41,6 +41,65 @@ class DegreeFormatter(ScalarFormatter):
         formatted_value = super().__call__(*args, **kwargs)
         formatted_value = "{value}°".format(value=formatted_value)
         return formatted_value
+
+
+def draw_colorbar(ax, cmap, norm, energies, orientation="vertical",
+                  *args, **kwargs):  # pragma: no cover
+    """Draw a colorbar on the side of a mapping axes to show the range of
+    colors used. Returns the newly created colorbar object.
+    Arguments
+    ---------
+    - ax : Matplotlib axes object against which to plot.
+    - cmap : String or mpl Colormap instance indicating which colormap
+      to use.
+    - norm : mpl Normalize object that describes the range of values to
+      use.
+    - energies : Iterable of values to put as the tick marks on the
+      colorbar.
+    """
+    mappable = cm.ScalarMappable(norm=norm, cmap=cmap)
+    mappable.set_array(np.arange(0, 3))
+    # Add the colorbar to the axes
+    cbar = pyplot.colorbar(mappable,
+                           ax=ax,
+                           ticks=energies,
+                           spacing="proportional",
+                           orientation=orientation,
+                           *args, **kwargs)
+    # Annotate the colorbar
+    cbar.ax.set_title('eV')
+    # Make sure the ticks don't use scientific notation
+    cbar.formatter.set_useOffset(False)
+    cbar.update_ticks()
+    return cbar
+
+
+def draw_histogram_colorbar(ax, *args, **kwargs):  # pragma: no cover
+    """Similar to `draw_colorbar()` with some special formatting options
+    to put it along the X-axis of the axes."""
+    cbar = draw_colorbar(ax=ax, pad=0, orientation="horizontal", energies=None, *args, **kwargs)
+    ax.tick_params(
+        axis='x',          # changes apply to the x-axis
+        which='both',      # both major and minor ticks are affected
+        bottom='off',      # ticks along the bottom edge are off
+        top='off',         # ticks along the top edge are off
+        labelbottom='off',
+        labeltop='off')
+    ax.spines['bottom'].set_visible(False)
+    cbar.ax.set_xlabel(ax.get_xlabel())
+    ax.xaxis.set_visible(False)
+    cbar.ax.set_title("")
+    cbar.outline.set_visible(False)
+    gray = (0.1, 0.1, 0.1)
+    cbar.ax.axhline(cbar.ax.get_ylim()[1], linewidth=2, linestyle=":", color=gray)
+    cbar.ax.tick_params(
+        axis='x',
+        which='both',
+        bottom='on',
+        top='on',
+        labelbottom="on",
+    )
+    return cbar
 
 
 def remove_extra_spines(ax):

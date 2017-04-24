@@ -144,6 +144,14 @@ class XRDStore():
     @phase_fractions.setter
     def phase_fractions(self, value):
         self.replace_dataset('phase_fractions', data=value)
+
+    @property
+    def scale_factor(self):
+        return self.group()['scale_factor']
+
+    @scale_factor.setter
+    def scale_factor(self, value):
+        self.replace_dataset('scale_factor', data=value)
         
     @property
     def effective_wavelength(self):
