@@ -158,19 +158,42 @@ class NativeRefinement(BaseRefinement):
         phase_fractions = areas / total_area
         return phase_fractions
 
-    def refine_scale_factors(self):
-        raise NotImplementedError("Use ``refine_phase_fractions`` instead")
-        # # Make sure background is refined first
-        # if not self.is_refined['background']:
-        #     self.refine_background(
-        #         self.scan.scattering_lengths,
-        #         self.scan.intensities)
-        # # Scale factor is just the ratio of peak area of diagnostic reflection
-        # for phase in self.scan.phases:
-        #     reflection = phase.diagnostic_reflection
-        #     area = self.net_area(two_theta_range=reflection.two_theta_range)
-        #     phase.scale_factor = area
-        # self.is_refined['scale_factors'] = True
+    def refine_scale_factor(self, scattering_lengths, intensities):
+        """Calculate the absolute strengths of each phase in a diffractogram.
+
+        The simplest approach is to calculate the peak area for each
+        phases's diagnostic reflection. The factor is then the sum of
+        each phases's reflection over all phases. This makes the
+        assumption that the phases behave similarly and that the
+        structure factor of the diagnostic reflections are also
+        similar. By default this method does not remove the
+        background.
+
+        Parameters
+        ----------
+        scattering_lengths : np.ndarray
+          Dependent variable for the diffractogram.
+        intensities : np.ndarray
+          Independent variable for the diffractogram. Must be the same
+          shape as ``scattering_lengths``.
+
+        Returns
+        -------
+        phase_fractions : np.ndarray
+          The relative weight of each phase as determined by the
+          diffraction pattern.
+
+        """
+        # Calculate the diagnistic peak area for each phase
+        areas = []
+        for p in self.phases:
+            reflection = p.diagnostic_reflection
+            area = peak_area(scattering_lengths, intensities, reflection.qrange)
+            areas.append(area)
+        # Divide by the total area to get relative phase fractions
+        areas = np.array(areas)
+        total_area = np.sum(areas)
+        return total_area
 
     def refine_background(self, scattering_lengths, intensities, s=None, k=4):
 

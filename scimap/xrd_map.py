@@ -274,7 +274,7 @@ class Map():
 
     def plot_map(self, metric='position', ax=None, phase_idx=0,
                  metric_range=(None, None), highlighted_locus=None,
-                 alpha=None, alpha_range=None):
+                 alpha=None, alpha_range=None, cmap="viridis"):
         """Generate a two-dimensional map of the electrode surface. A `metric`
         can and should be given to indicate which quantity should be
         mapped, otherwise the map just shows distance from the origin
@@ -534,7 +534,7 @@ class Map():
             weights = np.ones_like(metrics)
             weight_range = (0, 1)
         if weight_range:
-            weightnorm = colors.Normalize(*weight_range)
+            weightnorm = colors.Normalize(*weight_range, clip=True)
             weights = weightnorm(weights)
         if ax is None:
             ax = new_axes(height=4, width=7)
@@ -549,6 +549,7 @@ class Map():
         ax.set_xlim(metricnorm.vmin, metricnorm.vmax)
         ax.set_xlabel(metric)
         ax.set_ylabel('Occurrences')
+        set_outside_ticks(ax=ax)
         return ax
 
     def __repr__(self):
@@ -696,7 +697,10 @@ class XRDMap(Map):
         # Annotate axes
         ax.set_xlabel(r'Scattering Length (q) $/\AA^{-1}$')
         ax.set_ylabel('Intensity a.u.')
-        ax.set_title('Bulk diffractogram')
+        if index is not None:
+            ax.set_title("Diffractogram for location {idx}".format(idx=index))
+        else:
+            ax.set_title('Bulk diffractogram')
         # Highlight peaks
         color_list = [
             'green',
@@ -790,6 +794,7 @@ class XRDMap(Map):
         failed = []
         goodness = []
         fractions = []
+        scale_factors = []
         # Retrieve the refinement method based on the given parameter
         backends = {
             'native': NativeRefinement
@@ -838,6 +843,12 @@ class XRDMap(Map):
                     intensities=subtracted
                 )
                 fractions.append(frac)
+                # Refine scale factors
+                scale = refinement.refine_scale_factor(
+                    scattering_lengths=qs,
+                    intensities=subtracted
+                )
+                scale_factors.append(scale) 
                 # Append the fitted diffraction pattern
                 fits.append(np.zeros_like(qs))
                 # fits.append(refinement.predict(qs))
@@ -851,6 +862,7 @@ class XRDMap(Map):
             min_ = np.nanmin(goodness)
             goodness = (max_ - goodness) / (max_ - min_)
             store.goodness = np.nan_to_num(goodness)
+            store.scale_factor = scale_factors
         # Alert the user of failed refinements
         if failed:
             msg = "Could not refine unit cell for loci: {}".format(failed)
@@ -902,10 +914,10 @@ class XRDMap(Map):
             with self.store() as store:
                 locs = store.positions
             metric = np.sqrt(locs[:,0]**2 + locs[:,1]**2)
-        elif param in ['goodness']:
+        elif param in ['goodness', 'scale_factor']:
             # Just return the requested store attribute
             with self.store() as store:
-                metric = getattr(store, param)
+                metric = getattr(store, param).value
         elif param == 'phase_fraction':
             with self.store() as store:
                 metric = store.phase_fractions[:,phase_idx]

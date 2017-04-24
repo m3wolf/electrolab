@@ -21,22 +21,29 @@ import unittest
 import os
 
 from scimap.xrdstore import XRDStore
+from cases import HDFTestCase
 
-TESTDIR = os.path.join(os.path.dirname(__file__), "test-data-xrd")
-GADDS_HDFFILE = os.path.join(TESTDIR, 'xrd-map-gadds.h5')
+# TESTDIR = os.path.join(os.path.dirname(__file__), "test-data-xrd")
+# GADDS_HDFFILE = os.path.join(TESTDIR, 'xrd-map-gadds.h5')
 
-class XRDStoreTests(unittest.TestCase):
+class XRDStoreTests(HDFTestCase):
 
     def test_step_size(self):
-        store = XRDStore(hdf_filename=GADDS_HDFFILE,
+        store = XRDStore(hdf_filename=self.hdf_filename,
                          groupname="xrd-map-gadds")
         # For now, just check that the value can be retrieved without
         # throwing an error
         step_size = store.step_size
 
     def test_step_unit(self):
-        store = XRDStore(hdf_filename=GADDS_HDFFILE,
+        store = XRDStore(hdf_filename=self.hdf_filename,
                          groupname="xrd-map-gadds")
         store.step_unit = 'um'
         step_unit = store.step_unit
         self.assertEqual(step_unit, 'um')
+
+    def test_scale_factor(self):
+        print(self.hdf_filename)
+        store = XRDStore(hdf_filename=self.hdf_filename,
+                         groupname="xrd-map-gadds")
+        store.scale_factor
