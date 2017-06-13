@@ -4,6 +4,7 @@ from collections import namedtuple
 import math
 
 from .exceptions import UnitCellError
+from .reflection import hkl_to_tuple
 
 
 class UnitCell():
@@ -118,7 +119,7 @@ class CubicUnitCell(UnitCell):
 
     def d_spacing(self, hkl):
         """Determine d-space for the given hkl plane."""
-        h, k, l = hkl
+        h, k, l = hkl_to_tuple(hkl)
         inverse_d_squared = (h**2 + k**2 + l**2) / (self.a**2)
         d = math.sqrt(1 / inverse_d_squared)
         return d
@@ -135,7 +136,7 @@ class HexagonalUnitCell(UnitCell):
 
     def d_spacing(self, hkl):
         """Determine d-space for the given hkl plane."""
-        h, k, l = hkl
+        h, k, l = hkl_to_tuple(hkl)
         a, c = (self.a, self.c)
         inverse_d_squared = 4 * (h**2 + h * k + k**2) / (3 * a**2) + l**2 / (c**2)
         d = math.sqrt(1 / inverse_d_squared)
@@ -153,7 +154,7 @@ class TetragonalUnitCell(UnitCell):
 
     def d_spacing(self, hkl):
         """Determine d-space for the given hkl plane."""
-        h, k, l = hkl
+        h, k, l = hkl_to_tuple(hkl)
         a, c = (self.a, self.c)
         inverse_d_squared = (h**2 + k**2) / (a**2) + l**2 / (c**2)
         d = math.sqrt(1 / inverse_d_squared)

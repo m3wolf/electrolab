@@ -8,6 +8,7 @@ import numpy as np
 from numpy.polynomial.chebyshev import Chebyshev
 import scipy
 from scipy.interpolate import UnivariateSpline, InterpolatedUnivariateSpline, splrep, splev
+from scipy.signal import savgol_filter
 import pandas as pd
 
 from . import exceptions
@@ -219,6 +220,8 @@ class NativeRefinement(BaseRefinement):
         # Get an estimate for s from the non-peak data
         if s is None:
             s = np.std(I)
+        # Smoothing for background fitting
+        smoothI = savgol_filter(I, window_length=15, polyorder=5)
         # Determine a background line from the noise without peaks
         # self.spline = UnivariateSpline(
         #     x=q,
@@ -227,7 +230,7 @@ class NativeRefinement(BaseRefinement):
         #     k=k,
         # )
         self.spline = Chebyshev(coef=np.ones((20,)))
-        self.spline = self.spline.fit(q, I, 21)
+        self.spline = self.spline.fit(q, smoothI, 10)
         # background = self.spline.cast(scattering_lengths)
         # self.spline = splrep(q, I)
         # Extrapolate the background for the whole pattern
