@@ -121,12 +121,23 @@ class Map():
     def get_theta1(self):
         warnings.warn(DeprecationWarning("Use gadds._source_angle()"))
 
-    def get_cmap(self):
-        """Return a function that converts values in range 0 to 1 to colors."""
+    def get_cmap(self, cmap=None):
+        """Return a function that converts values in range 0 to 1 to colors.
+
+        Parameters
+        ----------
+        cmap : str, optional
+          The name of the colormap to be passed to pyplot.get_cmap. If
+          omitted, self.cmap_name will be used.
+
+        """
         # Matplotlib built-in colormaps (viridis et al have been
         # merged in now)
-        cmap = pyplot.get_cmap(self.cmap_name)
-        return cmap
+        if cmap is None:
+            _cmap = pyplot.get_cmap(self.cmap_name)
+        else:
+            _cmap = pyplot.get_cmap(cmap)
+        return _cmap
 
     def prepare_mapping_data(self):
         """
@@ -309,7 +320,7 @@ class Map():
           clipped.
 
         """
-        cmap = self.get_cmap()
+        cmap_ = self.get_cmap(cmap)
         # Plot loci
         if ax is None:
             # New axes unless one was already created
@@ -343,7 +354,7 @@ class Map():
             else:
                 alpha_normalizer = colors.Normalize(min(alpha_range), max(alpha_range), clip=True)
         # Prepare colors and normalized alpha values
-        colors_ = self.get_cmap()(metric_normalizer(metrics))
+        colors_ = cmap_(metric_normalizer(metrics))
         alphas = alpha_normalizer(alphas)
         # Plot the actual loci
         for locus, color, alpha_ in zip(self.loci, colors_, alphas):
@@ -708,6 +719,8 @@ class XRDMap(Map):
             'red',
             'orange'
         ]
+        # Add a legend
+        ax.legend(['Observations', 'Predicted', 'bg', 'residuals'])
         # Helper function to highlight peaks
         def draw_peaks(ax, phase, color):
             """Highlight the expected peak corresponding to this phase."""
@@ -738,8 +751,10 @@ class XRDMap(Map):
           taken from the self.store().
         """
         with self.store() as store:
-            diameter = store.step_size.num
+            # diameter = store.step_size.num
+            diameter = store.step_size
             loc = xycoord(*store.positions[locus,:])
+        diameter = diameter / units.mm
         ellipse = patches.Ellipse(
             xy=loc,
             width=diameter,
@@ -772,6 +787,25 @@ class XRDMap(Map):
                     # Plot a text label every 5 plots
                     ax.text(x[-1], y[-1], s=i,
                             verticalalignment="center")
+        return ax
+
+    def plot_all_diffractograms_2D(self, ax=None, subtracted=False, aspect="auto",
+                                   *args, **kwargs):
+        """Plot the individual locus diffractograms as an image."""
+        if ax is None:
+            ax = new_axes(width=15, height=15)
+        with self.store() as store:
+            xs = store.scattering_lengths
+            ys = store.intensities
+            if subtracted == "background":
+                ys = store.backgrounds
+            elif subtracted:
+                bgs = store.backgrounds
+                ys = ys - bgs
+            # Determine dimensions of the image axes
+            extent = (np.min(xs), np.max(xs), len(ys)-1, 0)
+            # Generate the image plot
+            ax.imshow(ys, aspect=aspect, extent=extent, *args, **kwargs)
         return ax
 
     def refine_mapping_data(self, backend='native'):
@@ -890,7 +924,7 @@ class XRDMap(Map):
         - 'integral' to indicate total integrated signal after bg subtraction
         - 'goodness' to use the quality of fit determined during refinement
         - 'position' to give the distance from the origin (for testing purposes)
-        - 'phase_ratio' to give the fraction of the given ``phase_idx``
+        - 'phase_fraction' to give the fraction of the given ``phase_idx``
         - 'None' or None to give an array of 1's
 
         Returns

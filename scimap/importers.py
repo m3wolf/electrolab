@@ -99,6 +99,7 @@ def import_gadds_map(sample_name: str=None, directory: str=None,
     xrdstore.intensities = Is
     qs = np.array(qs)
     xrdstore.scattering_lengths = qs
+    xrdstore.photo_filenames = jpgfiles
     # Clean up
     xrdstore.close()
 

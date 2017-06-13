@@ -113,11 +113,21 @@ class XRDStore():
 
     @property
     def goodness(self):
-        return self.group()['goodness_of_fit'].value
+        return self.group()['goodness_of_fit']
 
     @goodness.setter
     def goodness(self, value):
         self.replace_dataset('goodness_of_fit', data=value)
+
+    @property
+    def photo_filenames(self):
+        return self.group()['photo_filenames']
+
+    @photo_filenames.setter
+    def photo_filenames(self, value):
+        # Convert the ASCII
+        value = [bytes(s, encoding="UTF-8") for s in value]
+        self.replace_dataset('photo_filenames', data=value)
 
     @property
     def fits(self):

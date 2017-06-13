@@ -13,7 +13,7 @@ from .fullprof_refinement import FullProfPhase, ProfileMatch
 
 class CubicLMO(Phase):
     name = 'cubic LiMn2O4'
-    unit_cell = CubicUnitCell(a=8.08)
+    unit_cell = CubicUnitCell(a=8.13)
     spacegroup = 'Fd-3m'
     fullprof_spacegroup = 'F D -3 M'
     diagnostic_hkl = '333'
