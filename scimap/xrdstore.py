@@ -23,16 +23,15 @@ import h5py
 
 class XRDStore():
     """Wrapper around HDF file that stores XRD data.
-
-    Arguments
-    ---------
-
-    - hdf_filename : Filename for the HDF5 file to use for this store.
-
-    - groupname : Top-level groupname to use for this sample. Multiple
-      samples can be kept in one HDF5 file by assigning different
-      group names.
-
+    
+    Parameters
+    ----------
+    hdf_filename : str
+      Filename for the HDF5 file to use for this store.
+    groupname : str
+      Top-level groupname to use for this sample. Multiple samples can
+      be kept in one HDF5 file by assigning different group names.
+    
     """
     VERSION = 1
     def __init__(self, hdf_filename: str, groupname: str, mode='r'):
@@ -40,19 +39,19 @@ class XRDStore():
         self.groupname = groupname
         self.mode = mode
         self._file = h5py.File(self.hdf_filename, mode=mode)
-
+    
     def __enter__(self):
         return self
-
+    
     def __exit__(self, type, value, traceback):
         self.close()
-
+    
     def close(self):
         self._file.close()
-
+    
     def group(self):
         return self._file[self.groupname]
-
+    
     def replace_dataset(self, name, data, *args, **kwargs):
         """Wrapper for h5py.create_dataset that removes the existing dataset
         if it exists."""
@@ -63,14 +62,14 @@ class XRDStore():
             pass
         # Perform the actual group creation
         self.group().create_dataset(name=name, data=data, *args, **kwargs)
-
+    
     @property
     def step_size(self):
         unit_name = self.group()['step_size'].attrs['unit']
         unit = getattr(units, unit_name)
         val = self.group()['step_size'].value
         return val * unit
-
+    
     @step_size.setter
     def step_size(self, value):
         # Check if the given value is a composed unit
@@ -83,17 +82,15 @@ class XRDStore():
         # Save values to HDF5 file
         self.replace_dataset('step_size', data=step_size_value)
         self.group()['step_size'].attrs['unit'] = step_size_unit
-
-        
-
+    
     @property
     def positions(self):
         return self.group()['positions'].value
-
+    
     @positions.setter
     def positions(self, value):
         self.replace_dataset('positions', data=value)
-
+    
     @property
     def position_unit(self):
         unit = self.group()['positions'].attrs['unit']
@@ -107,68 +104,68 @@ class XRDStore():
     @property
     def layout(self):
         return self.group()['positions'].attrs['layout']
-
+    
     @positions.setter
     def layout(self, value):
         self.group()['positions'].attrs['layout'] = value
-
+    
     @property
     def file_basenames(self):
         return self.group()['file_basenames'].value
-
+    
     @file_basenames.setter
     def file_basenames(self, value):
         value = value.astype("S10")
         self.replace_dataset('file_basenames', data=value)
-
+    
     @property
     def goodness(self):
         return self.group()['goodness_of_fit']
-
+    
     @goodness.setter
     def goodness(self, value):
         self.replace_dataset('goodness_of_fit', data=value)
-
+    
     @property
     def photo_filenames(self):
         return self.group()['photo_filenames']
-
+    
     @photo_filenames.setter
     def photo_filenames(self, value):
         # Convert the ASCII
         value = [bytes(s, encoding="UTF-8") for s in value]
         self.replace_dataset('photo_filenames', data=value)
-
+    
     @property
     def fits(self):
         return self.group()['fits'].value
-
+    
     @fits.setter
     def fits(self, value):
         self.replace_dataset('fits', data=value)
-
+    
     @property
     def cell_parameters(self):
         return self.group()['cell_parameters'].value
-
+    
     @cell_parameters.setter
     def cell_parameters(self, value):
         self.replace_dataset('cell_parameters', data=value)
         group = self.group()
         group['cell_parameters'].attrs['order'] = "(scan, phase, (a, b, c, α, β, γ))"
-
+    
     @property
     def phase_fractions(self):
         return self.group()['phase_fractions']
-
+    
     @phase_fractions.setter
     def phase_fractions(self, value):
         self.replace_dataset('phase_fractions', data=value)
-
+    
     @property
     def scale_factor(self):
         return self.group()['scale_factor']
-
+    
     @scale_factor.setter
     def scale_factor(self, value):
         self.replace_dataset('scale_factor', data=value)
@@ -182,32 +179,32 @@ class XRDStore():
         else:
             wl = wavelengths
         return wl
-
+    
     @property
     def wavelengths(self):
         return self.group()['wavelengths'].value
-
+    
     @wavelengths.setter
     def wavelengths(self, value):
         self.replace_dataset('wavelengths', data=value)
-
+    
     @property
     def layout(self):
         return self.group()['positions'].attrs['layout']
-
+    
     @layout.setter
     def layout(self, value):
         self.group()['positions'].attrs['layout'] = value
-
+    
     @property
     def intensities(self):
         intensities = self.group()['intensities'].value
         return intensities
-
+    
     @intensities.setter
     def intensities(self, value):
         self.replace_dataset('intensities', data=value)
-
+    
     @property
     def intensities_subtracted(self):
         intensities_subtracted = self.group()['intensities_subtracted'].value
@@ -221,27 +218,27 @@ class XRDStore():
     def collimator(self):
         collimator = self.group()['collimator'].value
         return collimator
-
+    
     @collimator.setter
     def collimator(self, value):
         self.replace_dataset('collimator', data=value)
         self.group()['collimator'].attrs['unit'] = 'mm'
-
+    
     @property
     def scattering_lengths(self):
         q = self.group()['scattering_lengths'].value
         return q
-
+    
     @scattering_lengths.setter
     def scattering_lengths(self, value):
         self.replace_dataset('scattering_lengths', data=value)
-
+    
     @property
     def backgrounds(self):
         data = self.group()['backgrounds'].value
         new_shape = (data.shape[0], data.shape[1])
         return data.reshape(new_shape)
-
+    
     @backgrounds.setter
     def backgrounds(self, value):
         name = 'backgrounds'
@@ -250,13 +247,13 @@ class XRDStore():
         except KeyError:
             pass
         self.group().create_dataset(name, data=value)
-
+    
     @property
     def subtracted(self):
         bg = self.backgrounds
         it = self.intensities
         return it - bg
-
+    
     @subtracted.setter
     def subtracted(self, value):
         name = 'subtracted'
@@ -265,7 +262,15 @@ class XRDStore():
         except KeyError:
             pass
         self.group().create_dataset(name, data=value)
-
+    
+    @property
+    def peak_broadening(self):
+        return self.group()['peak_broadening']
+    
+    @peak_broadening.setter
+    def peak_broadening(self, value):
+        self.replace_dataset('peak_broadening', data=value)
+    
     @property
     def source(self):
         """Return a string indicating where the data came from."""

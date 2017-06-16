@@ -82,15 +82,6 @@ class Map():
             # step_size = store.step_size
         return positions### * step_size.num
 
-    # def create_loci(self):
-    #     """Populate the loci array with new loci in a hexagonal array."""
-    #     self.loci = []
-    #     for idx, coords in enumerate(self.path(self.rows)):
-    #         # Try and determine filename from the sample name
-    #         filebase = "map-{n:x}".format(n=idx)
-    #         new_locus = self.new_locus(location=coords, filebase=filebase)
-    #         self.loci.append(new_locus)
-
     def locus_by_xy(self, xy):
         """Find the index of the nearest locus by set of xy coords."""
         with self.store() as store:
@@ -219,33 +210,6 @@ class Map():
         # Pickle data and write to file
         with open(filename, 'wb') as saveFile:
             pickle.dump(data, saveFile)
-
-    # def load(self, filename=None):
-    #     """Load a .map file of previously processed data."""
-    #     # Generate filename if not supplied
-    #     if filename is None:
-    #         filename = "{sample_name}.map".format(sample_name=self.sample_name)
-    #     # Get the data from disk
-    #     with open(filename, 'rb') as loadFile:
-    #         data = pickle.load(loadFile)
-    #     self.diameter = data['diameter']
-    #     self.coverage = data['coverage']
-    #     # Create scan list
-    #     self.create_loci()
-    #     # Restore each scan
-    #     for idx, dataDict in enumerate(data['loci']):
-    #         new_locus = self.loci[idx]
-    #         new_locus.restore_data_dict(dataDict)
-    #         self.loci.append(new_locus)
-
-    # def fullrange_normalizer(self):
-    #     """Determine an appropriate normalizer by looking at the range of
-    #     metrics."""
-    #     metrics = [locus.metric for locus in self.loci]
-    #     new_normalizer = colors.Normalize(min(metrics),
-    #                                       max(metrics),
-    #                                       clip=True)
-    #     return new_normalizer
 
     def plot_map_with_image(self, scan=None, alpha=None):
         mapAxes, imageAxes = dual_axes()
@@ -678,29 +642,17 @@ class XRDMap(Map):
             else:
                 df = store.intensities[index]
         return df
-        # bulk_diffractogram = pandas.Series()
-        # locusCount = 0
-        # Add a contribution from each map location
-        # for locus in self.loci:
-        #     if locus.diffractogram_is_loaded:
-        #         locus_diffractogram = locus.diffractogram['counts']
-        #         corrected_diffractogram = locus_diffractogram * locus.reliability
-        #         locusCount = locusCount + 1
-        #         bulk_diffractogram = bulk_diffractogram.add(corrected_diffractogram, fill_value=0)
-        # # Divide by the total number of scans included
-        # bulk_diffractogram = bulk_diffractogram / locusCount
-        # return bulk_diffractogram
-
+    
     def plot_diffractogram(self, ax=None, index=None, subtracted=False):
         """Plot a specific diffractogram or an average of all the scans,
         weighted by reliability.
-
+        
         Arguments
         ---------
         - ax : The matplotlib axes object to plot on to
-
+        
         - index : Which locus to plot.
-
+        
         - subtracted : If True, the plot will be shown with background removed.
         """
         # Helper function for determining mean vs single-locus patterns
@@ -765,10 +717,10 @@ class XRDMap(Map):
         # Set axes limits
         ax.set_xlim(qs.min(), qs.max())
         return ax
-
+    
     def highlight_beam(self, ax, locus: int):
         """Draw a border on the map showing which locus is currently selected.
-
+        
         Arguments
         ---------
         - ax : matplotlib Axes object for plotting. Should already
@@ -792,7 +744,7 @@ class XRDMap(Map):
         )
         ax.add_patch(ellipse)
         return ellipse
-
+    
     def plot_all_diffractograms(self, ax=None, subtracted=False,
                                 xstep=0, ystep=5, label_scans=True, *args, **kwargs):
         if ax is None:
@@ -814,7 +766,7 @@ class XRDMap(Map):
                     ax.text(x[-1], y[-1], s=i,
                             verticalalignment="center")
         return ax
-
+    
     def plot_all_diffractograms_2D(self, ax=None, subtracted=False, aspect="auto",
                                    *args, **kwargs):
         """Plot the individual locus diffractograms as an image."""
@@ -833,15 +785,15 @@ class XRDMap(Map):
             # Generate the image plot
             ax.imshow(ys, aspect=aspect, extent=extent, *args, **kwargs)
         return ax
-
+    
     def refine_mapping_data(self, backend='native'):
         """Refine the relevant XRD parameters, such as background, unit-cells,
         etc. This will save the refined data to the HDF file.
-
+        
         Parameters
         ----------
         backend : str, Refinement
-
+        
           The style of refinement to perform. The default 'native'
           uses built-in numerical computations. Other methods will be
           added in the future. A user-created subclass of
@@ -855,6 +807,7 @@ class XRDMap(Map):
         goodness = []
         fractions = []
         scale_factors = []
+        broadenings = []
         # Retrieve the refinement method based on the given parameter
         backends = {
             'native': NativeRefinement
@@ -883,13 +836,16 @@ class XRDMap(Map):
                 bgs.append(bg)
                 # Refine unit-cell parameters
                 subtracted = Is - bg
+                RefinementErrors = (exceptions.RefinementError,
+                                    exceptions.UnitCellError,
+                                    ZeroDivisionError)
                 try:
                     residuals = refinement.refine_unit_cells(
                         scattering_lengths=qs,
                         intensities=subtracted,
                         quiet=True
                     )
-                except (exceptions.RefinementError, exceptions.UnitCellError, ZeroDivisionError):
+                except RefinementErrors:
                     failed.append(idx)
                     goodness.append(np.nan)
                 else:
@@ -909,14 +865,23 @@ class XRDMap(Map):
                     intensities=subtracted
                 )
                 scale_factors.append(scale) 
+                # Fit peak widths
+                refinement.fit_peaks(scattering_lengths=qs, intensities=subtracted)
+                fit = refinement.predict(qs)
+                fits.append(fit)
+                width = refinement.refine_peak_widths(
+                    scattering_lengths=qs,
+                    intensities=fit
+                )
+                broadenings.append(width)
                 # Append the fitted diffraction pattern
-                fits.append(np.zeros_like(qs))
-                # fits.append(refinement.predict(qs))
+                # fits.append(np.zeros_like(qs))
             # Store refined data for later
             store.backgrounds = np.array(bgs)
             store.cell_parameters = np.array(all_cells)
             store.fits = np.array(fits)
             store.phase_fractions = fractions
+            store.peak_broadening = broadenings
             # Normalize goodnesses of fit values to be between 0 and 1
             max_ = np.nanmax(goodness)
             min_ = np.nanmin(goodness)
@@ -981,6 +946,9 @@ class XRDMap(Map):
         elif param == 'phase_fraction':
             with self.store() as store:
                 metric = store.phase_fractions[:,phase_idx]
+        elif param == 'peak_broadening':
+            with self.store() as store:
+                metric = store.peak_broadening[:,phase_idx]
         elif param in ['None', None]:
             # Return a dummy array with all 1's
             with self.store() as store:
@@ -1069,32 +1037,7 @@ class XRDMap(Map):
         exceptions.RefinementError occurs.
         """
         warnings.warn(UserWarning("Use `Map.refine_mapping_data() instead`"))
-        # for locus in prog(self.loci, desc='Reticulating splines'):
-        #     try:
-        #         current_step = 'background'
-        #         locus.refinement.refine_background()
-        #         current_step = 'displacement'
-        #         locus.refinement.refine_displacement()
-        #         current_step = 'peak_widths'
-        #         locus.refinement.refine_peak_widths()
-        #         current_step = 'unit cells'
-        #         locus.refinement.refine_unit_cells()
-        #         # if len(locus.phases) > 2:
-        #         current_step = 'scale factors'
-        #         locus.refinement.refine_scale_factors()
-        #     except exceptions.SingularMatrixError as e:
-        #         # Display an error message on exception and then coninue fitting
-        #         msg = "{coords}: {msg}".format(coords=locus.cube_coords, msg=e)
-        #         print(msg)
-        #     except exceptions.DivergenceError as e:
-        #         msg = "{coords}: DivergenceError while refining {step}".format(
-        #             coords=locus.cube_coords,
-        #             step=current_step
-        #         )
-        #         print(msg)
-        #     except exceptions.PCRFileError as e:
-        #         msg = "Could not read resulting pcr file: {}".format(e)
-        #         print(msg)
+
 
 class PeakPositionMap(Map):
     """A map based on the two-theta position of the diagnostic reflection

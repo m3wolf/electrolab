@@ -31,7 +31,7 @@ class NCA(Phase):
         Reflection('107', qrange=(3.90, 4.20)),
         # Reflection('108', qrange=(4.30, 4.60)),
         # Reflection('110', qrange=(4.35, 4.60)),
-        # Reflection('113', qrange=(4.50, 4.75)),
+        Reflection('113', qrange=(4.50, 4.75)),
     ]
 
 # Define a new class for mapping the transition

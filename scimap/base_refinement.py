@@ -13,9 +13,8 @@ class BaseRefinement():
         'scale_factors': False,
     }
 
-    def __init__(self, phases=[], background_phases=[], scan=None):
+    def __init__(self, phases=[], background_phases=[]):
         self.phases = phases
-        self.scan = scan
         self.background_phases = background_phases
 
     def refine_background(self):
@@ -30,7 +29,7 @@ class BaseRefinement():
     def plot(self):
         raise NotImplementedError
 
-    def fwhm(self, phase=0):
+    def refine_peak_widths(self, scattering_lengths, intensities):
         raise NotImplementedError
 
     def phase_weights(self):

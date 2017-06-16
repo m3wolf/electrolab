@@ -1,4 +1,22 @@
 # -*- coding: utf-8 -*-
+#
+# Copyright © 2016 Mark Wolf
+#
+# This file is part of scimap.
+#
+# Scimap is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# Scimap is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with Scimap. If not, see <http://www.gnu.org/licenses/>.
+
 
 import math
 import warnings
@@ -238,8 +256,48 @@ class NativeRefinement(BaseRefinement):
         background = self.spline(scattering_lengths)
         return background
 
-    def refine_peak_widths(self):
-        pass
+    def refine_peak_widths(self, scattering_lengths, intensities):
+        fitMethods = ['pseudo-voigt', 'gaussian', 'cauchy', 'estimated']
+        widths = []
+        # Check if there are phases present
+        if len(self.phases) == 0:
+            msg = '{this} has no phases. Nothing to fit'.format(this=self)
+            warnings.warn(msg, RuntimeWarning)
+            return []
+        # Step through each reflection in the relevant phases and find the peak
+        for phase in self.phases:
+            phase_peak_list = []
+            reflection = phase.diagnostic_reflection
+            if contains_peak(scattering_lengths, reflection.qrange):
+                left = reflection.qrange[0]
+                right = reflection.qrange[1]
+                idx = np.where(np.logical_and(left < scattering_lengths,
+                                              scattering_lengths < right))
+                xs = scattering_lengths[idx]
+                ys = intensities[idx]
+                # Try each fit method until one works
+                for method in fitMethods:
+                    newPeak = XRDPeak(reflection=reflection, method=method)
+                    try:
+                        newPeak.fit(x=xs, y=ys)
+                    except exceptions.PeakFitError:
+                        # Try next fit
+                        continue
+                    else:
+                        phase_peak_list.append(newPeak)
+                        break
+                else:
+                    # No sucessful fit could be found.
+                    msg = "RefinementWarning: peak could not be fit for {}.".format(reflection)
+                    warnings.warn(msg, RuntimeWarning)
+            else:
+                # Diagnostic peak is not in range, so issue an exception
+                msg = "Reflection ({}) not in data range.".format(reflection.hkl_string)
+                raise RefinementError(msg)
+            # Successful fitting, so add to the cumulative list of widths
+            widths.append(newPeak.fwhm())
+        # Return the calculated list of peak widths for all phases
+        return widths
 
     def fwhm(self, phase_idx=0):
         """Use the previously fitted peaks to describe full-width and
@@ -271,7 +329,8 @@ class NativeRefinement(BaseRefinement):
         """List of fitted peaks organized by phase."""
         peak_list = getattr(self, '_peak_list', None)
         if peak_list is None:
-            peak_list = self.fit_peaks()
+            msg = "Peak's not fit, please run {}.fit_peaks() first.".format(self)
+            raise exceptions.RefinementError(msg)
         return peak_list
 
     @property
@@ -283,7 +342,7 @@ class NativeRefinement(BaseRefinement):
         for phase in peak_list:
             full_list += phase
         return full_list
-
+    
     def peak(self, reflection, phase_idx=0):
         """Returns a specific fitted peak."""
         peak_list = self.peak_list_by_phase()[phase_idx]
@@ -297,15 +356,15 @@ class NativeRefinement(BaseRefinement):
             raise IndexError('Mutliple peaks found for {}'.format(reflection))
         # Sanity checks passed so return to only value
         return peaks[0]
-
+    
     def fit_peaks(self, scattering_lengths, intensities):
         """
         Use least squares refinement to fit gaussian/Cauchy/etc functions
         to the predicted reflections.
         """
-        raise NotImplementedError("Disabled due to bad background fitting.")
         self._peak_list = []
-        fitMethods = ['pseudo-voigt', 'gaussian', 'cauchy', 'estimated']
+        # fitMethods = ['pseudo-voigt', 'gaussian', 'cauchy', 'estimated']
+        fitMethods = ['gaussian', 'cauchy']
         reflection_list = []
         # Check if there are phases present
         if len(self.phases) == 0:
@@ -336,15 +395,15 @@ class NativeRefinement(BaseRefinement):
                             break
                     else:
                         # No sucessful fit could be found.
-                        msg = "RefinementWarning: peak could not be fit for {}.".format(reflection)
+                        msg = "RefinementWarning: peak could not be fit for {}."
+                        msg = msg.format(reflection)
                         warnings.warn(msg, RuntimeWarning)
-                assert False
             self._peak_list.append(phase_peak_list)
         return self._peak_list
-
+    
     def predict(self, scattering_lengths):
         """Predict intensity values from the given scattering lengths, q.
-
+        
         Arguments
         ---------
         - scattering_lengths : Iterable with scattering_lengths

@@ -117,5 +117,22 @@ class NativeRefinementTest(unittest.TestCase):
         # Check for a partially existent peak
         self.assertTrue(contains_peak(q, (0, 1)))
 
+    def test_peak_widths(self):
+        corundum = standards.Corundum()
+        # Get sample data from Mew XRD
+        scan = XRDScan(filename=COR_BRML,
+                       phases=[corundum, corundum])
+        df = scan.diffractogram
+        q = df.index
+        I_raw = df.counts.values
+        # Background fitting
+        refinement = NativeRefinement(phases=[corundum])
+        bg = refinement.refine_background(q, I_raw)
+        I = I_raw - bg
+        # Do the peak width fitting
+        result = refinement.refine_peak_widths(q, I)
+        self.assertEqual(len(result), 1) # (only one phase was refined)
+        self.assertAlmostEqual(result[0], 0.00328, places=5)
+
 if __name__ == '__main__':
     unittest.main()
