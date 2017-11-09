@@ -142,14 +142,12 @@ def import_aps_34IDE_map(directory: str, wavelength: int,
       invalid. This helps remove things like beam stop effects.
 
     """
-    print(hdf_filename)
     if hdf_filename is None:
         # Set a default filename based on the directory name
         dirnames = directory.split('/')
         dirnames.remove('')
         hdf_filename = dirnames[-1] + ".h5"
     # Prepare HDF file
-    print(hdf_filename)
     sample_group = hdf.prepare_hdf_group(filename=hdf_filename,
                                          groupname=hdf_groupname,
                                          dirname=directory)
@@ -170,6 +168,7 @@ def import_aps_34IDE_map(directory: str, wavelength: int,
     # Shift positions by half a step-size so the location is the center of each square
     positions = np.add(positions, step_size / 2)
     xrdstore.positions = positions
+    xrdstore.position_unit = 'um'
     xrdstore.layout = 'rect'
 
     intensities = []

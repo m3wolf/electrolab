@@ -95,6 +95,16 @@ class XRDStore():
         self.replace_dataset('positions', data=value)
 
     @property
+    def position_unit(self):
+        unit = self.group()['positions'].attrs['unit']
+        unit = getattr(units, unit)
+        return unit
+
+    @position_unit.setter
+    def position_unit(self, val):
+        self.group()['positions'].attrs['unit'] = val
+
+    @property
     def layout(self):
         return self.group()['positions'].attrs['layout']
 
@@ -198,6 +208,15 @@ class XRDStore():
     def intensities(self, value):
         self.replace_dataset('intensities', data=value)
 
+    @property
+    def intensities_subtracted(self):
+        intensities_subtracted = self.group()['intensities_subtracted'].value
+        return intensities_subtracted
+        
+    @intensities_subtracted.setter
+    def intensities_subtracted(self, value):
+        self.replace_dataset('intensities_subtracted', data=value)
+        
     @property
     def collimator(self):
         collimator = self.group()['collimator'].value

@@ -160,10 +160,37 @@ class Map():
             scan.cached_data['color'] = None
             scan.color()
 
-    def subtract_backgrounds(self):
-        for scan in prog(self.scans, desc='Fitting background'):
-            scan.subtract_background()
+    def subtract_backgrounds(self, bkg, loc_idx=None):
+        '''Subtracts the background from patterns.
+        
+        Background subtracted intensities will be written to already
+        existing hdf5 file as intensities_subtracted.
+        
+        Parameters
+        ----------
+        bkg : np.ndarray
+          Refers to the 1d diffraction pattern that is to be
+          subtracted from the intensity data.
 
+        loc_idx : np.ndarray, optional
+          Refers to the 1d diffraction pattern that will have its background
+          subtracted. If omitted all patterns from the map will be
+          background subtracted.
+  
+        '''
+        data_in = self.store()
+        Is = data_in.intensities
+        
+        if loc_idx is not None:
+            Is = Is[loc_idx]
+       
+        bkg_sub = Is - bkg
+        data_in.close()
+
+        with self.store(mode='r+') as store:
+            store.intensities_subtracted = bkg_sub
+            
+            
     def metric(self, *args, **kwargs):
         """
         Calculate a set of mapping values. Should be implemented by
@@ -277,7 +304,6 @@ class Map():
             patch = patches.RegularPolygon(xy=loc, numVertices=6,
                                            radius=size/1.60, linewidth=0,
                                            facecolor=color, edgecolor=color)
-            pass
         else:
             raise ValueError("Unknown value for shape: '{}'".format(shape))
         # Add patch to the axes
@@ -330,7 +356,7 @@ class Map():
             add_colorbar = False
         xs, ys = self.loci.swapaxes(0, 1)
         with self.store() as store:
-            step_size = float(store.step_size / units.mm)
+            step_size = float(store.step_size / store.position_unit)
             layout = store.layout
         # Set axes limits
         ax.set_xlim(min(xs) - step_size, max(xs) + step_size)
