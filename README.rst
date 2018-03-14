@@ -7,6 +7,7 @@ SciMap: Scientific Mapping for Python
    :alt: Documentation Status
 
 Motivation
+This is the test line
 ----------
 
 This project aims to take large datasets in chemistry and physics, and
