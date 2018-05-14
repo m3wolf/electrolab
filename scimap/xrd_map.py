@@ -2,7 +2,7 @@
 
 import warnings
 
-from matplotlib import pyplot, patches, colors, cm
+from matplotlib import pyplot, patches, colors, cm 
 import numpy as np
 import scipy
 import pandas
@@ -316,7 +316,7 @@ class Map():
             add_colorbar = True
             ax = new_axes()
         else:
-            add_colorbar = False
+            add_colorbar = True
         xs, ys = self.loci.swapaxes(0, 1)
         with self.store() as store:
             step_size = float(store.step_size / store.position_unit)
@@ -354,7 +354,14 @@ class Map():
             warnings.warn(UserWarning("coverage not properly displayed"))
         # If a highlighted scan was given, show it in a different color
         if highlighted_locus is not None:
-            self.highlight_beam(ax=ax, locus=highlighted_locus)
+            if type(highlighted_locus)==int:
+                self.highlight_beam(ax=ax, locus=highlighted_locus)
+            elif type(highlighted_locus)==list:
+                for locus in highlighted_locus:
+                    self.highlight_beam(ax=ax, locus=locus)
+            else:
+                raise TypeError("highlighted_locus must be of type int or list")
+                    
         # Add circle for theoretical edge
         # self.draw_edge(ax, color='red')
         # Add colorbar to the side of the axes
@@ -592,7 +599,7 @@ class XRDMap(Map):
         self.collimator = collimator
         self.detector_distance = detector_distance
         self.frame_size = frame_size
-        # Checking for non-default lists allows for better subclassing
+        # Checking for nonos-default lists allows for better subclassing
         if len(Phases) > 0:
             self.Phases = Phases
         if len(background_phases) > 0:
@@ -615,27 +622,59 @@ class XRDMap(Map):
     def context(self):
         """Convert the object to a dictionary for the templating engine."""
         raise NotImplementedError("Use gadds._context()")
-    
-    @property
-    def diffractogram(self):
-        """Returns self.bulk_diffractogram()."""
-        bulk_series = self.bulk_diffractogram()
-        df = pandas.DataFrame(bulk_series, columns=['counts'])
-        return df
-    
-    def get_diffractogram(self, index=None):
+
+    def write_script(self, file=None, quiet=False):
+        """
+        Format the sample into a slam file that GADDS can process.
+        """
+        raise NotImplementedError("Use gadds.write_gadds_script()")
+
+    def diffractogram(self, index=None, weights=None, weight_range=None):
         """
         Calculate the bulk diffractogram by averaging each scan weighted
         by reliability.
+
+	Parameters
+	----------
+	index : int, optional
+	  Which diffractogram to return. If ``None``, 
+	  all the diffractograms will be average together.
+        weights : str, optional
+	  A dataset name to use for weighting each diffractogram.
+	  Only used if ``index`` is None.
+        weight_range : tuple, optional
+          Set the limits of weights such that (min, max).
+          If None, weights would be applied without normalization.
+
+        Returns
+        =======
+        A pandas series of intensity vs scattering length
         """
         with self.store() as store:
             if index is None:
-                df = np.average(store.intensities, axis=0)
+                # First get data from disk
+                Is = store.intensities
+                Qs = np.mean(store.scattering_lengths, axis=0)
+                # Prepare the matrix of the weights for each scan
+                if weights is None:
+                    Ws = np.ones(shape=(Is.shape[0],))
+                else:
+                    Ws = self.metric(param=weights)
+                # Prepare the normalizer for the weights
+                if weight_range is None:
+                    norm = lambda x: x
+                else:
+                    norm = colors.Normalize(vmin=weight_range[0], vmax=weight_range[1], clip=True)
+                # Apply the weights to the data
+                Ws = np.expand_dims(norm(Ws), axis=-1)
+                Is = np.sum(Ws*Is, axis=0)/np.sum(Ws, axis=0)
             else:
-                df = store.intensities[index]
-        return df
-    
-    def plot_diffractogram(self, ax=None, index=None, subtracted=False):
+                Is = store.intensities[index]
+                Qs = store.scattering_lengths[index]
+            series = pandas.Series(Is, index=Qs)
+        return series
+
+    def plot_diffractogram(self, ax=None, index=None, subtracted=False, **kwargs):
         """Plot a specific diffractogram or an average of all the scans,
         weighted by reliability.
         
@@ -653,12 +692,18 @@ class XRDMap(Map):
                 return np.average(data, axis=0)
             else:
                 return data[index]
-        # Retrieve the actual data
+         # Retrieve the actual data
         with self.store() as store:
             intensities = get_values(store.intensities, index=index)
             qs = get_values(store.scattering_lengths, index=index)
-            bg = get_values(store.backgrounds, index=index)
-            fits = get_values(store.fits, index=index)
+            try:
+                bg = get_values(store.backgrounds, index=index)
+            except KeyError:
+                bg = np.zeros_like(intensities)
+            try:
+                fits = get_values(store.fits, index=index)
+            except KeyError:
+                fits = np.zeros_like(intensities)
         # Get default axis if none is given
         if ax is None:
             ax = new_axes()
@@ -671,18 +716,24 @@ class XRDMap(Map):
             predictions = fits
         residuals = observations - predictions
         # Plot data
-        ax.plot(qs, observations, marker="+", linestyle="None")
-        ax.plot(qs, predictions)
-        ax.plot(qs, bg, color="red")
-        ax.plot(qs, residuals, color="cyan")
+        if subtracted is False:
+            ax.plot(qs, observations, marker="+", linestyle="None")
+            #ax.plot(qs, predictions)
+            ax.plot(qs, bg, color="red")
+            ax.plot(qs, residuals, color="cyan")
         # Annotate axes
-        ax.set_xlabel(r'Scattering Length (q) $/\AA^{-1}$')
-        ax.set_ylabel('Intensity a.u.')
+            ax.set_xlabel(r'Scattering Length (q) $/\AA^{-1}$')
+            ax.set_ylabel('Intensity a.u.')
+        else:
+            ax.plot(qs, observations, marker="+", linestyle="None")
         if index is not None:
             ax.set_title("Diffractogram for location {idx}".format(idx=index))
         else:
             ax.set_title('Bulk diffractogram')
         # Highlight peaks
+        #if substracted:
+        #ax.legend("Observations")
+        #else:
         color_list = [
             'green',
             'blue',
@@ -695,17 +746,17 @@ class XRDMap(Map):
         def draw_peaks(ax, phase, color):
             """Highlight the expected peak corresponding to this phase."""
             alpha = 0.15
-            # Highlight each peak in this phase
+             #Highlight each peak in this phase
             for reflection in phase.reflection_list:
                 two_theta = reflection.qrange
                 ax.axvspan(two_theta[0], two_theta[1],
                            color=color, alpha=alpha)
         # Highlight phases
-        for idx, phase in enumerate(self.Phases):
-            draw_peaks(ax=ax, phase=phase, color=color_list[idx])
+        #for idx, phase in enumerate(self.Phases):
+            #draw_peaks(ax=ax, phase=phase, color=color_list[idx])
         # Highlight background
-        for phase in self.background_phases:
-            draw_peaks(ax=ax, phase=phase, color='grey')
+        #for phase in self.background_phases:
+            #draw_peaks(ax=ax, phase=phase, color='grey')
         # Set axes limits
         ax.set_xlim(qs.min(), qs.max())
         return ax
@@ -759,24 +810,17 @@ class XRDMap(Map):
                             verticalalignment="center")
         return ax
     
-    def plot_all_diffractograms_2D(self, ax=None, subtracted=False, aspect="auto",
-                                   *args, **kwargs):
-        """Plot the individual locus diffractograms as an image."""
-        if ax is None:
-            ax = new_axes(width=15, height=15)
-        with self.store() as store:
-            xs = store.scattering_lengths
-            ys = store.intensities
-            if subtracted == "background":
-                ys = store.backgrounds
-            elif subtracted:
-                bgs = store.backgrounds
-                ys = ys - bgs
-            # Determine dimensions of the image axes
-            extent = (np.min(xs), np.max(xs), len(ys)-1, 0)
-            # Generate the image plot
-            ax.imshow(ys, aspect=aspect, extent=extent, *args, **kwargs)
-        return ax
+    def plot_phase_ratio(self, phase_idx=0, *args, **kwargs):
+        warnings.warn(UserWarning("Use `Map.plot_map(metric='phase_ratio')` instead"))
+
+
+    def plot_cell_parameter(self, parameter='a', phase_idx=0, *args, **kwargs):
+        warnings.warn(UserWarning(
+            "Use `Map.plot_map(metric='{}')` instead".format(parameter)
+        ))
+
+    def plot_fwhm(self, phase_idx=0, *args, **kwargs):
+        #warnings.warn(UserWarning("Use `Map.plot_map(metric='fwhm')` instead"))
     
     def refine_mapping_data(self, backend='native'):
         """Refine the relevant XRD parameters, such as background, unit-cells,
@@ -944,7 +988,7 @@ class XRDMap(Map):
         if locus is not None:
             metric = metric[locus:locus+1]
         return metric
-    
+
     def plot_map_gtk(self, *args, **kwargs):
         from .gtkmapviewer import GtkXrdMapViewer
         return super().plot_map_gtk(WindowClass=GtkXrdMapViewer, *args, **kwargs)

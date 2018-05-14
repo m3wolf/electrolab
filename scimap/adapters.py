@@ -140,13 +140,17 @@ class BrukerXyeFile(XRDAdapter):
                 except KeyError:
                     msg = 'No definition for {} X-ray tube.'.format(anode)
                     raise exceptions.FileFormatError(msg)
+            else:
+                msg = 'Wavelength not found in file, pass `wavelength`to constructor.'                  
+                raise exceptions.DataFormatError(msg)
+                
         return wl
 
     @property
     def _dataframe(self):
         df = pd.read_csv(self.filename,
                          names=['2theta', 'counts', 'error'],
-                         sep=' ', index_col=0, comment="'")
+                         sep='\s+', index_col=0, comment="'")
         return df
 
 

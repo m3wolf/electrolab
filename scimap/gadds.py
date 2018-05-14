@@ -276,6 +276,7 @@ def write_gadds_script(qrange, sample_name, center, collimator=0.8,
                         groupname=sample_name, mode="r+")
     positions = [(s['x'], s['y']) for s in context['scans']]
     xrdstore.positions = np.array(positions)
+    xrdstore.position_unit = 'mm'
     xrdstore.layout = 'hex'
     file_basenames = np.array([s['filename'] for s in context['scans']])
     xrdstore.file_basenames = np.array(file_basenames)

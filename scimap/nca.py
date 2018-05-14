@@ -29,8 +29,8 @@ class NCA(Phase):
         Reflection('105', qrange=(3.30, 3.50)),
         Reflection('009', qrange=(3.90, 4.20)),
         Reflection('107', qrange=(3.90, 4.20)),
-        # Reflection('108', qrange=(4.30, 4.60)),
-        # Reflection('110', qrange=(4.35, 4.60)),
+        Reflection('108', qrange=(4.30, 4.60)),
+        Reflection('110', qrange=(4.35, 4.60)),
         Reflection('113', qrange=(4.50, 4.75)),
     ]
 
