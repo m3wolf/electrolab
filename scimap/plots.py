@@ -24,7 +24,6 @@ from matplotlib import pyplot, cm
 from matplotlib.ticker import ScalarFormatter
 
 from .utilities import q_to_twotheta
-# from .xrd.utilities import q_to_twotheta
 
 
 class ElectronVoltFormatter(ScalarFormatter):
@@ -172,7 +171,8 @@ def dual_axes(fig=None, orientation='horizontal'):
 
 
 def plot_scans(scan_list, step_size=0, ax=None, names=[],
-               use_twotheta=False, wavelength=None, *args, **kwargs):
+               use_twotheta=False, wavelength=None, colors=(),
+               normalize=False, *args, **kwargs):
     """Plot a series of XRDScans as a waterfall.
 
     Parameters
@@ -187,15 +187,21 @@ def plot_scans(scan_list, step_size=0, ax=None, names=[],
     names : list(str), optional
       Legend entries to use for these scans. If omitted, the names
       will be retried from the XRDScan objects.
+    colors : tuple, optional
+      Iterable of maptlotlib colors to use for plotting, with the same
+      number of entries as ``scan_list``.
     use_twotheta : bool, optional
       If true, the results will be plotted with 2θ on the x-axis,
       otherwise scattering length (q) will be used.
     wavelength : float, optional
       The wavelength of radiation to use for converting q to 2θ. Only
       needed if ``use_twotheta`` is truthy.
+    normalize : str, optional
+      If 'area' or 'height', normalize each scan by the area under the
+      scan.
     *args, **kwargs :
       Passed to matplotlib plot routine.
-
+    
     """
     if ax is None:
         ax = big_axes()
@@ -203,13 +209,25 @@ def plot_scans(scan_list, step_size=0, ax=None, names=[],
     lines = []
     for idx, scan in enumerate(scan_list):
         df = scan.diffractogram.copy()
-        df.counts = df.counts + step_size * idx
         if use_twotheta:
             x = q_to_twotheta(np.array(df.index), wavelength=wavelength)
         else:
             x = df.index
-        # Do the plotting
-        lines.append(ax.plot(x, df.counts, *args, **kwargs)[0])
+        # Prepare the y data
+        y = df.counts
+        if normalize == 'area':
+            y = (y - np.min(y)) / np.trapz(y, x=x)
+        elif normalize == 'height':
+            y = (y - np.min(y)) / (np.max(y) - np.min(y))
+        y += step_size * idx
+        # Check if a color is specified
+        try:
+            color = colors[idx]
+        except (IndexError, TypeError):
+            color = None
+        # Plot the data
+        zorder = len(scan_list) - idx
+        lines.append(ax.plot(x, y, color=color, zorder=zorder, *args, **kwargs)[0])
         # Try and determine a name for this scan
         try:
             scannames.append(names[idx])
