@@ -1,24 +1,12 @@
 # -*- coding: utf-8 -*-
 
+import warnings
 from collections import namedtuple
 import copy
 import math
 
 from .reflection import hkl_to_tuple
 from .unitcell import UnitCell
-
-# class PhaseDataDict(DataDict):
-
-#     def __get__(self, obj, cls):
-#         new_dict = super().__get__(obj, cls)
-#         new_dict['unit_cell'] = obj.unit_cell.data_dict
-#         return new_dict
-
-#     def __set__(self, obj, new_dict):
-#         if 'unit_cell' in new_dict.keys():
-#             obj.unit_cell.data_dict = new_dict['unit_cell']
-#             del new_dict['unit_cell']
-#         return super().__set__(obj, new_dict)
 
 
 class Phase():
@@ -64,7 +52,11 @@ class Phase():
     def diagnostic_reflection(self, new_hkl):
         self.diagnostic_hkl = new_hkl
 
-    def predicted_peak_positions(self, unit_cell=None, scan=None):
+    def predicted_peak_positions(self, *args, **kwargs):
+        warnings.warn("Use ``predicted_peaks()`` instead", DeprecationWarning)
+        return self.predicted_peaks(*args, **kwargs)
+    
+    def predicted_peaks(self, unit_cell=None, scan=None):
         """Use the space group of this phase's unit cell to predict where the
         peaks will be."""
         # Use current unit_cell if none is given
