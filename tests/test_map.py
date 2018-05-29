@@ -44,13 +44,6 @@ class XRDMapTest(unittest.TestCase):
         self.test_map = XRDMap(Phases=[Corundum],
                                sample_name=group_34IDE,
                                hdf_filename=hdf_34IDE)
-        self.savefile = 'test-sample.map'
-    
-    def tearDown(self):
-        try:
-            os.remove(self.savefile)
-        except FileNotFoundError:
-            pass
     
     def test_set_phases(self):
         """Verify that phases are passed to all the necessary composited objects."""
@@ -64,7 +57,6 @@ class XRDMapTest(unittest.TestCase):
         new_map = XRDMap(Phases=[nca.NCA], hdf_filename=hdf_34IDE,
                          sample_name=group_34IDE)
         fractions = new_map.metric('phase_fraction')
-        weights = new_map.metric('scale_factor')
 
 
 class MapRefinementTest(unittest.TestCase):
@@ -74,17 +66,17 @@ class MapRefinementTest(unittest.TestCase):
         if os.path.exists(self.h5file):
             os.remove(self.h5file)
         shutil.copy(GADDS_HDFFILE, self.h5file)
-
+    
     def tearDown(self):
         if os.path.exists(self.h5file):
             os.remove(self.h5file)
-
+    
     def xrdmap(self):
         return XRDMap(sample_name=GADDS_SAMPLE,
                       hdf_filename=self.h5file,
                       Phases=[lmo.MidVPhase, lmo.HighVPhase])
-
-    def test_refine_phase_ratio(self):
+    
+    def test_refine_mapping_data(self):
         xrdmap = self.xrdmap()
         # Check that the right groups are not created before refining
         with h5py.File(self.h5file) as f:

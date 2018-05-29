@@ -57,7 +57,7 @@ def peak_area(scattering_lengths, intensities, qrange):
 
 class NativeRefinement(BaseRefinement):
     spline = None
-
+    
     def peak_rms_error(self, phase, unit_cell=None, peak_list=None):
         diffs = []
         predicted_peaks = phase.predicted_peak_positions(unit_cell=unit_cell)
@@ -81,7 +81,7 @@ class NativeRefinement(BaseRefinement):
         except ZeroDivisionError:
             raise exceptions.RefinementError()
         return rms_error
-
+    
     def refine_unit_cells(self, scattering_lengths, intensities, quiet=True):
         """Residual least squares refinement of the unit-cell
         parameters. Returns an (p, 6) array where p is the number of
@@ -138,10 +138,10 @@ class NativeRefinement(BaseRefinement):
                 # Optimization failed for some reason
                 raise exceptions.RefinementError(result.message)
         return residual_error
-
+    
     def refine_phase_fractions(self, scattering_lengths, intensities):
         """Calculate the relative strengths of each phase in a diffractogram.
-
+        
         The simplest approach is to calculate the peak area for each
         phases's diagnostic reflection. The fraction is then the ratio
         of each phases's reflection over the sum of all phases. This
@@ -255,76 +255,34 @@ class NativeRefinement(BaseRefinement):
         # background = self.spline(scattering_lengths)
         background = self.spline(scattering_lengths)
         return background
-
-    def refine_peak_widths(self, scattering_lengths, intensities):
-        fitMethods = ['pseudo-voigt', 'gaussian', 'cauchy', 'estimated']
-        widths = []
-        # Check if there are phases present
-        if len(self.phases) == 0:
-            msg = '{this} has no phases. Nothing to fit'.format(this=self)
-            warnings.warn(msg, RuntimeWarning)
-            return []
-        # Step through each reflection in the relevant phases and find the peak
-        for phase in self.phases:
-            phase_peak_list = []
-            reflection = phase.diagnostic_reflection
-            if contains_peak(scattering_lengths, reflection.qrange):
-                left = reflection.qrange[0]
-                right = reflection.qrange[1]
-                idx = np.where(np.logical_and(left < scattering_lengths,
-                                              scattering_lengths < right))
-                xs = scattering_lengths[idx]
-                ys = intensities[idx]
-                # Try each fit method until one works
-                for method in fitMethods:
-                    newPeak = XRDPeak(reflection=reflection, method=method)
-                    try:
-                        newPeak.fit(x=xs, y=ys)
-                    except exceptions.PeakFitError:
-                        # Try next fit
-                        continue
-                    else:
-                        phase_peak_list.append(newPeak)
-                        break
-                else:
-                    # No sucessful fit could be found.
-                    msg = "RefinementWarning: peak could not be fit for {}.".format(reflection)
-                    warnings.warn(msg, RuntimeWarning)
-            else:
-                # Diagnostic peak is not in range, so issue an exception
-                msg = "Reflection ({}) not in data range.".format(reflection.hkl_string)
-                raise RefinementError(msg)
-            # Successful fitting, so add to the cumulative list of widths
-            widths.append(newPeak.fwhm())
-        # Return the calculated list of peak widths for all phases
-        return widths
-
+    
     def fwhm(self, phase_idx=0):
         """Use the previously fitted peaks to describe full-width and
         half-maximum."""
+        raise NotImplementedError()
         phase = self.scan.phases[phase_idx]
         peak = self.peak(phase.diagnostic_reflection, phase_idx=phase_idx)
         # print('TODO: Get diagnostic peak instead of', peak)
         return peak.fwhm()
-
+    
     @property
     def has_background(self):
         """Returns true if the background has been fit and subtracted.
         """
         return self.spline is not None
-
+    
     def background(self, x):
         if self.spline is None:
             raise exceptions.RefinementError("Please run `refine_background()` first")
         return self.spline(x)
-
+    
     def refine_displacement(self):
         """Not implemented yet."""
         pass
-
+    
     def details(self):
         return "Native refinement"
-
+    
     def peak_list_by_phase(self):
         """List of fitted peaks organized by phase."""
         peak_list = getattr(self, '_peak_list', None)
@@ -332,7 +290,7 @@ class NativeRefinement(BaseRefinement):
             msg = "Peak's not fit, please run {}.fit_peaks() first.".format(self)
             raise exceptions.RefinementError(msg)
         return peak_list
-
+    
     @property
     def peak_list(self):
         """List of fitted peaks across all phases"""
@@ -419,7 +377,7 @@ class NativeRefinement(BaseRefinement):
         for peak in self.peak_list:
             predicted += peak.predict(q)
         return predicted
-
+    
     def plot(self, x, ax=None):
         warnings.warn(DeprecationWarning(), "Use predict() method and pyplot instead.")
         # Create new axes if necessary
@@ -445,7 +403,7 @@ class NativeRefinement(BaseRefinement):
                 predicted = predicted + self.spline(predicted.index)
             predicted.plot(ax=ax)
         return ax
-
+    
     def highlight_peaks(self, ax):
         color_list = [
             'green',
@@ -469,6 +427,6 @@ class NativeRefinement(BaseRefinement):
         for phase in self.background_phases:
             draw_peaks(ax=ax, phase=phase, color='grey')
         return ax
-
+    
     def confidence(self):
         return 1

@@ -53,17 +53,20 @@ class NativeRefinementTest(unittest.TestCase):
         # plt.plot(q, I)
         # plt.plot(q, bg)
         # plt.show()
-        
+        from scipy.signal import find_peaks
+        result = find_peaks(df.counts.values)
+        peaks, props = result
         # Spot-check some values on the resulting background
         new_bg = refinement.background(df.index)
         # plt.plot(df.counts.values)
         # plt.plot(new_bg)
+        # plt.plot(df.counts.values - new_bg)
         # plt.show()
-        self.assertAlmostEqual(new_bg[2465], 141.6, places=1)
-        self.assertAlmostEqual(new_bg[3270], 116.8, places=1)
-        self.assertAlmostEqual(new_bg[4650], 129.4, places=1)
-        self.assertAlmostEqual(new_bg[6565], 123.5, places=1)
-
+        # Check the median diffraction value for whether fitting is good
+        subtracted = df.counts.values - new_bg
+        median = abs(np.median(subtracted))
+        self.assertTrue(median < 5)
+    
     def test_phase_ratios(self):
         corundum = standards.Corundum()
         # Get sample data from Mew XRD
@@ -84,7 +87,7 @@ class NativeRefinementTest(unittest.TestCase):
         # Do phase fraction refinement
         result = refinement.refine_phase_fractions(q, subtracted)
         np.testing.assert_equal(result, [0.5, 0.5])
-
+    
     def test_net_area(self):
         scan = XRDScan(filename=COR_BRML,
                        phases=[])

@@ -44,4 +44,4 @@ from .utilities import q_to_twotheta, twotheta_to_q, xycoord, Pixel, shape, prog
 from .plots import (new_axes, big_axes, dual_axes, plot_scans, xrd_axes,
                     plot_txm_intermediates, new_image_axes)
 from .coordinates import Cube
-from .xrd_map import XRDMap, Map, PeakPositionMap, PhaseRatioMap, FwhmMap
+from .xrd_map import XRDMap, Map

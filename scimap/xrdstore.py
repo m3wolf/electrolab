@@ -21,6 +21,35 @@ from sympy.physics import units
 import h5py
 
 
+class StoreDescriptor():
+    """Data descriptor for accessing HDF datasets.
+    
+    Parameters
+    ----------
+    name : str
+      The dataset name in the HDF file.
+    context : str, optional
+      Type of dataset this is: frameset, map, metadata, etc.
+    dtype : np.dtype, optional
+      The data-type to use when saving new data to disk. Using lower
+      precision datatypes can save significant disk space.
+    
+    """
+    def __init__(self, name, dtype=None):
+        self.name = name
+        self.dtype = dtype
+    
+    def __get__(self, store, type=None):
+        dataset = store.get_dataset(self.name)
+        return dataset
+    
+    def __set__(self, store, value):
+        store.replace_dataset(name=self.name, data=value, dtype=self.dtype)
+    
+    def __delete__(self, store):
+        del store.data_group()[self.name]
+
+
 class XRDStore():
     """Wrapper around HDF file that stores XRD data.
     
@@ -34,6 +63,16 @@ class XRDStore():
     
     """
     VERSION = 1
+    # Data descriptors that pull from HDF5 file
+    positions = StoreDescriptor('positions')
+    goodness_of_fit = StoreDescriptor('goodness_of_fit')
+    intensities = StoreDescriptor('intensities')
+    phase_fractions = StoreDescriptor('phase_fractions')
+    scale_factor = StoreDescriptor('scale_factor')
+    fits = StoreDescriptor('fits')
+    wavelengths = StoreDescriptor('wavelengths')
+    scattering_lengths = StoreDescriptor('scattering_lengths')
+    backgrounds = StoreDescriptor('backgrounds')
     def __init__(self, hdf_filename: str, groupname: str, mode='r'):
         self.hdf_filename = hdf_filename
         self.groupname = groupname
@@ -52,16 +91,24 @@ class XRDStore():
     def group(self):
         return self._file[self.groupname]
     
+    def get_dataset(self, name):
+        return self.group()[name]
+    
     def replace_dataset(self, name, data, *args, **kwargs):
-        """Wrapper for h5py.create_dataset that removes the existing dataset
-        if it exists."""
+        """Wrapper for h5py.create_dataset that replaces the existing dataset.
+        
+        HDF5 attributes are copied to the new dataset.
+        
+        """
         # Remove the existing dataset if possible
         try:
+            attrs = self.group()[name].attrs
             del self.group()[name]
         except KeyError:
-            pass
+            attrs = {}
         # Perform the actual group creation
-        self.group().create_dataset(name=name, data=data, *args, **kwargs)
+        new_ds = self.group().create_dataset(name=name, data=data, *args, **kwargs)
+        new_ds.attrs.update(attrs)
     
     @property
     def step_size(self):
@@ -84,28 +131,20 @@ class XRDStore():
         self.group()['step_size'].attrs['unit'] = step_size_unit
     
     @property
-    def positions(self):
-        return self.group()['positions'].value
-    
-    @positions.setter
-    def positions(self, value):
-        self.replace_dataset('positions', data=value)
-    
-    @property
     def position_unit(self):
         unit = self.group()['positions'].attrs['unit']
         unit = getattr(units, unit)
         return unit
-
+    
     @position_unit.setter
     def position_unit(self, val):
         self.group()['positions'].attrs['unit'] = val
-
+    
     @property
     def layout(self):
         return self.group()['positions'].attrs['layout']
     
-    @positions.setter
+    @layout.setter
     def layout(self, value):
         self.group()['positions'].attrs['layout'] = value
     
@@ -119,14 +158,6 @@ class XRDStore():
         self.replace_dataset('file_basenames', data=value)
     
     @property
-    def goodness(self):
-        return self.group()['goodness_of_fit']
-    
-    @goodness.setter
-    def goodness(self, value):
-        self.replace_dataset('goodness_of_fit', data=value)
-    
-    @property
     def photo_filenames(self):
         return self.group()['photo_filenames']
     
@@ -135,14 +166,6 @@ class XRDStore():
         # Convert the ASCII
         value = [bytes(s, encoding="UTF-8") for s in value]
         self.replace_dataset('photo_filenames', data=value)
-    
-    @property
-    def fits(self):
-        return self.group()['fits'].value
-    
-    @fits.setter
-    def fits(self, value):
-        self.replace_dataset('fits', data=value)
     
     @property
     def cell_parameters(self):
@@ -155,22 +178,6 @@ class XRDStore():
         group['cell_parameters'].attrs['order'] = "(scan, phase, (a, b, c, α, β, γ))"
     
     @property
-    def phase_fractions(self):
-        return self.group()['phase_fractions']
-    
-    @phase_fractions.setter
-    def phase_fractions(self, value):
-        self.replace_dataset('phase_fractions', data=value)
-    
-    @property
-    def scale_factor(self):
-        return self.group()['scale_factor']
-    
-    @scale_factor.setter
-    def scale_factor(self, value):
-        self.replace_dataset('scale_factor', data=value)
-        
-    @property
     def effective_wavelength(self):
         wavelengths = self.wavelengths
         # Combine kα1 and kα2
@@ -181,14 +188,6 @@ class XRDStore():
         return wl
     
     @property
-    def wavelengths(self):
-        return self.group()['wavelengths'].value
-    
-    @wavelengths.setter
-    def wavelengths(self, value):
-        self.replace_dataset('wavelengths', data=value)
-    
-    @property
     def layout(self):
         return self.group()['positions'].attrs['layout']
     
@@ -197,23 +196,16 @@ class XRDStore():
         self.group()['positions'].attrs['layout'] = value
     
     @property
-    def intensities(self):
-        intensities = self.group()['intensities'].value
-        return intensities
-    
-    @intensities.setter
-    def intensities(self, value):
-        self.replace_dataset('intensities', data=value)
-    
-    @property
     def intensities_subtracted(self):
+        raise exceptions.DeprecationError("Just subtract them in real time")
         intensities_subtracted = self.group()['intensities_subtracted'].value
         return intensities_subtracted
-        
+    
     @intensities_subtracted.setter
     def intensities_subtracted(self, value):
+        raise exceptions.DeprecationError("Just subtract them in real time")
         self.replace_dataset('intensities_subtracted', data=value)
-        
+    
     @property
     def collimator(self):
         collimator = self.group()['collimator'].value
@@ -225,51 +217,11 @@ class XRDStore():
         self.group()['collimator'].attrs['unit'] = 'mm'
     
     @property
-    def scattering_lengths(self):
-        q = self.group()['scattering_lengths'].value
-        return q
-    
-    @scattering_lengths.setter
-    def scattering_lengths(self, value):
-        self.replace_dataset('scattering_lengths', data=value)
-    
-    @property
-    def backgrounds(self):
-        data = self.group()['backgrounds'].value
-        new_shape = (data.shape[0], data.shape[1])
-        return data.reshape(new_shape)
-    
-    @backgrounds.setter
-    def backgrounds(self, value):
-        name = 'backgrounds'
-        try:
-             del self.group()[name]
-        except KeyError:
-            pass
-        self.group().create_dataset(name, data=value)
-    
-    @property
     def subtracted(self):
+        raise exceptions.DeprecationError("Just subtract them as needed.")
         bg = self.backgrounds
         it = self.intensities
         return it - bg
-    
-    @subtracted.setter
-    def subtracted(self, value):
-        name = 'subtracted'
-        try:
-            del self.group()[name]
-        except KeyError:
-            pass
-        self.group().create_dataset(name, data=value)
-    
-    @property
-    def peak_broadening(self):
-        return self.group()['peak_broadening']
-    
-    @peak_broadening.setter
-    def peak_broadening(self, value):
-        self.replace_dataset('peak_broadening', data=value)
     
     @property
     def source(self):
