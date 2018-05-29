@@ -20,6 +20,10 @@
 """Define some classes for more fine-grained control over exception
 handling."""
 
+class DeprecationError(Exception):
+    """This feature has been replaced by a new method."""
+    pass
+
 #############################
 # Electrochemistry exceptions
 #############################
