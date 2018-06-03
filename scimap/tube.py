@@ -10,7 +10,7 @@ class XRDTube():
     def __init__(self, kalpha1, kalpha2):
         self.kalpha1 = kalpha1
         self.kalpha2 = kalpha2
-
+    
     @property
     def kalpha(self):
         wavelength = (
@@ -18,7 +18,7 @@ class XRDTube():
             (1 + KALPHA2_RATIO)
         )
         return wavelength
-
+    
     def split_angle_by_kalpha(self, angle):
         """Predict kα1/kα2 splitting at the given 2θ angle."""
         theta1 = math.degrees(
@@ -28,6 +28,7 @@ class XRDTube():
             math.asin(self.kalpha2 * math.sin(math.radians(angle)) / self.kalpha)
         )
         return (theta1, theta2)
+
 
 tubes = {
     'Cu': XRDTube(kalpha1=1.5406,

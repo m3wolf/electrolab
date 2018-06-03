@@ -12,6 +12,7 @@ from . import exceptions
 from .plots import new_axes, set_outside_ticks
 from .xrdstore import XRDStore
 from .native_refinement import NativeRefinement
+from .pawley_refinement import PawleyRefinement
 from .utilities import prog, xycoord
 
 
@@ -820,7 +821,7 @@ class XRDMap(Map):
         ))
 
     def plot_fwhm(self, phase_idx=0, *args, **kwargs):
-        #warnings.warn(UserWarning("Use `Map.plot_map(metric='fwhm')` instead"))
+        warnings.warn(UserWarning("Use `Map.plot_map(metric='fwhm')` instead"))
     
     def refine_mapping_data(self, backend='native'):
         """Refine the relevant XRD parameters, such as background, unit-cells,
@@ -846,7 +847,8 @@ class XRDMap(Map):
         broadenings = []
         # Retrieve the refinement method based on the given parameter
         backends = {
-            'native': NativeRefinement
+            'native': NativeRefinement,
+            'pawley': PawleyRefinement,
         }
         if backend in backends.keys():
             Refinement = backends[backend]

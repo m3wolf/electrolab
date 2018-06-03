@@ -747,6 +747,7 @@ class XRDLocusTest(unittest.TestCase):
 
 
 class ReflectionTest(unittest.TestCase):
+    
     def test_hkl_to_tuple(self):
         newHkl = hkl_to_tuple((1, 1, 1))
         self.assertEqual(
@@ -763,7 +764,7 @@ class ReflectionTest(unittest.TestCase):
             newHkl,
             (1, 0, 10)
         )
-
+    
     def test_vague_hkl(self):
         # One of these indices is a 10 but it's not clear which one
         with self.assertRaises(exceptions.HKLFormatError):
@@ -771,6 +772,13 @@ class ReflectionTest(unittest.TestCase):
         # This one's just nonsensical
         with self.assertRaises(exceptions.HKLFormatError):
             newHkl = hkl_to_tuple('1 d 10')
+    
+    def test_copy(self):
+        ref0 = Reflection('111')
+        ref1 = ref0.copy()
+        # Change a value and ensure the copy stays the same
+        ref0.intensity = 77
+        self.assertNotEqual(ref1.intensity, ref0.intensity)
 
 
 class PhaseTest(unittest.TestCase):
@@ -778,7 +786,7 @@ class PhaseTest(unittest.TestCase):
         self.corundum_scan = XRDScan(filename='test-data-xrd/corundum.xye',
                                      phase=Corundum())
         self.phase = Corundum()
-
+    
     def test_peak_by_hkl(self):
         reflection = self.phase.reflection_by_hkl('110')
         self.assertEqual(
@@ -794,41 +802,33 @@ class ExperimentalDataTest(unittest.TestCase):
     def setUp(self):
         self.phase = Corundum()
 
-    def test_predicted_peak_positions(self):
+    def test_predicted_peaks(self):
         # Predicted peaks up to (116) were calculated using celref
         # with the R-3C space group
-        predicted_peaks = self.phase.predicted_peak_positions()
+        predicted_peaks = self.phase.predicted_peaks()
         celref_peaks = [ # (hkl, d, q)
             ('012', 3.4746228816945104, 1.8083071231360195),
             ('104', 2.5479680737754244, 2.4659591977812907),
             ('110', 2.3750000000000000, 2.6455517082861415),
             ('006', 2.1636666666666664, 2.9039525375964814),
             ('113', 2.0820345582756135, 3.0178102866762490),
+            ('202', 1.9607287412929800, 3.2045153288446278),
             ('024', 1.7373114408472552, 3.6166142462720390),
             ('116', 1.5994489779586798, 3.9283436944631980),
             ('211', 1.5437700478607450, 4.0700266959359720),
+            ('122', 1.5120305971116237, 4.1554617473893210),
+            ('018', 1.5095406436761034, 4.1623160883422665),
             ('214', 1.4022018390633044, 4.4809421383849170),
             ('300', 1.3712068893253610, 4.5822299728022350),
             ('125', 1.3339201035011320, 4.7103160756691110),
             ('208', 1.2739840368877122, 4.9319183955625810),
             ('1010', 1.2380134239217553, 5.075215814119230),
         ]
-        # Old 2-theta values
-        # celref_peaks = [
-        #     ('012', 3.4746228816945104, 25.637288649553085),
-        #     ('104', 2.5479680737754244, 35.22223164557721),
-        #     ('110', 2.375, 37.88141047624646),
-        #     ('006', 2.1636666666666664, 41.74546075011751),
-        #     ('113', 2.0820345582756135, 43.46365474219995),
-        #     ('024', 1.7373114408472552, 52.68443192186963),
-        #     ('116', 1.5994489779586798, 57.62940019834231),
-        # ]
         self.assertEqual(
-            predicted_peaks,
+            predicted_peaks[:len(celref_peaks)],
             celref_peaks
         )
     
-    @unittest.expectedFailure
     def test_mean_square_error(self):
         scan = XRDScan(filename=corundum_path,
                        phase=self.phase)
@@ -839,36 +839,6 @@ class ExperimentalDataTest(unittest.TestCase):
         diff = rms_error - 0.10492
         self.assertTrue(
             diff < 0.001
-        )
-    
-    def test_refine_corundum(self):
-        # Results take from celref using corundum standard
-        scan = XRDScan(filename=corundum_path,
-                       phase=Corundum())
-        residuals = scan.refinement.refine_unit_cells(
-            quiet=True,
-            scattering_lengths=scan.scattering_lengths,
-            intensities=scan.intensities
-        )
-        # peaks = scan.phases[0].predicted_peaks()
-        # plt.plot(scan.diffractogram.counts)
-        # for peak in peaks:
-        #     plt.axvline(peak.q, linestyle=":", alpha=0.5, color="C1")
-        # plt.show()
-        unit_cell_parameters = scan.phases[0].unit_cell.cell_parameters
-        # Cell parameters taken from 1978a sample CoA
-        self.assertAlmostEqual(
-            unit_cell_parameters.a,
-            4.75, # Old value: 4.758877,
-            places=2,
-        )
-        self.assertAlmostEqual(
-            unit_cell_parameters.c,
-            12.982,# Old value: 12.992877
-        )
-        self.assertTrue(
-            residuals < 0.03,
-            'residuals ({}) too high'.format(residuals)
         )
 
 

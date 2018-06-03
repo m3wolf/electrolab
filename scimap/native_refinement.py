@@ -215,18 +215,18 @@ class NativeRefinement(BaseRefinement):
         return total_area
 
     def refine_background(self, scattering_lengths, intensities, s=None, k=4):
-
+        
         """Fit a univariate spline to the background data.
-
+        
         Arguments
         ---------
         - scattering_lengths : Array of scattering vector lengths, q.
-
+        
         - intensities : Array of intensity values at each q position
-
+        
         - s : Smoothing factor passed to the spline. Default is
             the variance of the background.
-
+        
         - k : Degree of the spline (default quartic spline).
         """
         # Remove pre-indexed peaks for background fitting
