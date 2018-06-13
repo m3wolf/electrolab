@@ -13,7 +13,7 @@ from .plots import new_axes, set_outside_ticks
 from .xrdstore import XRDStore
 from .native_refinement import NativeRefinement
 from .pawley_refinement import PawleyRefinement
-from .utilities import prog, xycoord
+from .utilities import prog, xycoord, q_to_twotheta, twotheta_to_q
 
 
 class Map():
@@ -23,18 +23,19 @@ class Map():
     
     Arguments
     ---------
-    - sample_name : A string used for identifying this sample. It is
-    used for decided on directory names and guessing the HDF5 file
-    name if not explicitely provided.
-    
-    - diameter : [deprecated]
-    
-    - coverage : [deprecated]
-    
-    - hdf_filename : String containing the path to the HDF file. If
-      None or omitted, a value will be guessed from the sample_name.
-    
-    - resolution : [deprecated]
+    sample_name : str
+      A string used for identifying this sample. It is used for
+      decided on directory names and guessing the HDF5 file name if not
+      explicitely provided.
+    diameter : optional
+      [deprecated]
+    coverage : optional
+      [deprecated]
+    hdf_filename : str
+      String containing the path to the HDF file. If None or omitted,
+      a value will be guessed from the sample_name.
+    resolution : 
+      [deprecated]
     
     """
     cmap_name = 'viridis'
@@ -45,7 +46,7 @@ class Map():
     reliability_normalizer = colors.Normalize(0, 1, clip=True)
     
     def __init__(self, sample_name, diameter=12.7, coverage=1,
-                 hdf_filename=None, resolution=1):
+                 hdf_filename=None, tube='Cu', resolution=1):
         if hdf_filename is None:
             # Guess HDF5 filename from sample_name argument
             self.hdf_filename = sample_name + ".h5"
@@ -623,18 +624,18 @@ class XRDMap(Map):
     def context(self):
         """Convert the object to a dictionary for the templating engine."""
         raise NotImplementedError("Use gadds._context()")
-
+    
     def write_script(self, file=None, quiet=False):
         """
         Format the sample into a slam file that GADDS can process.
         """
         raise NotImplementedError("Use gadds.write_gadds_script()")
-
+    
     def diffractogram(self, index=None, weights=None, weight_range=None):
         """
         Calculate the bulk diffractogram by averaging each scan weighted
         by reliability.
-
+        
 	Parameters
 	----------
 	index : int, optional
@@ -646,7 +647,7 @@ class XRDMap(Map):
         weight_range : tuple, optional
           Set the limits of weights such that (min, max).
           If None, weights would be applied without normalization.
-
+        
         Returns
         =======
         A pandas series of intensity vs scattering length
@@ -674,7 +675,7 @@ class XRDMap(Map):
                 Qs = store.scattering_lengths[index]
             series = pandas.Series(Is, index=Qs)
         return series
-
+    
     def plot_diffractogram(self, ax=None, index=None, subtracted=False, **kwargs):
         """Plot a specific diffractogram or an average of all the scans,
         weighted by reliability.
@@ -813,13 +814,12 @@ class XRDMap(Map):
     
     def plot_phase_ratio(self, phase_idx=0, *args, **kwargs):
         warnings.warn(UserWarning("Use `Map.plot_map(metric='phase_ratio')` instead"))
-
-
+    
     def plot_cell_parameter(self, parameter='a', phase_idx=0, *args, **kwargs):
         warnings.warn(UserWarning(
             "Use `Map.plot_map(metric='{}')` instead".format(parameter)
         ))
-
+    
     def plot_fwhm(self, phase_idx=0, *args, **kwargs):
         warnings.warn(UserWarning("Use `Map.plot_map(metric='fwhm')` instead"))
     
@@ -862,15 +862,17 @@ class XRDMap(Map):
             raise ValueError(msg)
         # Open the data storage and start the refining
         with self.store(mode='r+') as store:
+            wavelengths = store.wavelengths
             scans = zip(store.scattering_lengths[:], store.intensities[:])
             total = len(store.scattering_lengths)
             for idx, (qs, Is) in enumerate(prog(scans, total=total, desc="Refining")):
+                two_theta = q_to_twotheta(qs, wavelength=store.effective_wavelength)
                 phases = [P() for P in self.Phases]
-                refinement = Refinement(phases=phases)
+                print(wavelengths)
+                refinement = Refinement(phases=phases, wavelengths=wavelengths)
                 # Refine background
-                bg = refinement.refine_background(scattering_lengths=qs,
-                                                  intensities=Is,
-                                                  k=3, s=len(qs)/20)
+                bg = refinement.background(two_theta=two_theta,
+                                           intensities=Is)
                 bgs.append(bg)
                 # Refine unit-cell parameters
                 subtracted = Is - bg
@@ -878,10 +880,9 @@ class XRDMap(Map):
                                     exceptions.UnitCellError,
                                     ZeroDivisionError)
                 try:
-                    residuals = refinement.refine_unit_cells(
-                        scattering_lengths=qs,
+                    residuals = refinement.unit_cells(
+                        two_theta=two_theta,
                         intensities=subtracted,
-                        quiet=True
                     )
                 except RefinementErrors:
                     failed.append(idx)
@@ -892,28 +893,28 @@ class XRDMap(Map):
                     phases = tuple(p.unit_cell.as_tuple() for p in refinement.phases)
                     all_cells.append(phases)
                 # Refine the phase fractions
-                frac = refinement.refine_phase_fractions(
-                    scattering_lengths=qs,
-                    intensities=subtracted
+                print(two_theta)
+                frac = refinement.phase_fractions(
+                    two_theta=two_theta,
+                    intensities=Is,
                 )
                 fractions.append(frac)
                 # Refine scale factors
-                scale = refinement.refine_scale_factor(
-                    scattering_lengths=qs,
-                    intensities=subtracted
+                scale = refinement.scale_factor(
+                    two_theta=two_theta,
+                    intensities=Is,
                 )
-                scale_factors.append(scale) 
+                scale_factors.append(scale)
                 # Fit peak widths
                 refinement.fit_peaks(scattering_lengths=qs, intensities=subtracted)
                 fit = refinement.predict(qs)
                 fits.append(fit)
-                width = refinement.refine_peak_widths(
-                    scattering_lengths=qs,
+                width = refinement.peak_widths(
+                    two_theta=two_theta,
                     intensities=fit
                 )
                 broadenings.append(width)
                 # Append the fitted diffraction pattern
-                # fits.append(np.zeros_like(qs))
             # Store refined data for later
             store.backgrounds = np.array(bgs)
             store.cell_parameters = np.array(all_cells)

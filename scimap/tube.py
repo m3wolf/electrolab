@@ -10,6 +10,11 @@ class XRDTube():
     def __init__(self, kalpha1, kalpha2):
         self.kalpha1 = kalpha1
         self.kalpha2 = kalpha2
+        self.kalpha_ratio = KALPHA2_RATIO
+    
+    @property
+    def wavelengths(self):
+        return ((self.kalpha1, 1), (self.kalpha2, self.kalpha_ratio))
     
     @property
     def kalpha(self):
