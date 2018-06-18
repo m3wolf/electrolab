@@ -19,6 +19,7 @@
 
 from sympy.physics import units
 import h5py
+import numpy as np
 
 
 class StoreDescriptor():
@@ -179,13 +180,9 @@ class XRDStore():
     
     @property
     def effective_wavelength(self):
-        wavelengths = self.wavelengths
-        # Combine kα1 and kα2
-        if len(wavelengths) == 2:
-            wl = (wavelengths[0] + 0.5*wavelengths[1]) / 1.5
-        else:
-            wl = wavelengths
-        return wl
+        wls = self.wavelengths
+        wavelength = np.sum(wls[:,0] * wls[:,1]) / np.sum(wls[:,1])
+        return wavelength
     
     @property
     def layout(self):

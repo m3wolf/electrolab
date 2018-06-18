@@ -82,7 +82,7 @@ class NativeRefinement(BaseRefinement):
             raise exceptions.RefinementError()
         return rms_error
     
-    def refine_unit_cells(self, scattering_lengths, intensities, quiet=True):
+    def unit_cells(self, scattering_lengths, intensities, quiet=True):
         """Residual least squares refinement of the unit-cell
         parameters. Returns an (p, 6) array where p is the number of
         phases and axis 1 has a value for each of the cell parameters
@@ -215,18 +215,18 @@ class NativeRefinement(BaseRefinement):
         return total_area
 
     def refine_background(self, scattering_lengths, intensities, s=None, k=4):
-
+        
         """Fit a univariate spline to the background data.
-
+        
         Arguments
         ---------
         - scattering_lengths : Array of scattering vector lengths, q.
-
+        
         - intensities : Array of intensity values at each q position
-
+        
         - s : Smoothing factor passed to the spline. Default is
             the variance of the background.
-
+        
         - k : Degree of the spline (default quartic spline).
         """
         # Remove pre-indexed peaks for background fitting
@@ -378,31 +378,31 @@ class NativeRefinement(BaseRefinement):
             predicted += peak.predict(q)
         return predicted
     
-    def plot(self, x, ax=None):
-        warnings.warn(DeprecationWarning(), "Use predict() method and pyplot instead.")
-        # Create new axes if necessary
-        if ax is None:
-            ax = plots.new_axes()
-        # Check if background has been fit
-        if self.spline is not None:
-            # Plot background
-            q = x
-            background = self.spline(q)
-            ax.plot(q, background)
-        # Highlight peaks
-        self.highlight_peaks(ax=ax)
-        # Plot peak fittings
-        peaks = []
-        for peak in self.peak_list:
-            # dataframes.append(peak.dataframe(background=spline))
-            peaks.append(peak.predict())
-            # peak.plot_overall_fit(ax=ax, background=spline)
-        if peaks:
-            predicted = pandas.concat(peaks)
-            if self.spline:
-                predicted = predicted + self.spline(predicted.index)
-            predicted.plot(ax=ax)
-        return ax
+    # def plot(self, two_theta, intensities, ax=None):
+        
+    #     # Create new axes if necessary
+    #     if ax is None:
+    #         ax = plots.new_axes()
+    #     # Check if background has been fit
+    #     if self.spline is not None:
+    #         # Plot background
+    #         q = x
+    #         background = self.spline(q)
+    #         ax.plot(q, background)
+    #     # Highlight peaks
+    #     self.highlight_peaks(ax=ax)
+    #     # Plot peak fittings
+    #     peaks = []
+    #     for peak in self.peak_list:
+    #         # dataframes.append(peak.dataframe(background=spline))
+    #         peaks.append(peak.predict())
+    #         # peak.plot_overall_fit(ax=ax, background=spline)
+    #     if peaks:
+    #         predicted = pandas.concat(peaks)
+    #         if self.spline:
+    #             predicted = predicted + self.spline(predicted.index)
+    #         predicted.plot(ax=ax)
+    #     return ax
     
     def highlight_peaks(self, ax):
         color_list = [
@@ -411,7 +411,7 @@ class NativeRefinement(BaseRefinement):
             'red',
             'orange'
         ]
-
+        
         def draw_peaks(ax, phase, color):
             """Highlight the expected peak corresponding to this phase."""
             alpha = 0.15

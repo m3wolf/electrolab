@@ -90,7 +90,7 @@ class MapRefinementTest(unittest.TestCase):
             # del group['phase_fractions']
             self.assertNotIn('phase_fractions', group.keys())
         # Do the actual refinement
-        xrdmap.refine_mapping_data()
+        xrdmap.refine_mapping_data(backend="pawley")
         # Check that the new groups have been created
         with h5py.File(self.h5file) as f:
             group = f['xrd-map-gadds'] 
@@ -98,26 +98,3 @@ class MapRefinementTest(unittest.TestCase):
             self.assertIn('cell_parameters', group.keys())
             self.assertIn('goodness_of_fit', group.keys())
             self.assertIn('phase_fractions', group.keys())
-    
-    def test_refine_broadening(self):
-        xrdmap = self.xrdmap()
-        # Check that the right groups are not created before refining
-        with h5py.File(self.h5file) as f:
-            group = f['xrd-map-gadds']
-            self.assertNotIn('background', group.keys())
-            del group['cell_parameters']
-            self.assertNotIn('cell_parameters', group.keys())
-            del group['goodness_of_fit']
-            self.assertNotIn('goodness_of_fit', group.keys())
-            self.assertNotIn('phase_fractions', group.keys())
-            self.assertNotIn('peak_broadening', group.keys())
-        # Do the actual refinement
-        xrdmap.refine_mapping_data()
-        # Check that the new groups have been created
-        with h5py.File(self.h5file) as f:
-            group = f['xrd-map-gadds']
-            self.assertIn('backgrounds', group.keys())
-            self.assertIn('cell_parameters', group.keys())
-            self.assertIn('goodness_of_fit', group.keys())
-            self.assertIn('phase_fractions', group.keys())
-            self.assertIn('peak_broadening', group.keys())
