@@ -820,8 +820,8 @@ class XRDMap(Map):
         ))
 
     def plot_fwhm(self, phase_idx=0, *args, **kwargs):
-        #warnings.warn(UserWarning("Use `Map.plot_map(metric='fwhm')` instead"))
-    
+        warnings.warn(UserWarning("Use `Map.plot_map(metric='fwhm')` instead"))
+
     def refine_mapping_data(self, backend='native'):
         """Refine the relevant XRD parameters, such as background, unit-cells,
         etc. This will save the refined data to the HDF file.
@@ -902,14 +902,14 @@ class XRDMap(Map):
                 )
                 scale_factors.append(scale) 
                 # Fit peak widths
-                refinement.fit_peaks(scattering_lengths=qs, intensities=subtracted)
-                fit = refinement.predict(qs)
-                fits.append(fit)
-                width = refinement.refine_peak_widths(
-                    scattering_lengths=qs,
-                    intensities=fit
-                )
-                broadenings.append(width)
+                #refinement.fit_peaks(scattering_lengths=qs, intensities=subtracted)
+                #fit = refinement.predict(qs)
+                #fits.append(fit)
+                #width = refinement.refine_peak_widths(
+                    #scattering_lengths=qs,
+                    #intensities=fit
+                #)
+                #broadenings.append(width)
                 # Append the fitted diffraction pattern
                 # fits.append(np.zeros_like(qs))
             # Store refined data for later
