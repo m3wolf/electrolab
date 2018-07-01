@@ -1,4 +1,22 @@
 # -*- coding: utf-8 -*-
+#
+# Copyright © 2016 Mark Wolf
+#
+# This file is part of scimap.
+#
+# Scimap is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# Scimap is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with Scimap. If not, see <http://www.gnu.org/licenses/>.
+
 
 import math
 import warnings
@@ -39,7 +57,7 @@ def peak_area(scattering_lengths, intensities, qrange):
 
 class NativeRefinement(BaseRefinement):
     spline = None
-
+    
     def peak_rms_error(self, phase, unit_cell=None, peak_list=None):
         diffs = []
         predicted_peaks = phase.predicted_peak_positions(unit_cell=unit_cell)
@@ -63,8 +81,8 @@ class NativeRefinement(BaseRefinement):
         except ZeroDivisionError:
             raise exceptions.RefinementError()
         return rms_error
-
-    def refine_unit_cells(self, scattering_lengths, intensities, quiet=True):
+    
+    def unit_cells(self, scattering_lengths, intensities, quiet=True):
         """Residual least squares refinement of the unit-cell
         parameters. Returns an (p, 6) array where p is the number of
         phases and axis 1 has a value for each of the cell parameters
@@ -120,10 +138,10 @@ class NativeRefinement(BaseRefinement):
                 # Optimization failed for some reason
                 raise exceptions.RefinementError(result.message)
         return residual_error
-
+    
     def refine_phase_fractions(self, scattering_lengths, intensities):
         """Calculate the relative strengths of each phase in a diffractogram.
-
+        
         The simplest approach is to calculate the peak area for each
         phases's diagnostic reflection. The fraction is then the ratio
         of each phases's reflection over the sum of all phases. This
@@ -131,7 +149,7 @@ class NativeRefinement(BaseRefinement):
         the structure factor of the diagnostic reflections are also
         similar. By default this method does not remove the
         background.
-
+        
         Parameters
         ----------
         scattering_lengths : np.ndarray
@@ -139,13 +157,13 @@ class NativeRefinement(BaseRefinement):
         intensities : np.ndarray
           Independent variable for the diffractogram. Must be the same
           shape as ``scattering_lengths``.
-
+        
         Returns
         -------
         phase_fractions : np.ndarray
           The relative weight of each phase as determined by the
           diffraction pattern.
-
+        
         """
         # Calculate the diagnistic peak area for each phase
         areas = []
@@ -158,10 +176,10 @@ class NativeRefinement(BaseRefinement):
         total_area = np.sum(areas)
         phase_fractions = areas / total_area
         return phase_fractions
-
+    
     def refine_scale_factor(self, scattering_lengths, intensities):
         """Calculate the absolute strengths of each phase in a diffractogram.
-
+        
         The simplest approach is to calculate the peak area for each
         phases's diagnostic reflection. The factor is then the sum of
         each phases's reflection over all phases. This makes the
@@ -169,7 +187,7 @@ class NativeRefinement(BaseRefinement):
         structure factor of the diagnostic reflections are also
         similar. By default this method does not remove the
         background.
-
+        
         Parameters
         ----------
         scattering_lengths : np.ndarray
@@ -195,20 +213,20 @@ class NativeRefinement(BaseRefinement):
         areas = np.array(areas)
         total_area = np.sum(areas)
         return total_area
-
+    
     def refine_background(self, scattering_lengths, intensities, s=None, k=4):
-
+        
         """Fit a univariate spline to the background data.
-
+        
         Arguments
         ---------
         - scattering_lengths : Array of scattering vector lengths, q.
-
+        
         - intensities : Array of intensity values at each q position
-
+        
         - s : Smoothing factor passed to the spline. Default is
             the variance of the background.
-
+        
         - k : Degree of the spline (default quartic spline).
         """
         # Remove pre-indexed peaks for background fitting
@@ -237,43 +255,42 @@ class NativeRefinement(BaseRefinement):
         # background = self.spline(scattering_lengths)
         background = self.spline(scattering_lengths)
         return background
-
-    def refine_peak_widths(self):
-        pass
-
+    
     def fwhm(self, phase_idx=0):
         """Use the previously fitted peaks to describe full-width and
         half-maximum."""
+        raise NotImplementedError()
         phase = self.scan.phases[phase_idx]
         peak = self.peak(phase.diagnostic_reflection, phase_idx=phase_idx)
         # print('TODO: Get diagnostic peak instead of', peak)
         return peak.fwhm()
-
+    
     @property
     def has_background(self):
         """Returns true if the background has been fit and subtracted.
         """
         return self.spline is not None
-
+    
     def background(self, x):
         if self.spline is None:
             raise exceptions.RefinementError("Please run `refine_background()` first")
         return self.spline(x)
-
+    
     def refine_displacement(self):
         """Not implemented yet."""
         pass
-
+    
     def details(self):
         return "Native refinement"
-
+    
     def peak_list_by_phase(self):
         """List of fitted peaks organized by phase."""
         peak_list = getattr(self, '_peak_list', None)
         if peak_list is None:
-            peak_list = self.fit_peaks()
+            msg = "Peak's not fit, please run {}.fit_peaks() first.".format(self)
+            raise exceptions.RefinementError(msg)
         return peak_list
-
+    
     @property
     def peak_list(self):
         """List of fitted peaks across all phases"""
@@ -283,7 +300,7 @@ class NativeRefinement(BaseRefinement):
         for phase in peak_list:
             full_list += phase
         return full_list
-
+    
     def peak(self, reflection, phase_idx=0):
         """Returns a specific fitted peak."""
         peak_list = self.peak_list_by_phase()[phase_idx]
@@ -297,15 +314,15 @@ class NativeRefinement(BaseRefinement):
             raise IndexError('Mutliple peaks found for {}'.format(reflection))
         # Sanity checks passed so return to only value
         return peaks[0]
-
+    
     def fit_peaks(self, scattering_lengths, intensities):
         """
         Use least squares refinement to fit gaussian/Cauchy/etc functions
         to the predicted reflections.
         """
-        raise NotImplementedError("Disabled due to bad background fitting.")
         self._peak_list = []
-        fitMethods = ['pseudo-voigt', 'gaussian', 'cauchy', 'estimated']
+        # fitMethods = ['pseudo-voigt', 'gaussian', 'cauchy', 'estimated']
+        fitMethods = ['gaussian', 'cauchy']
         reflection_list = []
         # Check if there are phases present
         if len(self.phases) == 0:
@@ -336,15 +353,15 @@ class NativeRefinement(BaseRefinement):
                             break
                     else:
                         # No sucessful fit could be found.
-                        msg = "RefinementWarning: peak could not be fit for {}.".format(reflection)
+                        msg = "RefinementWarning: peak could not be fit for {}."
+                        msg = msg.format(reflection)
                         warnings.warn(msg, RuntimeWarning)
-                assert False
             self._peak_list.append(phase_peak_list)
         return self._peak_list
-
+    
     def predict(self, scattering_lengths):
         """Predict intensity values from the given scattering lengths, q.
-
+        
         Arguments
         ---------
         - scattering_lengths : Iterable with scattering_lengths
@@ -360,33 +377,33 @@ class NativeRefinement(BaseRefinement):
         for peak in self.peak_list:
             predicted += peak.predict(q)
         return predicted
-
-    def plot(self, x, ax=None):
-        warnings.warn(DeprecationWarning(), "Use predict() method and pyplot instead.")
-        # Create new axes if necessary
-        if ax is None:
-            ax = plots.new_axes()
-        # Check if background has been fit
-        if self.spline is not None:
-            # Plot background
-            q = x
-            background = self.spline(q)
-            ax.plot(q, background)
-        # Highlight peaks
-        self.highlight_peaks(ax=ax)
-        # Plot peak fittings
-        peaks = []
-        for peak in self.peak_list:
-            # dataframes.append(peak.dataframe(background=spline))
-            peaks.append(peak.predict())
-            # peak.plot_overall_fit(ax=ax, background=spline)
-        if peaks:
-            predicted = pandas.concat(peaks)
-            if self.spline:
-                predicted = predicted + self.spline(predicted.index)
-            predicted.plot(ax=ax)
-        return ax
-
+    
+    # def plot(self, two_theta, intensities, ax=None):
+        
+    #     # Create new axes if necessary
+    #     if ax is None:
+    #         ax = plots.new_axes()
+    #     # Check if background has been fit
+    #     if self.spline is not None:
+    #         # Plot background
+    #         q = x
+    #         background = self.spline(q)
+    #         ax.plot(q, background)
+    #     # Highlight peaks
+    #     self.highlight_peaks(ax=ax)
+    #     # Plot peak fittings
+    #     peaks = []
+    #     for peak in self.peak_list:
+    #         # dataframes.append(peak.dataframe(background=spline))
+    #         peaks.append(peak.predict())
+    #         # peak.plot_overall_fit(ax=ax, background=spline)
+    #     if peaks:
+    #         predicted = pandas.concat(peaks)
+    #         if self.spline:
+    #             predicted = predicted + self.spline(predicted.index)
+    #         predicted.plot(ax=ax)
+    #     return ax
+    
     def highlight_peaks(self, ax):
         color_list = [
             'green',
@@ -394,7 +411,7 @@ class NativeRefinement(BaseRefinement):
             'red',
             'orange'
         ]
-
+        
         def draw_peaks(ax, phase, color):
             """Highlight the expected peak corresponding to this phase."""
             alpha = 0.15
@@ -410,6 +427,6 @@ class NativeRefinement(BaseRefinement):
         for phase in self.background_phases:
             draw_peaks(ax=ax, phase=phase, color='grey')
         return ax
-
+    
     def confidence(self):
         return 1

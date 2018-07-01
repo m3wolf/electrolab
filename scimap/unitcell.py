@@ -81,10 +81,10 @@ class UnitCell():
         def __init__(self, angle, name='angle'):
             self.angle = angle
             self.name = name
-
+        
         def __get__(self, obj, objtype):
             return self.angle
-
+        
         def __set__(self, obj, value):
             # Raise an error if the caller is trying to set a different value
             if value != self.angle:

@@ -35,7 +35,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import h5py
 
-from cases import ScimapTestCase
 from scimap import exceptions, gadds, prog
 from scimap.peakfitting import PeakFit, remove_peak_from_df, discrete_fwhm
 from scimap.default_units import angstrom
@@ -55,8 +54,8 @@ from scimap.fullprof_refinement import FullProfPhase, ProfileMatch as FullprofPr
 from scimap.native_refinement import NativeRefinement, contains_peak
 from scimap.adapters import BrukerRawFile, BrukerBrmlFile, BrukerXyeFile, BrukerPltFile
 
-TESTDIR = os.path.join(os.path.dirname(__file__), "test-data-xrd")
-GADDS_SAMPLE = "xrd-map-gadds"
+TESTDIR = os.path.dirname(__file__)
+GADDS_SAMPLE = "xrd-map-gadds-temp"
 
 
 prog.quiet = True
@@ -69,7 +68,7 @@ corundum_path = os.path.join(
 
 hdf_34IDE = os.path.join(
     os.path.dirname(__file__),
-    'test-data-xrd/xrd-map-34-ID-E.hdf'
+    'test-data-xrd/xrd-map-34-ID-E.h5'
 )
 
 group_34IDE = 'xrd-map-34-ID-E'
@@ -95,7 +94,7 @@ class LMOLowAngle(lmo.CubicLMO):
     diagnostic_hkl = '311'
 
 
-class QTwoThetaTest(ScimapTestCase):
+class QTwoThetaTest(unittest.TestCase):
     """Test for proper conversion between scattering length (Q) and 2θ"""
     wavelength = 1.5418
     def test_twotheta_to_q(self):
@@ -119,26 +118,29 @@ class QTwoThetaTest(ScimapTestCase):
         self.assertEqual(twotheta[0], 9.9949346551020319)
 
 
-class GaddsTest(ScimapTestCase):
+class GaddsTest(unittest.TestCase):
     """Test how the software interacts with Bruker's GADDS control
     systems, both importing and exporting."""
     hdf_filename = os.path.join(TESTDIR, "temp_map_gadds.h5")
     hdf_groupname = "test_map_gadds"
-    directory = os.path.join(TESTDIR, 'xrd-map-gadds')
-
+    directory = os.path.join(TESTDIR, 'test-data-xrd', 'xrd-map-gadds')
+    
     def setUp(self):
         # Write the script to ensure HDF5 file exists
         gadds.write_gadds_script(qrange=(1, 2),
                                  sample_name=self.hdf_groupname,
                                  center=(0, 0), hdf_filename=self.hdf_filename,
                                  hexadecimal=False)
-
+    
     def tearDown(self):
         try:
             os.remove(self.hdf_filename)
         except FileNotFoundError:
             pass
-
+        gadds_dir = os.path.join(TESTDIR, self.hdf_groupname + '-frames')
+        if os.path.exists(gadds_dir):
+            shutil.rmtree(gadds_dir)
+    
     def test_import_gadds_map(self):
         import_gadds_map(directory=self.directory,
                          hdf_filename=self.hdf_filename,
@@ -152,15 +154,15 @@ class GaddsTest(ScimapTestCase):
         self.assertIn("scattering_lengths", keys)
 
 
-class SlamFileTest(ScimapTestCase):
+class SlamFileTest(unittest.TestCase):
 
     def tearDown(self):
         try:
-            os.remove('xrd-map-gadds-frames/xrd-map-gadds.slm')
+            os.remove('xrd-map-gadds-temp-frames/xrd-map-gadds-temp.slm')
         except FileNotFoundError:
             pass
         try:
-            os.rmdir('xrd-map-gadds-frames')
+            os.rmdir('xrd-map-gadds-temp-frames')
         except FileNotFoundError:
             pass
 
@@ -245,44 +247,20 @@ class SlamFileTest(ScimapTestCase):
                                  two_theta_range=(10, 20),
                                  detector_distance=20,
                                  frame_size=1024, center=(-10.5, 20.338),
-                                 sample_name="xrd-map-gadds",
+                                 sample_name="xrd-map-gadds-temp",
                                  hexadecimal=False)
-        self.assertEqual(
-            len(context['scans']),
-            631
-        )
-        self.assertApproximatelyEqual(
-            context['scans'][1]['x'],
-            0.2165
-        )
-        self.assertApproximatelyEqual(
-            context['scans'][1]['y'],
-            0.375
-        )
-        self.assertEqual(
-            context['scans'][3]['filename'],
-            'map-3'
-        )
-        self.assertEqual(
-            context['xoffset'],
-            -10.5
-        )
-        self.assertEqual(
-            context['yoffset'],
-            20.338
-        )
+        self.assertEqual(len(context['scans']), 631)
+        self.assertAlmostEqual(context['scans'][1]['x'], 0.2165, places=4)
+        self.assertAlmostEqual(context['scans'][1]['y'], 0.375)
+        self.assertEqual(context['scans'][3]['filename'], 'map-3')
+        self.assertEqual(context['xoffset'], -10.5)
+        self.assertEqual(context['yoffset'], 20.338)
         # Flood and spatial files to load
-        self.assertEqual(
-            context['flood_file'],
-            '1024_020._FL'
-        )
-        self.assertEqual(
-            context['spatial_file'],
-            '1024_020._ix'
-        )
-
+        self.assertEqual(context['flood_file'], '1024_020._FL')
+        self.assertEqual(context['spatial_file'], '1024_020._ix')
+    
     def test_write_slamfile(self):
-        sample_name = "xrd-map-gadds"
+        sample_name = "xrd-map-gadds-temp"
         directory = '{}-frames'.format(sample_name)
         hdf_filename = os.path.join(TESTDIR, "{}.h5".format(sample_name))
         # Check that the directory does not already exist
@@ -315,7 +293,7 @@ class SlamFileTest(ScimapTestCase):
             self.assertEqual(f[sample_name]['step_size'].value, math.sqrt(3) * 0.8 / 2)
 
 
-class PeakTest(ScimapTestCase):
+class PeakTest(unittest.TestCase):
     def test_split_parameters(self):
         peak = XRDPeak()
         # Put in some junk data so it will actually split
@@ -328,8 +306,9 @@ class PeakTest(ScimapTestCase):
             [(1, 2, 3), (4, 5, 6)]
         )
 
-    def gaussian_curve(self, height=1, center=0, fwhm=1):
-        x = np.linspace(-5, 5, num=500)
+    def gaussian_curve(self, x=None, height=1, center=0, fwhm=1):
+        if x is None:
+            x = np.linspace(-5, 5, num=500)
         a = height
         b = center
         c = fwhm / (2*math.sqrt(2*math.log(2)))
@@ -339,12 +318,12 @@ class PeakTest(ScimapTestCase):
     def test_discrete_fwhm(self):
         """This test checks that the full-width half-max is properly
         approximated."""
-        expected_fwhm = 1
+        expected_fwhm = 1.
         # Construct a Gaussian curve
-        x, y = self.gaussian_curve(fwhm=expected_fwhm)
+        x, y = self.gaussian_curve(x=np.linspace(-5, 5, num=5000), fwhm=expected_fwhm)
         # Calculate FWHM
         fwhm = discrete_fwhm(x, y)
-        self.assertApproximatelyEqual(fwhm, expected_fwhm, tolerance=0.1)
+        self.assertAlmostEqual(fwhm, expected_fwhm, places=1)
 
     @unittest.expectedFailure
     def test_initial_parameters(self):
@@ -358,12 +337,12 @@ class PeakTest(ScimapTestCase):
         tolerance = 0.001
         # Returns two peaks for kα₁ and kα₂
         p1, p2 = guess
-        self.assertApproximatelyEqual(p1.height, 426.604, tolerance=tolerance)
-        self.assertApproximatelyEqual(p1.center, 35.123, tolerance=tolerance)
-        self.assertApproximatelyEqual(p1.width, 0.02604, tolerance=tolerance)
-        self.assertApproximatelyEqual(p2.height, 213.302, tolerance=tolerance)
-        self.assertApproximatelyEqual(p2.center, 35.222, tolerance=tolerance)
-        self.assertApproximatelyEqual(p2.width, 0.02604, tolerance=tolerance)
+        self.assertAlmostEqual(p1.height, 426.604, tolerance=tolerance)
+        self.assertAlmostEqual(p1.center, 35.123, tolerance=tolerance)
+        self.assertAlmostEqual(p1.width, 0.02604, tolerance=tolerance)
+        self.assertAlmostEqual(p2.height, 213.302, tolerance=tolerance)
+        self.assertAlmostEqual(p2.center, 35.222, tolerance=tolerance)
+        self.assertAlmostEqual(p2.width, 0.02604, tolerance=tolerance)
 
     @unittest.expectedFailure
     def test_initial_pseudovoigt(self):
@@ -378,10 +357,10 @@ class PeakTest(ScimapTestCase):
         tolerance = 0.001
         # Returns two peaks for kα₁ and kα₂
         p1, p2 = guess
-        self.assertApproximatelyEqual(p1.width_g, 0.02604, tolerance=tolerance)
-        self.assertApproximatelyEqual(p1.width_c, 0.02604, tolerance=tolerance)
-        self.assertApproximatelyEqual(p2.width_g, 0.02604, tolerance=tolerance)
-        self.assertApproximatelyEqual(p2.width_c, 0.02604, tolerance=tolerance)
+        self.assertAlmostEqual(p1.width_g, 0.02604, tolerance=tolerance)
+        self.assertAlmostEqual(p1.width_c, 0.02604, tolerance=tolerance)
+        self.assertAlmostEqual(p2.width_g, 0.02604, tolerance=tolerance)
+        self.assertAlmostEqual(p2.width_c, 0.02604, tolerance=tolerance)
 
     @unittest.expectedFailure
     def test_peak_fit(self):
@@ -401,11 +380,11 @@ class PeakTest(ScimapTestCase):
         fit_kalpha1 = peak.fit_list[0]
         fit_kalpha2 = peak.fit_list[1]
         print(fit_kalpha1.parameters)
-        self.assertApproximatelyEqual(
+        self.assertAlmostEqual(
             fit_kalpha1.parameters,
             fit_kalpha1.Parameters(height=30.133, center=37.774, width=0.023978)
         )
-        self.assertApproximatelyEqual(
+        self.assertAlmostEqual(
             fit_kalpha2.parameters,
             fit_kalpha2.Parameters(height=15.467, center=37.872, width=0.022393)
         )
@@ -426,7 +405,7 @@ class CubeTest(unittest.TestCase):
 
 
 @unittest.expectedFailure
-class LMOSolidSolutionTest(ScimapTestCase):
+class LMOSolidSolutionTest(unittest.TestCase):
     def setUp(self):
         self.phase = CubicLMO()
         # self.map = XRDMap(scan_time=10,
@@ -435,15 +414,15 @@ class LMOSolidSolutionTest(ScimapTestCase):
         #                   background_phases=[Aluminum],
         #                   sample_name='test-sample')
         # self.map.reliability_normalizer = colors.Normalize(0.4, 0.8, clip=True)
-
+    
     def test_metric(self):
         self.locus.refine_unit_cells()
         metric = self.locus.phases[0].unit_cell.a
-        self.assertApproximatelyEqual(
+        self.assertAlmostEqual(
             metric,
             8.192
         )
-
+    
     def test_reliability_sample(self):
         self.locus.refine_background()
         self.locus.refine_scale_factors()
@@ -453,12 +432,12 @@ class LMOSolidSolutionTest(ScimapTestCase):
             'Reliability {} is not > 0.9'.format(reliability)
         )
         signal_level = self.locus.signal_level
-        self.assertApproximatelyEqual(
+        self.assertAlmostEqual(
             signal_level,
             1.77,
             # 'Signal level {} is not < 0.1'.format(signal_level)
         )
-
+    
     @unittest.expectedFailure
     def test_reliability_background(self):
         self.locus.load_diffractogram('test-sample-frames/LMO-background.plt')
@@ -467,7 +446,7 @@ class LMOSolidSolutionTest(ScimapTestCase):
             reliability < 0.1,
             'Reliability {} is not < 0.1'.format(reliability)
         )
-
+    
     def test_reliability_noise(self):
         # Check that background noise gives low reliability
         self.locus.load_diffractogram('test-sample-frames/LMO-noise.plt')
@@ -481,7 +460,7 @@ class LMOSolidSolutionTest(ScimapTestCase):
 
 
 @unittest.expectedFailure
-class NativeRefinementTest(ScimapTestCase):
+class NativeRefinementTest(unittest.TestCase):
     def setUp(self):
         self.scan = XRDScan(
             os.path.join(TESTDIR, 'lmo-two-phase.brml'),
@@ -493,30 +472,14 @@ class NativeRefinementTest(ScimapTestCase):
             'test-sample-frames/LMO-sample-data.plt',
             phases=[LMOLowAngle()]
         )
-
-    # def test_two_phase_ratio(self):
-    #     refinement = self.refinement
-    #     refinement.scan = self.scan
-    #     refinement.refine_scale_factors()
-    #     self.assertTrue(
-    #         refinement.is_refined['scale_factors']
-    #     )
-    #     self.assertApproximatelyEqual(
-    #         self.scan.phases[0].scale_factor,
-    #         275
-    #     )
-    #     self.assertApproximatelyEqual(
-    #         self.scan.phases[1].scale_factor,
-    #         205
-    #     )
-
+    
     def test_peak_area(self):
         reflection = LMOMidV().diagnostic_reflection
-        self.assertApproximatelyEqual(
+        self.assertAlmostEqual(
             self.refinement.net_area(reflection.qrange),
             205
         )
-
+    
     # @unittest.expectedFailure
     def test_peak_fwhm(self):
         """Method for computing full-width at half max of a peak."""
@@ -527,27 +490,27 @@ class NativeRefinementTest(ScimapTestCase):
         ax.grid(True, which='both')
         ax.figure.savefig('refinement.png', dpi=200)
         # This is the real answer:
-        # self.assertApproximatelyEqual(
+        # self.assertAlmostEqual(
         #     result,
         #     0.233 # Measured with a ruler
         # )
         # Ignoring kα1/kα2 overlap, you get this:
-        # self.assertApproximatelyEqual(
+        # self.assertAlmostEqual(
         #     result,
         #     0.275 # Measured with a ruler
         # )
-        self.assertApproximatelyEqual(
+        self.assertAlmostEqual(
             result,
             0.1702
         )
-
+    
     def test_peak_list(self):
         corundum_scan = XRDScan(corundum_path,
                                 phase=Corundum())
         peak_list = corundum_scan.refinement.peak_list
         two_theta_list = [peak.center_kalpha for peak in peak_list]
         hkl_list = [peak.reflection.hkl_string for peak in peak_list]
-        self.assertApproximatelyEqual(
+        self.assertAlmostEqual(
             two_theta_list,
             [25.599913304005099,
              35.178250906935716,
@@ -564,14 +527,14 @@ class NativeRefinementTest(ScimapTestCase):
         )
 
 
-class Refinement34IDETest(ScimapTestCase):
+class Refinement34IDETest(unittest.TestCase):
     """Tests that check for proper functioning of refinement with sample
     data from APS 34-ID-C beamline."""
     def setUp(self):
         self.map_ = XRDMap(hdf_filename=hdf_34IDE,
                            sample_name=group_34IDE,
                            Phases=[NCA])
-
+    
     def test_unit_cell(self):
         idx = 85
         # self.map_.refine_mapping_data()
@@ -581,7 +544,7 @@ class Refinement34IDETest(ScimapTestCase):
         expected_c = 14.23 # From GSAS-II refinement
 
 
-class XRDScanTest(ScimapTestCase):
+class XRDScanTest(unittest.TestCase):
     def setUp(self):
         self.xrd_scan = XRDScan(filename=corundum_path,
                                 phase=Corundum)
@@ -768,6 +731,7 @@ class XRDLocusTest(unittest.TestCase):
 
 
 class ReflectionTest(unittest.TestCase):
+    
     def test_hkl_to_tuple(self):
         newHkl = hkl_to_tuple((1, 1, 1))
         self.assertEqual(
@@ -784,7 +748,7 @@ class ReflectionTest(unittest.TestCase):
             newHkl,
             (1, 0, 10)
         )
-
+    
     def test_vague_hkl(self):
         # One of these indices is a 10 but it's not clear which one
         with self.assertRaises(exceptions.HKLFormatError):
@@ -792,14 +756,22 @@ class ReflectionTest(unittest.TestCase):
         # This one's just nonsensical
         with self.assertRaises(exceptions.HKLFormatError):
             newHkl = hkl_to_tuple('1 d 10')
+    
+    def test_copy(self):
+        ref0 = Reflection('111')
+        ref1 = ref0.copy()
+        # Change a value and ensure the copy stays the same
+        ref0.intensity = 77
+        self.assertNotEqual(ref1.intensity, ref0.intensity)
 
 
-class PhaseTest(ScimapTestCase):
+class PhaseTest(unittest.TestCase):
+
     def setUp(self):
         self.corundum_scan = XRDScan(filename='test-data-xrd/corundum.xye',
                                      phase=Corundum())
         self.phase = Corundum()
-
+    
     def test_peak_by_hkl(self):
         reflection = self.phase.reflection_by_hkl('110')
         self.assertEqual(
@@ -808,48 +780,40 @@ class PhaseTest(ScimapTestCase):
         )
 
 
-class ExperimentalDataTest(ScimapTestCase):
+class ExperimentalDataTest(unittest.TestCase):
     """
     These tests compare results to experimentally determined values.
     """
     def setUp(self):
         self.phase = Corundum()
 
-    def test_predicted_peak_positions(self):
+    def test_predicted_peaks(self):
         # Predicted peaks up to (116) were calculated using celref
         # with the R-3C space group
-        predicted_peaks = self.phase.predicted_peak_positions()
+        predicted_peaks = self.phase.predicted_peaks()
         celref_peaks = [ # (hkl, d, q)
             ('012', 3.4746228816945104, 1.8083071231360195),
             ('104', 2.5479680737754244, 2.4659591977812907),
             ('110', 2.3750000000000000, 2.6455517082861415),
             ('006', 2.1636666666666664, 2.9039525375964814),
             ('113', 2.0820345582756135, 3.0178102866762490),
+            ('202', 1.9607287412929800, 3.2045153288446278),
             ('024', 1.7373114408472552, 3.6166142462720390),
             ('116', 1.5994489779586798, 3.9283436944631980),
             ('211', 1.5437700478607450, 4.0700266959359720),
+            ('122', 1.5120305971116237, 4.1554617473893210),
+            ('018', 1.5095406436761034, 4.1623160883422665),
             ('214', 1.4022018390633044, 4.4809421383849170),
             ('300', 1.3712068893253610, 4.5822299728022350),
             ('125', 1.3339201035011320, 4.7103160756691110),
             ('208', 1.2739840368877122, 4.9319183955625810),
             ('1010', 1.2380134239217553, 5.075215814119230),
         ]
-        # Old 2-theta values
-        # celref_peaks = [
-        #     ('012', 3.4746228816945104, 25.637288649553085),
-        #     ('104', 2.5479680737754244, 35.22223164557721),
-        #     ('110', 2.375, 37.88141047624646),
-        #     ('006', 2.1636666666666664, 41.74546075011751),
-        #     ('113', 2.0820345582756135, 43.46365474219995),
-        #     ('024', 1.7373114408472552, 52.68443192186963),
-        #     ('116', 1.5994489779586798, 57.62940019834231),
-        # ]
         self.assertEqual(
-            predicted_peaks,
+            predicted_peaks[:len(celref_peaks)],
             celref_peaks
         )
-
-    @unittest.expectedFailure
+    
     def test_mean_square_error(self):
         scan = XRDScan(filename=corundum_path,
                        phase=self.phase)
@@ -860,30 +824,6 @@ class ExperimentalDataTest(ScimapTestCase):
         diff = rms_error - 0.10492
         self.assertTrue(
             diff < 0.001
-        )
-
-    def test_refine_corundum(self):
-        # Results take from celref using corundum standard
-        scan = XRDScan(filename=corundum_path,
-                       phase=Corundum())
-        residuals = scan.refinement.refine_unit_cells(
-            quiet=True,
-            scattering_lengths=scan.scattering_lengths,
-            intensities=scan.intensities
-        )
-        unit_cell_parameters = self.phase.unit_cell.cell_parameters
-        # Cell parameters taken from 1978a sample CoA
-        self.assertApproximatelyEqual(
-            unit_cell_parameters.a,
-            4.758877,
-        )
-        self.assertApproximatelyEqual(
-            unit_cell_parameters.c,
-            12.992877
-        )
-        self.assertTrue(
-            residuals < 0.03,
-            'residuals ({}) too high'.format(residuals)
         )
 
 
@@ -897,13 +837,13 @@ class BrukerRawTestCase(XRDFileTestCase):
     file formats.
     """
     def setUp(self):
-        self.adapter = BrukerRawFile(os.path.join(TESTDIR, 'corundum.raw'))
-
+        self.adapter = BrukerRawFile(os.path.join(TESTDIR, 'test-data-xrd', 'corundum.raw'))
+    
     def test_bad_file(self):
-        badFile = os.path.join(TESTDIR, 'corundum.xye')
+        badFile = os.path.join(TESTDIR, 'test-data-xrd', 'corundum.xye')
         with self.assertRaises(exceptions.FileFormatError):
             BrukerRawFile(badFile)
-
+    
     @unittest.expectedFailure
     def test_sample_name(self):
         self.assertEqual(
@@ -912,70 +852,71 @@ class BrukerRawTestCase(XRDFileTestCase):
         )
 
 
-class BrukerPltTestCase(ScimapTestCase):
-    pltfile = os.path.join(TESTDIR, "xrd-map-gadds/map-0.plt")
+class BrukerPltTestCase(unittest.TestCase):
+    pltfile = os.path.join(TESTDIR, 'test-data-xrd', 'xrd-map-gadds', 'map-0.plt')
     def setUp(self):
         self.adapter = BrukerPltFile(self.pltfile)
-
+    
     def test_intensities(self):
         Is = self.adapter.intensities()
         self.assertEqual(len(Is), 4001)
-
+    
     def test_scattering_lengths(self):
         qs = self.adapter.scattering_lengths(wavelength=1.5418)
         self.assertEqual(len(qs), 4001)
 
 
-class BrukerXyeTestCase(ScimapTestCase):
+class BrukerXyeTestCase(unittest.TestCase):
     def setUp(self):
-        self.adapter = BrukerXyeFile(os.path.join(TESTDIR, 'corundum.xye'))
-
+        self.adapter = BrukerXyeFile(os.path.join(TESTDIR, 'test-data-xrd', 'corundum.xye'))
+    
     def test_wavelength(self):
-        self.assertApproximatelyEqual(
+        self.assertAlmostEqual(
             self.adapter.wavelength,
             1.5418,
-            tolerance=0.0001
+            places=3,
         )
-
+    
     def test_scattering_lengths(self):
         """Check that two-theta values are converted to q."""
         q = self.adapter.scattering_lengths()
         # Check min and max values for scattering length
-        self.assertApproximatelyEqual(min(q), 0.71)
-        self.assertApproximatelyEqual(max(q), 5.24)
+        self.assertAlmostEqual(min(q), 0.710, places=3)
+        self.assertAlmostEqual(max(q), 5.239, places=3)
 
 
 class BrukerBrmlTestCase(unittest.TestCase):
     def setUp(self):
-        self.adapter = BrukerBrmlFile(os.path.join(TESTDIR, 'corundum.brml'))
-
+        self.adapter = BrukerBrmlFile(os.path.join(TESTDIR, 'test-data-xrd', 'corundum.brml'))
+    
     def test_wavelength(self):
         self.assertEqual(
             self.adapter.wavelength,
             1.5418,
         )
-
+    
     def test_sample_name(self):
         self.assertEqual(
             self.adapter.sample_name,
             'Corundum (new Safety Board)'
         )
-
+    
     def test_scattering_lengths(self):
         q = self.adapter.scattering_lengths()
         self.assertEqual(q[0], 0.71036599366565667)
-
+    
     def test_counts(self):
         counts = self.adapter.intensities()
         self.assertEqual(counts[0], 122)
-
+    
     # def test_diffractogram(self):
     #     importedDf = self.adapter.dataframe
     #     self.assertTrue(
     #         'counts' in importedDf.columns
     #     )
 
-class FullProfProfileTest(ScimapTestCase):
+
+class FullProfProfileTest(unittest.TestCase):
     def setUp(self):
         # Base parameters determine from manual refinement
         class FPCorundum(FullProfPhase, Corundum):
@@ -1022,7 +963,7 @@ class FullProfProfileTest(ScimapTestCase):
             context['phases'][0]['vals']['I_g'],
             0
         )
-
+    
     @unittest.expectedFailure
     def test_refine_background(self):
         # Set bg coeffs to something wrong
@@ -1036,7 +977,7 @@ class FullProfProfileTest(ScimapTestCase):
             0 < self.refinement.chi_squared < 10,
             'Χ² is too high: {}'.format(self.refinement.chi_squared)
         )
-        self.assertApproximatelyEqual(
+        self.assertAlmostEqual(
             self.refinement.bg_coeffs,
             [132.87, -35.040, -5.58, 0, 0, 0]
         )
@@ -1051,11 +992,11 @@ class FullProfProfileTest(ScimapTestCase):
             'Χ² is too high: {}'.format(self.refinement.chi_squared)
         )
         # Based on manual refinement in fullprof
-        self.assertApproximatelyEqual(
+        self.assertAlmostEqual(
             self.refinement.displacement,
             0.0054
         )
-
+    
     @unittest.expectedFailure
     def test_refine_unit_cell(self):
         # Set unit cell parameters off by a little bit
@@ -1065,13 +1006,14 @@ class FullProfProfileTest(ScimapTestCase):
         self.refinement.refine_unit_cells()
         self.assertTrue(self.refinement.is_refined['unit_cells'])
         self.assertTrue(self.refinement.chi_squared < 10)
-        self.assertApproximatelyEqual(phase.unit_cell.a, 4.758637,
+        self.assertAlmostEqual(phase.unit_cell.a, 4.758637,
                                       tolerance=0.001)
-        self.assertApproximatelyEqual(phase.unit_cell.c, 12.991814,
+        self.assertAlmostEqual(phase.unit_cell.c, 12.991814,
                                       tolerance=0.001)
 
+
 @unittest.expectedFailure
-class FullProfLmoTest(ScimapTestCase):
+class FullProfLmoTest(unittest.TestCase):
     """Check refinement using data from LiMn2O4 ("NEI")"""
     def setUp(self):
         # Base parameters determine from manual refinement
@@ -1101,7 +1043,7 @@ class FullProfLmoTest(ScimapTestCase):
         self.refinement.zero = 0.044580
         self.refinement.displacement = 0.000320
         self.refinement.transparency = -0.00810
-
+    
     def test_scale_factors(self):
         self.refinement.refine_scale_factors()
         self.assertTrue(
@@ -1110,11 +1052,11 @@ class FullProfLmoTest(ScimapTestCase):
         self.assertTrue(
             self.refinement.chi_squared < 10
         )
-        self.assertApproximatelyEqual(
+        self.assertAlmostEqual(
             self.scan.phases[0].scale_factor,
             37.621
         )
-        self.assertApproximatelyEqual(
+        self.assertAlmostEqual(
             self.scan.phases[1].scale_factor,
             40.592
         )

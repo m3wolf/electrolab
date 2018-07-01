@@ -5,6 +5,11 @@ import h5py
 
 import scimap
 
+
+class ScimapTestCase(unittest.TestCase):
+    pass
+
+
 # class ScimapTestCase(unittest.TestCase):
 #     def assertApproximatelyEqual(self, actual, expected,
 #                                  tolerance=0.01, msg=None):

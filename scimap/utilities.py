@@ -38,7 +38,7 @@ shape = namedtuple('shape', ('rows', 'columns'))
 def q_to_twotheta(q, wavelength):
     """Converts a numpy array or value in scattering length (q) into
     2θ angle.
-
+    
     Parameters
     ----------
     q
@@ -46,11 +46,11 @@ def q_to_twotheta(q, wavelength):
     wavelength
       Wavelength of the radiation. This parameter can (and should) use
       ``sympy.physics.units``
-
+    
     Returns
     -------
     Number or numpy array of two theta values in degrees.
-
+    
     """
     inner = (q * wavelength / 4 / np.pi)
     try:
