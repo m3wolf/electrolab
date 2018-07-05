@@ -157,21 +157,21 @@ class BrukerXyeFile(XRDAdapter):
 class BrukerPltFile(XRDAdapter):
     def __init__(self, filename):
         self.filename = filename
-
+    
     @property
     def sample_name(self):
         return self.filename
-
+    
     def _dataframe(self):
         df = pd.read_csv(self.filename,
                          names=['2theta', 'counts'],
                          sep=' ', index_col=0, comment="!")
         return df
-
+    
     def intensities(self):
         data = self._dataframe()
         return data['counts'].values
-
+    
     def scattering_lengths(self, wavelength):
         """Return scattering length (q) for all Datum elements in the file."""
         # Find all Datum entries in data tree
@@ -496,18 +496,20 @@ class BrukerGfrmFile():
         return masked_data
 
 
-class FullProfDataFile():
-    def __init__(self, filename):
-        self.filename = filename
+# class FullProfDataFile():
+#     def __init__(self, filename):
+#         self.filename = filename
 
-    def write_diffractogram(self, scan):
-        """
-        Write the 2-theta, counts data for the given scan in a format
-        suitable for feeding into the FullProf refinement program.
-        """
-        df = scan.diffractogram
-        result = df.to_csv(self.filename,
-                           columns=['counts'],
-                           sep=' ',
-                           header=False)
-        return result
+#     def write_diffractogram(self, two_theta, intensities):
+#         df = 
+        
+#     def write_dataframe(self, dataframe):
+#         """
+#         Write the 2-theta, counts data for the given scan in a format
+#         suitable for feeding into the FullProf refinement program.
+#         """
+#         result = dataframe.to_csv(self.filename,
+#                                   columns=['counts'],
+#                                   sep=' ',
+#                                   header=False)
+#         return result

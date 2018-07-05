@@ -11,6 +11,8 @@ from sympy.physics import units
 from . import exceptions
 from .plots import new_axes, set_outside_ticks
 from .xrdstore import XRDStore
+from .base_refinement import BaseRefinement
+from .fullprof_refinement import FullprofRefinement
 from .native_refinement import NativeRefinement
 from .pawley_refinement import PawleyRefinement
 from .utilities import prog, xycoord, q_to_twotheta, twotheta_to_q
@@ -80,7 +82,7 @@ class Map():
     @property
     def loci(self):
         with self.store() as store:
-            positions = store.positions
+            positions = store.positions.value
             # step_size = store.step_size
         return positions### * step_size.num
     
@@ -197,20 +199,20 @@ class Map():
         """
         raise NotImplementedError
     
-    def save(self, filename=None):
-        """Take cached data and save to disk."""
-        # Prepare dictionary of cached data
-        data = {
-            'diameter': self.diameter,
-            'coverage': self.coverage,
-            'loci': [locus.data_dict for locus in self.loci],
-        }
-        # Compute filename and Check if file exists
-        if filename is None:
-            filename = "{sample_name}.map".format(sample_name=self.sample_name)
-        # Pickle data and write to file
-        with open(filename, 'wb') as saveFile:
-            pickle.dump(data, saveFile)
+    # def save(self, filename=None):
+    #     """Take cached data and save to disk."""
+    #     # Prepare dictionary of cached data
+    #     data = {
+    #         'diameter': self.diameter,
+    #         'coverage': self.coverage,
+    #         'loci': [locus.data_dict for locus in self.loci],
+    #     }
+    #     # Compute filename and Check if file exists
+    #     if filename is None:
+    #         filename = "{sample_name}.map".format(sample_name=self.sample_name)
+    #     # Pickle data and write to file
+    #     with open(filename, 'wb') as saveFile:
+    #         pickle.dump(data, saveFile)
     
     def plot_map_with_image(self, scan=None, alpha=None):
         mapAxes, imageAxes = dual_axes()
@@ -310,13 +312,11 @@ class Map():
         """
         cmap_ = self.get_cmap(cmap)
         # Plot loci
+        add_colorbar = True
         if ax is None:
             # New axes unless one was already created
-            add_colorbar = True
             ax = new_axes()
-        else:
-            add_colorbar = True
-        xs, ys = self.loci.swapaxes(0, 1)
+        xs, ys = np.swapaxes(self.loci, 0, 1)
         with self.store() as store:
             step_size = float(store.step_size / store.position_unit)
             layout = store.layout
@@ -865,10 +865,11 @@ class XRDMap(Map):
         backends = {
             'native': NativeRefinement,
             'pawley': PawleyRefinement,
+            'fullprof': FullprofRefinement,
         }
         if backend in backends.keys():
             Refinement = backends[backend]
-        elif issubclass(backend, BaseRefinement):
+        elif isinstance(backend, BaseRefinement):
             Refinement = backend
         else:
             # Invalid refinement backend, throw exception
@@ -884,32 +885,20 @@ class XRDMap(Map):
             for idx, (qs, Is) in enumerate(prog(scans, total=total, desc="Refining")):
                 two_theta = q_to_twotheta(qs, wavelength=store.effective_wavelength)
                 phases = [P() for P in self.Phases]
-                print(wavelengths)
-                refinement = Refinement(phases=phases, wavelengths=wavelengths)
+                file_root = self.sample_name + ('_refinements/locus_%05d' % idx)
+                refinement = Refinement(phases=phases,
+                                        wavelengths=wavelengths, file_root=file_root)
                 # Refine background
                 bg = refinement.background(two_theta=two_theta,
                                            intensities=Is)
                 bgs.append(bg)
                 # Refine unit-cell parameters
-                subtracted = Is - bg
-                RefinementErrors = (exceptions.RefinementError,
-                                    exceptions.UnitCellError,
-                                    ZeroDivisionError)
-                try:
-                    residuals = refinement.unit_cells(
+                cell_params = refinement.cell_params(
                         two_theta=two_theta,
-                        intensities=subtracted,
-                    )
-                except RefinementErrors:
-                    failed.append(idx)
-                    goodness.append(np.nan)
-                else:
-                    goodness.append(residuals)
-                finally:
-                    phases = tuple(p.unit_cell.as_tuple() for p in refinement.phases)
-                    all_cells.append(phases)
+                        intensities=Is,
+                )
+                all_cells.append(cell_params)
                 # Refine the phase fractions
-                print(two_theta)
                 frac = refinement.phase_fractions(
                     two_theta=two_theta,
                     intensities=Is,
@@ -922,15 +911,18 @@ class XRDMap(Map):
                 )
                 scale_factors.append(scale)
                 # Fit peak widths
-                refinement.fit_peaks(scattering_lengths=qs, intensities=subtracted)
-                fit = refinement.predict(qs)
-                fits.append(fit)
-                width = refinement.peak_widths(
+                width = refinement.broadenings(
                     two_theta=two_theta,
-                    intensities=fit
+                    intensities=Is,
                 )
                 broadenings.append(width)
                 # Append the fitted diffraction pattern
+                fit = refinement.predict(two_theta)
+                fits.append(fit)
+                # Save a confidence value for the fit
+                gd = refinement.goodness_of_fit(two_theta=two_theta,
+                                                intensities=Is)
+                goodness.append(gd)
             # Store refined data for later
             store.backgrounds = np.array(bgs)
             store.cell_parameters = np.array(all_cells)
