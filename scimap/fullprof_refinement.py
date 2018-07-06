@@ -130,7 +130,7 @@ class FullprofRefinement(BaseRefinement):
         '==> Singular matrix!!, problem with (\S+)')
     divergence_re = re.compile(
         '=>  Unrecoverable divergence!!')
-    
+   
     @property
     def calculated_diffractogram(self):
         """Read a pcf file and return the refinement as a dataframe."""
@@ -281,7 +281,8 @@ class FullprofRefinement(BaseRefinement):
         if not self.is_refined['scale_factors']:
             self.refine_scale_factors(two_theta, intensities)
         # Retrieve refined factors from phases
-        phase_fractions = tuple(p.scale_factor for p in self.phases)
+        scales = tuple(p.scale_factor for p in self.phases)
+        phase_fractions = scales / np.sum(scales)
         return phase_fractions
     
     def scale_factor(self, two_theta=None, intensities=None):

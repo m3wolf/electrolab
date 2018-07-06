@@ -21,6 +21,8 @@ from sympy.physics import units
 import h5py
 import numpy as np
 
+from scimap import exceptions
+
 
 class StoreDescriptor():
     """Data descriptor for accessing HDF datasets.
@@ -74,6 +76,7 @@ class XRDStore():
     wavelengths = StoreDescriptor('wavelengths')
     scattering_lengths = StoreDescriptor('scattering_lengths')
     backgrounds = StoreDescriptor('backgrounds')
+    peak_broadenings = StoreDescriptor('peak_broadenings')
     def __init__(self, hdf_filename: str, groupname: str, mode='r'):
         self.hdf_filename = hdf_filename
         self.groupname = groupname
@@ -178,14 +181,6 @@ class XRDStore():
         group = self.group()
         group['cell_parameters'].attrs['order'] = "(scan, phase, (a, b, c, α, β, γ))"
     
-    @property
-    def phase_fractions(self):
-        return self.group()['phase_fractions']
-
-    @phase_fractions.setter
-    def phase_fractions(self, value):
-        self.replace_dataset('phase_fractions', data=value)
-
     @property
     def scale_factor(self):
         return self.group()['scale_factor']
