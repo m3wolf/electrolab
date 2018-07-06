@@ -592,12 +592,12 @@ class XRDMap(Map):
     frame_width = 20  # 2-theta coverage of detector face in degrees
     scan_time = 300  # In seconds
     Phases = []
-    background_phases = []
+    Background_Phases = []
     
     def __init__(self, *args, collimator=0.5, qrange=None,
                  scan_time=None, detector_distance=20,
                  frame_size=1024, Phases=[], phases=None,
-                 background_phases=[], **kwargs):
+                 Background_Phases=[], **kwargs):
         # Old-style mapping format deprecation
         if phases is not None:
             warnings.warn(DeprecationWarning(), "Use 'Phases=' instead")
@@ -608,8 +608,8 @@ class XRDMap(Map):
         # Checking for nonos-default lists allows for better subclassing
         if len(Phases) > 0:
             self.Phases = Phases
-        if len(background_phases) > 0:
-            self.background_phases = background_phases
+        if len(Background_Phases) > 0:
+            self.Background_Phases = Background_Phases
         if scan_time is not None:
             self.scan_time = scan_time
         if qrange is not None:
@@ -761,7 +761,7 @@ class XRDMap(Map):
         #for idx, phase in enumerate(self.Phases):
             #draw_peaks(ax=ax, phase=phase, color=color_list[idx])
         # Highlight background
-        #for phase in self.background_phases:
+        #for phase in self.Background_Phases:
             #draw_peaks(ax=ax, phase=phase, color='grey')
         # Set axes limits
         ax.set_xlim(qs.min(), qs.max())
@@ -892,8 +892,9 @@ class XRDMap(Map):
             for idx, (qs, Is) in enumerate(prog(scans, total=total, desc="Refining")):
                 two_theta = q_to_twotheta(qs, wavelength=store.effective_wavelength)
                 phases = [P() for P in self.Phases]
+                bg_phases = [P() for P in self.Background_Phases]
                 file_root = self.sample_name + ('_refinements/locus_%05d' % idx)
-                refinement = Refinement(phases=phases,
+                refinement = Refinement(phases=phases, background_phases=bg_phases,
                                         wavelengths=wavelengths, file_root=file_root)
                 try:
                     # Refine background

@@ -130,6 +130,10 @@ class FullprofRefinement(BaseRefinement):
         '==> Singular matrix!!, problem with (\S+)')
     divergence_re = re.compile(
         '=>  Unrecoverable divergence!!')
+    
+    @property
+    def all_phases(self):
+        return self.phases + self.background_phases
    
     @property
     def calculated_diffractogram(self):
@@ -165,7 +169,7 @@ class FullprofRefinement(BaseRefinement):
         # Write hkl file if necessary
         hkl_filenames = []
         # Write an hkl file for each phase
-        for idx, phase in enumerate(self.phases):
+        for idx, phase in enumerate(self.all_phases):
             hklfilename = self.file_root + str(idx + 1) + '.hkl'
             hkl_filenames.append(hklfilename)
             if context['refinement_mode'] == Mode.constant_scale:
@@ -457,7 +461,7 @@ class FullprofRefinement(BaseRefinement):
         self.displacement = displacement
         # Search for scale factors
         scale_matches = self.scale_re.findall(summary)
-        if len(scale_matches) < len(self.phases):
+        if len(scale_matches) < len(self.all_phases):
             raise exceptions.RefinementError()
         for idx, phase in enumerate(self.phases):
             match = scale_matches[idx]
@@ -465,7 +469,7 @@ class FullprofRefinement(BaseRefinement):
             phase.scale_error = float(match[1])
         # Search for peak-width parameters
         width_matches = self.width_re.findall(summary)
-        if len(width_matches) < len(self.phases):
+        if len(width_matches) < len(self.all_phases):
             raise exceptions.RefinementError()
         for idx, phase in enumerate(self.phases):
             match = width_matches[idx].split()
@@ -481,7 +485,7 @@ class FullprofRefinement(BaseRefinement):
                 raise exceptions.PCRFileError(msg)
         # Search for unit-cell parameters
         cell_matches = self.cell_re.findall(summary)
-        if len(cell_matches) < len(self.phases):
+        if len(cell_matches) < len(self.all_phases):
             raise exceptions.RefinementError()
         for idx, phase in enumerate(self.phases):
             match = cell_matches[idx].split()
@@ -498,7 +502,7 @@ class FullprofRefinement(BaseRefinement):
     def pcrfile_context(self):
         """Generate a dict of values to put into a pcr input file."""
         context = {}
-        num_phases = len(self.phases)
+        num_phases = len(self.all_phases)
         context['num_phases'] = num_phases
         # Determine refinement mode based on number of phases
         if num_phases == 1:
@@ -508,7 +512,7 @@ class FullprofRefinement(BaseRefinement):
         context['refinement_mode'] = mode
         # Prepare parameters for each phase
         phases = []
-        for phase in self.phases:
+        for phase in self.all_phases:
             unitcell = phase.unit_cell
             vals = {
                 'a': unitcell.a, 'b': unitcell.b, 'c': unitcell.c,
