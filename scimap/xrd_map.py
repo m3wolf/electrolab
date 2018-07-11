@@ -96,13 +96,13 @@ class Map():
         distance = np.sqrt(np.sum(np.square(pos-xy), axis=1))
         locus = distance.argmin()
         return locus
-
+    
     def xy_by_locus(self, locus):
         """Retrieve the x, y position of the locus with the given index."""
         with self.store() as store:
             loc = xycoord(*store.positions[locus,:])
         return loc
-
+    
     def path(self, *args, **kwargs):
         """Generator gives coordinates for a spiral path around the sample."""
         raise NotImplementedError("Use gadds._path() instead")
@@ -727,7 +727,7 @@ class XRDMap(Map):
             ax.plot(qs, predictions)
             ax.plot(qs, bg, color="red")
             ax.plot(qs, residuals, color="cyan")
-        # Annotate axes
+            # Annotate axes
             ax.set_xlabel(r'Scattering Length (q) $/\AA^{-1}$')
             ax.set_ylabel('Intensity a.u.')
         else:

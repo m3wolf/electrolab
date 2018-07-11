@@ -5,11 +5,13 @@ import math
 import os
 import re
 from subprocess import call
+import contextlib
 
 import jinja2
 import pandas as pd
 import numpy as np
 from matplotlib.colors import Normalize
+import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d, CubicSpline
 
 from . import plots
@@ -40,6 +42,73 @@ def fp2k():
             "environemtal variable is set to the Fullprof directory."
         )
     return cmd
+
+
+class FailPlotter():
+    def __init__(self, file_root):
+        self.file_root = file_root
+    
+    def __enter__(self):
+        self.dataframes = []
+        self.descriptions = []
+        return self
+    
+    def __exit__(self, e_type, e_value, e_tb):
+        if e_type is not None:
+            self.plot_dataframes()
+            raise
+    
+    def add_dataframe(self, dataframe, description=''):
+        self.dataframes.append(dataframe)
+        self.descriptions.append(description)
+    
+    def plot_dataframes(self):
+        # Prepare an array of plots for the results
+        n_rows = math.ceil(len(self.dataframes) / 2)
+        panel_size = 5
+        figsize = (2 * panel_size, n_rows * panel_size)
+        fig, axs = plt.subplots(n_rows, 2, figsize=figsize, squeeze=False)
+        axs = tuple(a for ax in axs for a in ax)
+        # Now plot the result of each scan on the appropriate axes
+        for idx, (df, desc, ax) in enumerate(zip(self.dataframes, self.descriptions, axs)):
+            ax.plot(df['Yobs'], marker='+', linestyle="None")
+            ax.plot(df['Ycal'])
+            ax.plot(df['Backg'], color='red')
+            ax.plot(df['Yobs-Ycal'], color='cyan')
+            # Add some metadata
+            ax.set_title(desc)
+            ax.set_xlabel('2θ°')
+            ax.set_ylabel('Intensity')
+            ax.spines['right'].set_visible(False)
+            ax.spines['top'].set_visible(False)
+        # Remove leftover panel if necessary
+        for idx in range(-1, -1-(2*n_rows-len(self.dataframes)), -1):
+            axs[idx].remove()
+        # Save the new plots to disk
+        pdf_fname = self.file_root + '.pdf'
+        plt.tight_layout()
+        fig.savefig(pdf_fname)
+
+
+def is_number(s):
+    # Check for invalid, but still numerical, values
+    if s.lower() in ['nan', 'inf']:
+        return False
+    # Check that it's actually a number
+    try:
+        float(s)
+        return True
+    except ValueError:
+        return False
+
+
+@contextlib.contextmanager
+def read_pcr_file(section_name=None):
+    """Context manager handles exceptions when PCR file is malformed."""
+    try:
+        yield
+    except AttributeError:
+        raise exceptions.RefinementError("Invalid ")
 
 
 def load_refined_diffractogram(filename):
@@ -111,12 +180,14 @@ class FullprofRefinement(BaseRefinement):
     displacement = 0.00032  # cos (θ) dependence
     transparency = -0.00810  # sin (θ) dependence
     # Regular expressions for reading output summary files
+    score_re = re.compile(
+        '=> Scor:\s*([-0-9Ea.Nan]+)')
     success_re = re.compile(
         '==> RESULTS OF REFINEMENT:')
     chi_re = re.compile(
         'Chi2:\s+([-0-9Ee.Na]+)')
     bg_re = re.compile(
-        'Background Polynomial Parameters ==>((?:\s+[-0-9Ee.Nan]+)+)')
+        'Background Polynomial Parameters ==>((?:\s+[-0-9Ee.]+)+)')
     displacement_re = re.compile(
         'Cos\( theta\)-shift parameter :\s+([-0-9Ee.]+)')
     scale_re = re.compile(
@@ -130,6 +201,8 @@ class FullprofRefinement(BaseRefinement):
         '==> Singular matrix!!, problem with (\S+)')
     divergence_re = re.compile(
         '=>  Unrecoverable divergence!!')
+    negative_fwhm_re = re.compile(
+        '=> Negative GAUSSIAN and/or LORENTZIAN FWHM detected')
     
     @property
     def all_phases(self):
@@ -342,42 +415,67 @@ class FullprofRefinement(BaseRefinement):
             hklfilename = f'{self.file_root}{idx + 1}.hkl'
             hkl_filenames.append(hklfilename)
             self.write_hkl_file(phase, hklfilename)
-        # Refine the background first
-        context = self.pcrfile_context()
-        self.add_background_refinement(context)
-        # Execute refinement
-        self.run_fullprof(context=context, two_theta=two_theta, intensities=intensities)
-        self.is_refined['background'] = True
-        # Refine unit-cell parameters
-        context = self.pcrfile_context()
-        self.add_background_refinement(context)
-        self.add_unit_cell_refinement(context)
-        self.run_fullprof(context=context, two_theta=two_theta, intensities=intensities)
-        self.is_refined['unit_cells'] = True
-        # Refine phase scale factors
-        context = self.pcrfile_context()
-        self.add_background_refinement(context)
-        self.add_unit_cell_refinement(context)
-        self.add_scale_factor_refinement(context)
-        self.run_fullprof(context=context, two_theta=two_theta, intensities=intensities)
-        self.is_refined['scale_factors'] = True
-        # Refine phase peak broadenings
-        context = self.pcrfile_context()
-        self.add_background_refinement(context)
-        self.add_unit_cell_refinement(context)
-        self.add_scale_factor_refinement(context)
-        self.add_peak_widths_refinement(context)
-        self.run_fullprof(context=context, two_theta=two_theta, intensities=intensities)
-        self.is_refined['peak_widths'] = True
-        # Refine sample displacement
-        context = self.pcrfile_context()
-        self.add_background_refinement(context)
-        self.add_unit_cell_refinement(context)
-        self.add_scale_factor_refinement(context)
-        self.add_peak_widths_refinement(context)
-        self.add_displacement_refinement(context)
-        self.run_fullprof(context=context, two_theta=two_theta, intensities=intensities)
-        self.is_refined['displacement'] = True
+        with FailPlotter(file_root=self.file_root) as plotter:
+            # Refine the background first
+            context = self.pcrfile_context()
+            # First with 3 coefficients
+            self.add_background_refinement(context, num_coeffs=3)
+            self.run_fullprof(context=context, two_theta=two_theta, intensities=intensities)
+            # Then with six
+            self.add_background_refinement(context)
+            self.run_fullprof(context=context, two_theta=two_theta, intensities=intensities)
+            self.is_refined['background'] = True
+            plotter.add_dataframe(self.calculated_diffractogram,
+                                  description='Background refined')
+            # Refine unit-cell parameters
+            context = self.pcrfile_context()
+            self.add_background_refinement(context)
+            self.add_unit_cell_refinement(context)
+            self.run_fullprof(context=context, two_theta=two_theta, intensities=intensities)
+            self.is_refined['unit_cells'] = True
+            plotter.add_dataframe(self.calculated_diffractogram,
+                                  description='Unit cells refined')
+            # Refine phase scale factors
+            context = self.pcrfile_context()
+            self.add_background_refinement(context)
+            self.add_unit_cell_refinement(context)
+            self.add_scale_factor_refinement(context)
+            self.run_fullprof(context=context, two_theta=two_theta, intensities=intensities)
+            self.is_refined['scale_factors'] = True
+            plotter.add_dataframe(self.calculated_diffractogram,
+                                  description='Scale factors refined')
+            # Refine phase peak broadenings
+            context = self.pcrfile_context()
+            # self.add_background_refinement(context)
+            # self.add_unit_cell_refinement(context)
+            # self.add_scale_factor_refinement(context)
+            self.add_peak_widths_refinement(context)
+            self.run_fullprof(context=context, two_theta=two_theta, intensities=intensities)
+            self.is_refined['peak_widths'] = True
+            plotter.add_dataframe(self.calculated_diffractogram,
+                                  description='Peak broadening refined')
+            # Refine sample displacement
+            context = self.pcrfile_context()
+            self.add_background_refinement(context)
+            self.add_unit_cell_refinement(context)
+            # self.add_scale_factor_refinement(context)
+            # self.add_peak_widths_refinement(context)
+            self.add_displacement_refinement(context)
+            self.run_fullprof(context=context, two_theta=two_theta, intensities=intensities)
+            self.is_refined['displacement'] = True
+            plotter.add_dataframe(self.calculated_diffractogram,
+                                  description='Displacement refined')
+            # Refine a final pass
+            context = self.pcrfile_context()
+            self.add_background_refinement(context)
+            self.add_unit_cell_refinement(context)
+            self.add_scale_factor_refinement(context)
+            self.add_peak_widths_refinement(context)
+            self.add_displacement_refinement(context)
+            self.run_fullprof(context=context, two_theta=two_theta, intensities=intensities)
+            self.is_refined['displacement'] = True
+            plotter.add_dataframe(self.calculated_diffractogram,
+                                  description='Displacement refined')
         # Remove temporary files
         if not self.keep_temp_files:
             os.remove(self.logfilename)
@@ -388,14 +486,16 @@ class FullprofRefinement(BaseRefinement):
             os.remove(self.pcrfilename)
             # os.remove(self.file_root + '.prf')
     
-    def add_background_refinement(self, context):
+    def add_background_refinement(self, context, num_coeffs=3):
         """
         Refine the six background coefficients.
         """
-        # context['bg_codewords'] = [11, 21, 31, 41, 51, 61]
-        context['bg_codewords'] = [11, 21, 31, 0, 0, 0]
-        # context['bg_codewords'] = [0, 0, 0, 0, 0, 0]
-        context['num_params'] += 3
+        coeffs = [11, 21, 31, 41, 51, 61]
+        # Mask some coefficients based on input
+        for idx in range(num_coeffs, len(coeffs)):
+            coeffs[idx] = 0
+        context['bg_codewords'] = coeffs
+        context['num_params'] += num_coeffs
         # Refining scale factors simultaneously helps with the fit
         if not context['refinement_mode'] == Mode.constant_scale:
             for idx, phase in enumerate(context['phases']):
@@ -448,13 +548,18 @@ class FullprofRefinement(BaseRefinement):
         with open(filename) as summaryfile:
             summary = summaryfile.read()
         # Check for successful refinement
-        success = self.success_re.search(summary)
+        success = False
+        if self.success_re.search(summary):
+            score = self.score_re.search(summary).group(1)
+            if is_number(score):
+                success = True
         if not success:
             # Refinement was not successful, look through log file for clues
             with open(self.file_root + '.log') as logfile:
                 log = logfile.read()
             singular_match = self.singular_matrix_re.search(log)
             divergence_match = self.divergence_re.search(log)
+            negative_fwhm_match = self.negative_fwhm_re.search(log)
             if singular_match:
                 # Singular matrix errors usually means refinement to zero on a given parameter
                 param = singular_match.group(1)
