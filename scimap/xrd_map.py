@@ -893,7 +893,7 @@ class XRDMap(Map):
                 two_theta = q_to_twotheta(qs, wavelength=store.effective_wavelength)
                 phases = [P() for P in self.Phases]
                 bg_phases = [P() for P in self.Background_Phases]
-                file_root = self.sample_name + ('_refinements/locus_%05d' % idx)
+                file_root = self.sample_name + ('_refinements/locus_%05d_ref' % idx)
                 refinement = Refinement(phases=phases, background_phases=bg_phases,
                                         wavelengths=wavelengths, file_root=file_root)
                 try:
