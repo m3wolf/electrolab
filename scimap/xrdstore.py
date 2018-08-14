@@ -19,6 +19,7 @@
 
 from sympy.physics import units
 import h5py
+from scimap import exceptions
 import numpy as np
 
 

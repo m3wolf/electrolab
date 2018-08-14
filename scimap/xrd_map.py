@@ -80,7 +80,7 @@ class Map():
     @property
     def loci(self):
         with self.store() as store:
-            positions = store.positions
+            positions = store.positions.value
             # step_size = store.step_size
         return positions### * step_size.num
 
@@ -683,7 +683,7 @@ class XRDMap(Map):
         Arguments
         ---------
         - ax : The matplotlib axes object to plot on to
-        
+         
         - index : Which locus to plot.
         
         - subtracted : If True, the plot will be shown with background removed.
@@ -900,7 +900,7 @@ class XRDMap(Map):
                 )
                 fractions.append(frac)
                 # Refine scale factors
-                scale = refinement.scale_factor(
+                scale = refinement.scale_fact(
                     two_theta=two_theta,
                     intensities=Is,
                 )
