@@ -8,13 +8,13 @@ from matplotlib.colors import Normalize
 
 from .xrd_map import XRDMap
 from .phase import Phase
+from .fullprof_refinement import FullProfPhase
 from .standards import Aluminum
 from .unitcell import CubicUnitCell, TetragonalUnitCell, HexagonalUnitCell
 from .reflection import Reflection
-from .fullprof_refinement import FullProfPhase, ProfileMatch
 
 
-class NCA(Phase):
+class NCA(FullProfPhase):
     name = 'NCA'
     unit_cell = HexagonalUnitCell(a=2.86687, c=14.18385)
     spacegroup = 'R-3m'

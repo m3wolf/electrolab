@@ -3,9 +3,10 @@
 from .phase import Phase
 from .unitcell import HexagonalUnitCell, CubicUnitCell
 from .reflection import Reflection
+from .fullprof_refinement import FullProfPhase
 
 
-class Corundum(Phase):
+class Corundum(FullProfPhase):
     name = 'corundum'
     unit_cell = HexagonalUnitCell(a=4.75, c=12.982)
     spacegroup = 'R-3c'
@@ -41,9 +42,11 @@ class Corundum(Phase):
     ]
 
 
-class Aluminum(Phase):
+class Aluminum(FullProfPhase):
     name = 'aluminum'
     unit_cell = CubicUnitCell(a=4.05)
+    spacegroup = 'fm-3m'
+    fullprof_spacegroup = 'F M -3 M'
     diagnostic_hkl = '111'
     reflection_list = [
         Reflection('111', qrange=(2.61, 2.72)),

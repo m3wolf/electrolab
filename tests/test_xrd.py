@@ -414,7 +414,7 @@ class LMOSolidSolutionTest(unittest.TestCase):
         #                   background_phases=[Aluminum],
         #                   sample_name='test-sample')
         # self.map.reliability_normalizer = colors.Normalize(0.4, 0.8, clip=True)
-
+    
     def test_metric(self):
         self.locus.refine_unit_cells()
         metric = self.locus.phases[0].unit_cell.a
@@ -422,7 +422,7 @@ class LMOSolidSolutionTest(unittest.TestCase):
             metric,
             8.192
         )
-
+    
     def test_reliability_sample(self):
         self.locus.refine_background()
         self.locus.refine_scale_factors()
@@ -437,7 +437,7 @@ class LMOSolidSolutionTest(unittest.TestCase):
             1.77,
             # 'Signal level {} is not < 0.1'.format(signal_level)
         )
-
+    
     @unittest.expectedFailure
     def test_reliability_background(self):
         self.locus.load_diffractogram('test-sample-frames/LMO-background.plt')
@@ -446,7 +446,7 @@ class LMOSolidSolutionTest(unittest.TestCase):
             reliability < 0.1,
             'Reliability {} is not < 0.1'.format(reliability)
         )
-
+    
     def test_reliability_noise(self):
         # Check that background noise gives low reliability
         self.locus.load_diffractogram('test-sample-frames/LMO-noise.plt')
@@ -472,30 +472,14 @@ class NativeRefinementTest(unittest.TestCase):
             'test-sample-frames/LMO-sample-data.plt',
             phases=[LMOLowAngle()]
         )
-
-    # def test_two_phase_ratio(self):
-    #     refinement = self.refinement
-    #     refinement.scan = self.scan
-    #     refinement.refine_scale_factors()
-    #     self.assertTrue(
-    #         refinement.is_refined['scale_factors']
-    #     )
-    #     self.assertAlmostEqual(
-    #         self.scan.phases[0].scale_factor,
-    #         275
-    #     )
-    #     self.assertAlmostEqual(
-    #         self.scan.phases[1].scale_factor,
-    #         205
-    #     )
-
+    
     def test_peak_area(self):
         reflection = LMOMidV().diagnostic_reflection
         self.assertAlmostEqual(
             self.refinement.net_area(reflection.qrange),
             205
         )
-
+    
     # @unittest.expectedFailure
     def test_peak_fwhm(self):
         """Method for computing full-width at half max of a peak."""
@@ -519,7 +503,7 @@ class NativeRefinementTest(unittest.TestCase):
             result,
             0.1702
         )
-
+    
     def test_peak_list(self):
         corundum_scan = XRDScan(corundum_path,
                                 phase=Corundum())
@@ -782,6 +766,7 @@ class ReflectionTest(unittest.TestCase):
 
 
 class PhaseTest(unittest.TestCase):
+
     def setUp(self):
         self.corundum_scan = XRDScan(filename='test-data-xrd/corundum.xye',
                                      phase=Corundum())
@@ -903,32 +888,33 @@ class BrukerXyeTestCase(unittest.TestCase):
 class BrukerBrmlTestCase(unittest.TestCase):
     def setUp(self):
         self.adapter = BrukerBrmlFile(os.path.join(TESTDIR, 'test-data-xrd', 'corundum.brml'))
-
+    
     def test_wavelength(self):
         self.assertEqual(
             self.adapter.wavelength,
             1.5418,
         )
-
+    
     def test_sample_name(self):
         self.assertEqual(
             self.adapter.sample_name,
             'Corundum (new Safety Board)'
         )
-
+    
     def test_scattering_lengths(self):
         q = self.adapter.scattering_lengths()
         self.assertEqual(q[0], 0.71036599366565667)
-
+    
     def test_counts(self):
         counts = self.adapter.intensities()
         self.assertEqual(counts[0], 122)
-
+    
     # def test_diffractogram(self):
     #     importedDf = self.adapter.dataframe
     #     self.assertTrue(
     #         'counts' in importedDf.columns
     #     )
+
 
 class FullProfProfileTest(unittest.TestCase):
     def setUp(self):
@@ -977,7 +963,7 @@ class FullProfProfileTest(unittest.TestCase):
             context['phases'][0]['vals']['I_g'],
             0
         )
-
+    
     @unittest.expectedFailure
     def test_refine_background(self):
         # Set bg coeffs to something wrong
@@ -1010,7 +996,7 @@ class FullProfProfileTest(unittest.TestCase):
             self.refinement.displacement,
             0.0054
         )
-
+    
     @unittest.expectedFailure
     def test_refine_unit_cell(self):
         # Set unit cell parameters off by a little bit
@@ -1057,7 +1043,7 @@ class FullProfLmoTest(unittest.TestCase):
         self.refinement.zero = 0.044580
         self.refinement.displacement = 0.000320
         self.refinement.transparency = -0.00810
-
+    
     def test_scale_factors(self):
         self.refinement.refine_scale_factors()
         self.assertTrue(

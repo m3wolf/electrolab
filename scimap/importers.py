@@ -61,6 +61,7 @@ def import_gadds_map(sample_name: str=None, directory: str=None,
     if sample_name is None and None in [hdf_filename, hdf_groupname, directory]:
         msg = "Either pass `sample_name` or `hdf_filename`, `hdf_groupname` and `directory`"
         raise ValueError(msg)
+    print(hdf_filename)
     if hdf_filename is None:
         hdf_filename = "{}.h5".format(sample_name)
     if hdf_groupname is None:
@@ -163,21 +164,16 @@ def import_aps_34IDE_map(directory: str, wavelength: int,
     xrdstore.positions = positions
     xrdstore.position_unit = 'um'
     xrdstore.layout = 'rect'
-
     intensities = []
     qs = []
     angles = []
     file_basenames = []
-
     chifiles = [p for p in os.listdir(directory) if os.path.splitext(p)[1] == '.chi']
-
     if beamstop:
         warnings.warn(UserWarning("Deprecated, use qrange instead"))
-
     # Sort filenames
     convert = lambda text: int(text) if text.isdigit() else text.lower()
     alphanum_key = lambda key: [ convert(c) for c in re.split('([0-9]+)', key) ] 
-
     for filename in sorted(chifiles, key=alphanum_key):
         path = os.path.join(directory, filename)
         file_basenames.append(os.path.splitext(path)[0])

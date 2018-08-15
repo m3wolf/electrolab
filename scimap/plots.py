@@ -174,7 +174,7 @@ def plot_scans(scan_list, step_size=0, ax=None, names=[],
                use_twotheta=False, wavelength=None, colors=(),
                normalize=False, *args, **kwargs):
     """Plot a series of XRDScans as a waterfall.
-
+    
     Parameters
     ==========
     scan_list : list

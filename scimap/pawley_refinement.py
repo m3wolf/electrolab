@@ -158,11 +158,8 @@ def background(two_theta, coeffs):
       ``two_theta``.
     
     """
-    print('2θ:', two_theta)
-    print('bgcoeffs:', coeffs)
     x = (two_theta / 90) - 1
     bg = chebval(x, c=coeffs)
-    print('BG:', bg)
     return bg
 
 
@@ -207,7 +204,6 @@ def predict_diffractogram(two_theta, wavelengths, background_coeffs,
     y = np.zeros_like(two_theta)
     # Calculate the background function
     y += background(two_theta, coeffs=background_coeffs)
-    print('y:', y)
     # Add a peak for each reflection/wavelength combination
     for (wl, wl_ratio) in wavelengths:
         for (d, height, size, strain) in reflections:
@@ -425,9 +421,7 @@ class PawleyRefinement(BaseRefinement):
           Used for refining, if necessary
         
         """
-        print('***')
         bg = background(two_theta, coeffs=self.bg_coeffs)
-        print('###')
         return bg
     
     def refine(self, two_theta, intensities):
@@ -541,7 +535,6 @@ class PawleyRefinement(BaseRefinement):
             idx += 2
             # Reflection list
             for r in phase.reflection_list:
-                print(params[idx])
                 r.intensity = params[idx]
                 idx += 1
     
@@ -561,12 +554,10 @@ class PawleyRefinement(BaseRefinement):
         out : np.ndarray
           Predicted diffraction intensities."""
         reflections = self.reflection_list(two_theta=two_theta, phases=phases)
-        print('---')
         out = predict_diffractogram(two_theta,
                                     wavelengths=self.wavelengths,
                                     lg_mix=self.lg_mix,
                                     u=self.u, v=self.v, w=self.w,
                                     background_coeffs=self.bg_coeffs,
                                     reflections=reflections)
-        print('===')
         return out

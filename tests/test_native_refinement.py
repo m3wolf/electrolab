@@ -26,6 +26,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardi
 
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.signal import find_peaks
 
 from scimap import XRDScan, standards
 from scimap.peakfitting import remove_peak_from_df
@@ -35,7 +36,6 @@ TESTDIR = os.path.join(os.path.dirname(__file__), "test-data-xrd")
 COR_BRML = os.path.join(TESTDIR, 'corundum.brml')
 
 class NativeRefinementTest(unittest.TestCase):
-
     @unittest.expectedFailure
     def test_remove_peaks(self):
         corundum = standards.Corundum()
@@ -70,7 +70,6 @@ class NativeRefinementTest(unittest.TestCase):
         # plt.plot(q, I)
         # plt.plot(q, bg)
         # plt.show()
-        from scipy.signal import find_peaks
         result = find_peaks(df.counts.values)
         peaks, props = result
         # Spot-check some values on the resulting background
@@ -155,6 +154,7 @@ class NativeRefinementTest(unittest.TestCase):
         result = refinement.refine_peak_widths(q, I)
         self.assertEqual(len(result), 1) # (only one phase was refined)
         self.assertAlmostEqual(result[0], 0.00328, places=5)
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -51,4 +51,3 @@ class PhaseTest(unittest.TestCase):
         ref0.intensity = 77
         self.assertIsNot(ref0, ref1)
         self.assertNotEqual(ref1.intensity, 77)
-

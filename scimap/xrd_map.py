@@ -1,6 +1,8 @@
 # -*- coding: utf-8 --*
 
 import warnings
+import logging
+log = logging.getLogger(__name__)
 
 from matplotlib import pyplot, patches, colors, cm 
 import numpy as np
@@ -11,6 +13,8 @@ from sympy.physics import units
 from . import exceptions
 from .plots import new_axes, set_outside_ticks
 from .xrdstore import XRDStore
+from .base_refinement import BaseRefinement
+from .fullprof_refinement import FullprofRefinement
 from .native_refinement import NativeRefinement
 from .pawley_refinement import PawleyRefinement
 from .utilities import prog, xycoord, q_to_twotheta, twotheta_to_q
@@ -83,21 +87,22 @@ class Map():
             positions = store.positions.value
             # step_size = store.step_size
         return positions### * step_size.num
-
+    
     def locus_by_xy(self, xy):
         """Find the index of the nearest locus by set of xy coords."""
+        xy = np.array(xy)
         with self.store() as store:
-            pos = store.positions
+            pos = store.positions.value
         distance = np.sqrt(np.sum(np.square(pos-xy), axis=1))
         locus = distance.argmin()
         return locus
-
+    
     def xy_by_locus(self, locus):
         """Retrieve the x, y position of the locus with the given index."""
         with self.store() as store:
             loc = xycoord(*store.positions[locus,:])
         return loc
-
+    
     def path(self, *args, **kwargs):
         """Generator gives coordinates for a spiral path around the sample."""
         raise NotImplementedError("Use gadds._path() instead")
@@ -137,22 +142,22 @@ class Map():
         Perform initial calculations on mapping data and save results to file.
         """
         self.composite_image()
-
+    
     def calculate_metrics(self):
         """Force recalculation of all metrics in the map."""
         for scan in prog(self.scans, desc='Calculating metrics'):
             scan.cached_data['metric'] = None
             scan.metric
-
+    
     def reliabilities(self):
         # Calculate new values
         return [scan.reliability for scan in self.scans]
-
+    
     def calculate_colors(self):
         for scan in prog(self.scans, desc='Transposing colorspaces'):
             scan.cached_data['color'] = None
             scan.color()
-
+    
     def subtract_backgrounds(self, bkg, loc_idx=None):
         '''Subtracts the background from patterns.
         
@@ -164,12 +169,12 @@ class Map():
         bkg : np.ndarray
           Refers to the 1d diffraction pattern that is to be
           subtracted from the intensity data.
-
+        
         loc_idx : np.ndarray, optional
           Refers to the 1d diffraction pattern that will have its background
           subtracted. If omitted all patterns from the map will be
           background subtracted.
-  
+        
         '''
         data_in = self.store()
         Is = data_in.intensities
@@ -179,10 +184,10 @@ class Map():
        
         bkg_sub = Is - bkg
         data_in.close()
-
         with self.store(mode='r+') as store:
             store.intensities_subtracted = bkg_sub
             
+    
     def metric(self, *args, **kwargs):
         """
         Calculate a set of mapping values. Should be implemented by
@@ -197,20 +202,20 @@ class Map():
         """
         raise NotImplementedError
     
-    def save(self, filename=None):
-        """Take cached data and save to disk."""
-        # Prepare dictionary of cached data
-        data = {
-            'diameter': self.diameter,
-            'coverage': self.coverage,
-            'loci': [locus.data_dict for locus in self.loci],
-        }
-        # Compute filename and Check if file exists
-        if filename is None:
-            filename = "{sample_name}.map".format(sample_name=self.sample_name)
-        # Pickle data and write to file
-        with open(filename, 'wb') as saveFile:
-            pickle.dump(data, saveFile)
+    # def save(self, filename=None):
+    #     """Take cached data and save to disk."""
+    #     # Prepare dictionary of cached data
+    #     data = {
+    #         'diameter': self.diameter,
+    #         'coverage': self.coverage,
+    #         'loci': [locus.data_dict for locus in self.loci],
+    #     }
+    #     # Compute filename and Check if file exists
+    #     if filename is None:
+    #         filename = "{sample_name}.map".format(sample_name=self.sample_name)
+    #     # Pickle data and write to file
+    #     with open(filename, 'wb') as saveFile:
+    #         pickle.dump(data, saveFile)
     
     def plot_map_with_image(self, scan=None, alpha=None):
         mapAxes, imageAxes = dual_axes()
@@ -285,41 +290,36 @@ class Map():
         
         Arguments
         ---------
-        - ax : A matplotlib Axes object onto which the map will be
+        ax : optional
+          A matplotlib Axes object onto which the map will be
           drawn. If omitted, a new Axes object will be created. A new
           colorbar will only be added if this argument is None.
-        
-        - phase_idx : Controls which phase will be used for generating
-          the metric (eg. cell parameter). Not relevant for all
-          metrics.
-        
-        - metric : Name of the quantity to be used for determining color.
-        
-        - metric_range : Specifies the bounds for mapping. Anything
-          outside these bounds will be clipped to the max or min. If
-          either value is None, that bound will be set to the range of
-          metric values.
-        
-        - hightlight_locus : Index of an XRD scan that will receive a
-          red circle.
-        
-        - alpha : Name of the quantity to be used to determine the
-          opacity of each cell. If None, all cells will be opaque.
-        
-        - alpha_range : 2-tuple with the values for full transparency
-          and full opacity. Anything outside these bounds will be
-          clipped.
+        phase_idx : int, optional
+          Controls which phase will be used for generating the metric
+          (eg. cell parameter). Not relevant for all metrics.
+        metric : str, optional
+          Name of the quantity to be used for determining color.
+        metric_range : 2-tuple, optional
+          Specifies the bounds for mapping. Anything outside these
+          bounds will be clipped to the max or min. If either value is
+          None, that bound will be set to the range of metric values.
+        hightlight_locus : int, optional
+          Index of an XRD scan that will receive a red circle.
+        alpha : str, optional
+          Name of the quantity to be used to determine the opacity of
+          each cell. If None, all cells will be opaque.
+        alpha_range : 2-tuple, optional
+          2-tuple with the values for full transparency and full
+          opacity. Anything outside these bounds will be clipped.
         
         """
         cmap_ = self.get_cmap(cmap)
         # Plot loci
+        add_colorbar = True
         if ax is None:
             # New axes unless one was already created
-            add_colorbar = True
             ax = new_axes()
-        else:
-            add_colorbar = True
-        xs, ys = self.loci.swapaxes(0, 1)
+        xs, ys = np.swapaxes(self.loci, 0, 1)
         with self.store() as store:
             step_size = float(store.step_size / store.position_unit)
             layout = store.layout
@@ -547,6 +547,10 @@ class Map():
             weights = weightnorm(weights)
         if ax is None:
             ax = new_axes(height=4, width=7)
+        # Remove nan values
+        invalid = np.logical_or(np.isnan(metrics), np.isnan(weights))
+        metrics = metrics[~invalid]
+        weights = weights[~invalid]
         # Generate the histogram
         n, bins, patches = ax.hist(metrics, bins=bins, weights=weights)
         # Set the colors based on the metric normalizer
@@ -588,12 +592,12 @@ class XRDMap(Map):
     frame_width = 20  # 2-theta coverage of detector face in degrees
     scan_time = 300  # In seconds
     Phases = []
-    background_phases = []
+    Background_Phases = []
     
     def __init__(self, *args, collimator=0.5, qrange=None,
                  scan_time=None, detector_distance=20,
                  frame_size=1024, Phases=[], phases=None,
-                 background_phases=[], **kwargs):
+                 Background_Phases=[], **kwargs):
         # Old-style mapping format deprecation
         if phases is not None:
             warnings.warn(DeprecationWarning(), "Use 'Phases=' instead")
@@ -604,8 +608,8 @@ class XRDMap(Map):
         # Checking for nonos-default lists allows for better subclassing
         if len(Phases) > 0:
             self.Phases = Phases
-        if len(background_phases) > 0:
-            self.background_phases = background_phases
+        if len(Background_Phases) > 0:
+            self.Background_Phases = Background_Phases
         if scan_time is not None:
             self.scan_time = scan_time
         if qrange is not None:
@@ -720,10 +724,10 @@ class XRDMap(Map):
         # Plot data
         if subtracted is False:
             ax.plot(qs, observations, marker="+", linestyle="None")
-            #ax.plot(qs, predictions)
+            ax.plot(qs, predictions)
             ax.plot(qs, bg, color="red")
             ax.plot(qs, residuals, color="cyan")
-        # Annotate axes
+            # Annotate axes
             ax.set_xlabel(r'Scattering Length (q) $/\AA^{-1}$')
             ax.set_ylabel('Intensity a.u.')
         else:
@@ -757,7 +761,7 @@ class XRDMap(Map):
         #for idx, phase in enumerate(self.Phases):
             #draw_peaks(ax=ax, phase=phase, color=color_list[idx])
         # Highlight background
-        #for phase in self.background_phases:
+        #for phase in self.Background_Phases:
             #draw_peaks(ax=ax, phase=phase, color='grey')
         # Set axes limits
         ax.set_xlim(qs.min(), qs.max())
@@ -812,6 +816,25 @@ class XRDMap(Map):
                             verticalalignment="center")
         return ax
     
+    def plot_all_diffractograms_2D(self, ax=None, subtracted=False, aspect="auto",
+                                   *args, **kwargs):
+        """Plot the individual locus diffractograms as an image."""
+        if ax is None:
+            ax = new_axes(width=15, height=15)
+        with self.store() as store:
+            xs = store.scattering_lengths
+            ys = store.intensities
+            if subtracted == "background":
+                ys = store.backgrounds
+            elif subtracted:
+                bgs = store.backgrounds
+                ys = ys - bgs
+            # Determine dimensions of the image axes
+            extent = (np.min(xs), np.max(xs), len(ys)-1, 0)
+            # Generate the image plot
+            ax.imshow(ys, aspect=aspect, extent=extent, *args, **kwargs)
+        return ax
+    
     def plot_phase_ratio(self, phase_idx=0, *args, **kwargs):
         warnings.warn(UserWarning("Use `Map.plot_map(metric='phase_ratio')` instead"))
     
@@ -849,16 +872,17 @@ class XRDMap(Map):
         backends = {
             'native': NativeRefinement,
             'pawley': PawleyRefinement,
+            'fullprof': FullprofRefinement,
         }
         if backend in backends.keys():
             Refinement = backends[backend]
-        elif issubclass(backend, BaseRefinement):
+        elif isinstance(backend, BaseRefinement):
             Refinement = backend
         else:
             # Invalid refinement backend, throw exception
             msg = "Invalid backend {given}. Must be one of {strings} "
             msg += "or subclass of ``BaseRefinement``."
-            msg = msg.format(given=backend, string=backends.keys())
+            msg = msg.format(given=backend, strings=backends.keys())
             raise ValueError(msg)
         # Open the data storage and start the refining
         with self.store(mode='r+') as store:
@@ -868,60 +892,82 @@ class XRDMap(Map):
             for idx, (qs, Is) in enumerate(prog(scans, total=total, desc="Refining")):
                 two_theta = q_to_twotheta(qs, wavelength=store.effective_wavelength)
                 phases = [P() for P in self.Phases]
-                print(wavelengths)
-                refinement = Refinement(phases=phases, wavelengths=wavelengths)
-                # Refine background
-                bg = refinement.background(two_theta=two_theta,
-                                           intensities=Is)
-                bgs.append(bg)
-                # Refine unit-cell parameters
-                subtracted = Is - bg
-                RefinementErrors = (exceptions.RefinementError,
-                                    exceptions.UnitCellError,
-                                    ZeroDivisionError)
+                bg_phases = [P() for P in self.Background_Phases]
+                file_root = self.sample_name + ('_refinements/locus_%05d_ref' % idx)
+                refinement = Refinement(phases=phases, background_phases=bg_phases,
+                                        wavelengths=wavelengths, file_root=file_root)
                 try:
-                    residuals = refinement.unit_cells(
-                        two_theta=two_theta,
-                        intensities=subtracted,
+                    # Refine background
+                    bg = refinement.background(two_theta=two_theta,
+                                               intensities=Is)
+                    # Refine unit-cell parameters
+                    cell_params = refinement.cell_params(
+                            two_theta=two_theta,
+                            intensities=Is,
                     )
-                except RefinementErrors:
+                    # Refine the phase fractions
+                    frac = refinement.phase_fractions(
+                        two_theta=two_theta,
+                        intensities=Is,
+                    )
+                    # Refine scale factors
+                    scale = refinement.scale_factor(
+                        two_theta=two_theta,
+                        intensities=Is,
+                    )
+                     #Fit peak widths
+                    width = refinement.broadenings(
+                        two_theta=two_theta,
+                        intensities=Is,
+                    )
+                    # Append the fitted diffraction pattern
+                    fit = refinement.predict(two_theta)
+                     #Save a confidence value for the fit
+                    gd = refinement.goodness_of_fit(two_theta=two_theta,
+                                                    intensities=Is)
+                except exceptions.RefinementError as e:
                     failed.append(idx)
-                    goodness.append(np.nan)
-                else:
-                    goodness.append(residuals)
-                finally:
-                    phases = tuple(p.unit_cell.as_tuple() for p in refinement.phases)
-                    all_cells.append(phases)
-                # Refine the phase fractions
-                print(two_theta)
-                frac = refinement.phase_fractions(
-                    two_theta=two_theta,
-                    intensities=Is,
-                )
+                    log.warn('Failed to refine scan {idx}: {e}')
+                    # Refinement was not successful, so save nan values
+                    bg = np.full_like(two_theta, np.nan)
+                    cell_params = tuple((np.nan,)*6 for p in phases)
+                    frac = tuple(np.nan for p in phases)
+                    scale = np.nan
+                    width = tuple(np.nan for p in phases)
+                    fit = np.full_like(two_theta, np.nan)
+                    gd = np.nan
+                # Added refined values to cumulative arrays
+                bgs.append(bg)
+                all_cells.append(cell_params)
                 fractions.append(frac)
+
                 # Refine scale factors
-                scale = refinement.scale_fact(
-                    two_theta=two_theta,
+                cale = refinement.refine_scale_factor(
+                    scattering_lengths=two_theta,
                     intensities=Is,
                 )
                 scale_factors.append(scale)
                 # Fit peak widths
-                #refinement.fit_peaks(scattering_lengths=qs, intensities=subtracted)
-                #fit = refinement.predict(qs)
-                #fits.append(fit)
-                #width = refinement.refine_peak_widths(
-                    #scattering_lengths=qs,
-                    #intensities=fit
-                #)
-                #broadenings.append(width)
+                refinement.fit_peaks(scattering_lengths=qs,intensities=Is)
+                fit = refinement.predict(qs)
+                fits.append(fit)
+                width = refinement.refine_peak_widths(
+                    scattering_lengths=qs,
+                    intensities=fit
+                )
+                broadenings.append(width)
     
-                # Append the fitted diffraction pattern
+                #Append the fitted diffraction pattern
+                scale_factors.append(scale)
+                broadenings.append(width)
+                fits.append(fit)
+                goodness.append(gd)
             # Store refined data for later
             store.backgrounds = np.array(bgs)
             store.cell_parameters = np.array(all_cells)
             store.fits = np.array(fits)
             store.phase_fractions = fractions
-            store.peak_broadening = broadenings
+            store.peak_broadenings = broadenings
             # Normalize goodnesses of fit values to be between 0 and 1
             max_ = np.nanmax(goodness)
             min_ = np.nanmin(goodness)
@@ -937,8 +983,9 @@ class XRDMap(Map):
         """Return a list of the available metrics that a user can map. See
         XRDMap.metric() docstring for a full explanation.
         """
-        valid = ['a', 'b', 'c', 'alpha', 'beta', 'gamma',
-                 'integral', 'goodness', 'position', 'None']
+        valid = ['a', 'b', 'c', 'alpha', 'beta', 'gamma', 'integral',
+                 'phase_fraction', 'goodness_of_fit', 'position',
+                 'peak_broadening', 'scale_factor', 'None']
         return valid
     
     def metric(self, param, phase_idx=0, locus=None):
@@ -946,7 +993,7 @@ class XRDMap(Map):
         given phase index `phaseidx`. Valid parameters:
         - Unit cell parameters: 'a', 'b', 'c', 'alpha', 'beta', 'gamma'
         - 'integral' to indicate total integrated signal after bg subtraction
-        - 'goodness' to use the quality of fit determined during refinement
+        - 'goodness_of_fit' to use the quality of fit determined during refinement
         - 'position' to give the distance from the origin (for testing purposes)
         - 'phase_fraction' to give the fraction of the given ``phase_idx``
         - 'None' or None to give an array of 1's
@@ -966,13 +1013,13 @@ class XRDMap(Map):
         elif param == 'integral':
             with self.store() as store:
                 q = store.scattering_lengths
-                I = store.subtracted
+                I = store.intensities.value - store.backgrounds.value
                 metric = scipy.integrate.trapz(y=I, x=q, axis=1)
         elif param == "position":
             with self.store() as store:
                 locs = store.positions
-            metric = np.sqrt(locs[:,0]**2 + locs[:,1]**2)
-        elif param in ['goodness', 'scale_factor']:
+                metric = np.sqrt(locs[:,0]**2 + locs[:,1]**2)
+        elif param in ['goodness_of_fit', 'scale_factor']:
             # Just return the requested store attribute
             with self.store() as store:
                 metric = getattr(store, param).value
@@ -981,7 +1028,7 @@ class XRDMap(Map):
                 metric = store.phase_fractions[:,phase_idx]
         elif param == 'peak_broadening':
             with self.store() as store:
-                metric = store.peak_broadening[:,phase_idx]
+                metric = store.peak_broadenings[:,phase_idx]
         elif param in ['None', None]:
             # Return a dummy array with all 1's
             with self.store() as store:
@@ -992,10 +1039,10 @@ class XRDMap(Map):
         if locus is not None:
             metric = metric[locus:locus+1]
         return metric
-
+    
     def plot_map_gtk(self, *args, **kwargs):
-        from .gtkmapviewer import GtkXrdMapViewer
-        return super().plot_map_gtk(WindowClass=GtkXrdMapViewer, *args, **kwargs)
+        from .gtkmapviewer import GtkMapViewer
+        return super().plot_map_gtk(WindowClass=GtkMapViewer, *args, **kwargs)
     
     def dots_per_mm(self):
         """Determine the width of the scan images based on sample's camera

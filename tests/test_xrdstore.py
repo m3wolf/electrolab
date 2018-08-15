@@ -143,3 +143,4 @@ class XRDStoreTests(unittest.TestCase):
                          groupname="xrd-map-gadds")
         with store:
             self.assertAlmostEqual(store.effective_wavelength, 1.5418, places=3)
+

@@ -149,7 +149,7 @@ class NativeRefinement(BaseRefinement):
         the structure factor of the diagnostic reflections are also
         similar. By default this method does not remove the
         background.
-
+        
         Parameters
         ----------
         scattering_lengths : np.ndarray
@@ -157,13 +157,13 @@ class NativeRefinement(BaseRefinement):
         intensities : np.ndarray
           Independent variable for the diffractogram. Must be the same
           shape as ``scattering_lengths``.
-
+        
         Returns
         -------
         phase_fractions : np.ndarray
           The relative weight of each phase as determined by the
           diffraction pattern.
-
+        
         """
         # Calculate the diagnistic peak area for each phase
         areas = []
@@ -176,10 +176,10 @@ class NativeRefinement(BaseRefinement):
         total_area = np.sum(areas)
         phase_fractions = areas / total_area
         return phase_fractions
-
+    
     def refine_scale_factor(self, scattering_lengths, intensities):
         """Calculate the absolute strengths of each phase in a diffractogram.
-
+        
         The simplest approach is to calculate the peak area for each
         phases's diagnostic reflection. The factor is then the sum of
         each phases's reflection over all phases. This makes the
@@ -187,7 +187,7 @@ class NativeRefinement(BaseRefinement):
         structure factor of the diagnostic reflections are also
         similar. By default this method does not remove the
         background.
-
+        
         Parameters
         ----------
         scattering_lengths : np.ndarray
@@ -213,7 +213,7 @@ class NativeRefinement(BaseRefinement):
         areas = np.array(areas)
         total_area = np.sum(areas)
         return total_area
-
+    
     def refine_background(self, scattering_lengths, intensities, s=None, k=4):
         
         """Fit a univariate spline to the background data.
