@@ -107,7 +107,7 @@ class XRDScan():
         """
         data = {
             'counts': self.intensities,
-            'subtracted': self.intensities - self.background(),
+            # 'subtracted': self.intensities - self.background(),
         }
         q = self.scattering_lengths
         df = pd.DataFrame(index=q, data=data)

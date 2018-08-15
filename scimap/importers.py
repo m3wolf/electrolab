@@ -20,6 +20,7 @@
 import os
 import re
 from typing import Union, Tuple
+import warnings
 
 import h5py
 import numpy as np
@@ -32,35 +33,29 @@ from .xrdstore import XRDStore
 
 
 def import_gadds_map(sample_name: str=None, directory: str=None,
-                     tube: str="Cu", hdf_filename: str=None,
-                     hdf_groupname: str=None):
+                     hdf_filename: str=None, hdf_groupname: str=None):
     """Import a set of diffraction patterns from a map taken on a Bruker
     D8 Discover Series II diffractometer using the GADDS software
     suite.
-
-    Arguments
-    ---------
-
-    - sample_name : String with the name describing this sample. If
-      provided and not None, this can be used to guess the directory,
-      hdf_filename and hdf_groupname arguments (otherwise they must be
-      explicitely provided).
-
-    - directory : Directory where to look for results. It should
-      contain .plt files that are 2-theta and intensity data as well as
-      .jpg files of the locus images.
-
-    - tube : Anode material used in the X-ray tube. This will be used
-      to determine the wavelength for converting two-theta to
-      scattering lengths (q).
-
-    - hdf_filename : HDF File used to store computed results. If
-      omitted or None, the `directory` basename is used
-
-    - hdf_groupname : String to use for the hdf group of this
-      dataset. If omitted or None, the `directory` basename is
-      used. Raises an exception if the group already exists in the HDF
-      file.
+    
+    Parameters
+    ----------
+    sample_name : optional
+      Name describing this sample. If provided and not None, this can
+      be used to guess the directory, hdf_filename and hdf_groupname
+      arguments (otherwise they must be explicitely provided).
+    directory : optional
+      Directory where to look for results. It should contain .plt
+      files that are 2-theta and intensity data as well as .jpg files
+      of the locus images.
+    hdf_filename : optional
+      HDF File used to store computed results. If omitted or None, the
+      `directory` basename is used
+    hdf_groupname : optional
+      String to use for the hdf group of this dataset. If omitted or
+      None, the `directory` basename is used. Raises an exception if
+      the group already exists in the HDF file.
+    
     """
     # Check that the we have all the right filenames provided in arguments
     if sample_name is None and None in [hdf_filename, hdf_groupname, directory]:
@@ -92,7 +87,7 @@ def import_gadds_map(sample_name: str=None, directory: str=None,
     for filename in pltfiles:
         plt = BrukerPltFile(filename=filename)
         Is.append(plt.intensities())
-        qs.append(plt.scattering_lengths(wavelength=wavelength))
+        qs.append(plt.scattering_lengths(wavelength=wavelength[0]))
     # Save diffraction data to HDF5 file
     Is = np.array(Is)
     xrdstore.intensities = Is
@@ -109,37 +104,36 @@ def import_aps_34IDE_map(directory: str, wavelength: int,
                          beamstop=0, qrange=None):
     """Import a set of diffraction patterns from a map taken at APS
     beamline 34-ID-E. The data should be taken in a rectangle.
-
+    
     Arguments
     ---------
-
-    - directory : Directory where to look for results. It should
-    contain .chi files that are q or 2-theta and intensity data."
-
-    - wavelength : Wavelength of x-ray used, in angstroms.
-
-    - shape : 2-tuple for number of scanning loci in each
-      direction. The first value is the slow axis and the second is
-      the fast axis.
-
-    - step_size : Number indicating how far away each locus is from
-      every other. Best practice is to include units directly by using
-      the `units` package.
-
-    - hdf_filename : HDF File used to store computed results. If
-      omitted or None, the `directory` basename is used
-
-    - hdf_groupname : String to use for the hdf group of this
-      dataset. If omitted or None, the `directory` basename is
-      used. Raises an exception if the group already exists in the HDF
-      file.
-
-    - beamstop : [deprecated] A scattering length (q) below which the beam stop
-      cuts off the signal.
-
-    - qrange : A scattering length (q) range beyond the signal is cut
+    
+    directory
+      Directory where to look for results. It should contain .chi
+      files that are q or 2-theta and intensity data."
+    wavelength
+      Wavelength of x-ray used, in angstroms.
+    shape
+      2-tuple for number of scanning loci in each direction. The first
+      value is the slow axis and the second is the fast axis.
+    step_size
+      Number indicating how far away each locus is from every
+      other. Best practice is to include units directly by using the
+      `units` package.
+    hdf_filename : optional
+      HDF File used to store computed results. If omitted or None, the
+      `directory` basename is used
+    hdf_groupname : optional
+      String to use for the hdf group of this dataset. If omitted or
+      None, the `directory` basename is used. Raises an exception if
+      the group already exists in the HDF file.
+    beamstop : deprecated
+      A scattering length (q) below which the beam stop cuts off the
+      signal. Use ``qrange`` instead.
+    qrange : optional
+      A scattering length (q) range beyond the signal is cut
       invalid. This helps remove things like beam stop effects.
-
+    
     """
     if hdf_filename is None:
         # Set a default filename based on the directory name
@@ -152,7 +146,7 @@ def import_aps_34IDE_map(directory: str, wavelength: int,
                                          dirname=directory)
     xrdstore = XRDStore(hdf_filename=hdf_filename, groupname=sample_group.name, mode="r+")
     xrdstore.group().attrs['source'] = "APS 34-ID-E"
-    wavelength_AA = wavelength
+    wavelength_AA = [(wavelength, 1)]
     sample_group.create_dataset('wavelengths', data=wavelength_AA)
     sample_group['wavelengths'].attrs['unit'] = 'Å'
     # Determine the sample step sizes
@@ -169,21 +163,16 @@ def import_aps_34IDE_map(directory: str, wavelength: int,
     xrdstore.positions = positions
     xrdstore.position_unit = 'um'
     xrdstore.layout = 'rect'
-
     intensities = []
     qs = []
     angles = []
     file_basenames = []
-
     chifiles = [p for p in os.listdir(directory) if os.path.splitext(p)[1] == '.chi']
-
     if beamstop:
         warnings.warn(UserWarning("Deprecated, use qrange instead"))
-
     # Sort filenames
     convert = lambda text: int(text) if text.isdigit() else text.lower()
     alphanum_key = lambda key: [ convert(c) for c in re.split('([0-9]+)', key) ] 
-
     for filename in sorted(chifiles, key=alphanum_key):
         path = os.path.join(directory, filename)
         file_basenames.append(os.path.splitext(path)[0])

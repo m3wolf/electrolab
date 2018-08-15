@@ -108,7 +108,7 @@ class GtkMapViewer():
         self.window = self.builder.get_object('MapViewerWindow')
         # Load icon
         directory = os.path.dirname(os.path.realpath(__file__))
-        image = '{0}/../images/icon.png'.format(directory)
+        image = '{0}/images/icon.png'.format(directory)
         self.window.set_icon_from_file(image)
         self.window.set_default_size(1000, 1000)
         # Populate the combobox with list of available metrics (and alphas)

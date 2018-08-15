@@ -367,7 +367,6 @@ class Peak():
         FitClass = self.FitClass
         for i in range(0, self.num_peaks):
             self.fit_list.append(FitClass())
-
         # Define objective function
         def objective(x, *params):
             # Unpack the parameters
@@ -377,7 +376,6 @@ class Peak():
                 y = fit.kernel(x, *paramGroups[idx])
                 result += y
             return result
-
         # Error function, penalizes values out of range
         def residual_error(obj_params):
             penalty = 0
@@ -422,7 +420,6 @@ class Peak():
             will be generated within the range intially used for the
             fitting.
         """
-        # import pdb; pdb.set_trace()
         if xdata is None:
             # Create a default linspace to use as xdata
             x = np.linspace(self.x_range[0],
@@ -477,8 +474,12 @@ class Peak():
         """Full width at half-maximum. A discrete curve is predicted from the
         fit and the the width is found numerically.
         """
-        predicted = self.predict()
-        width = discrete_fwhm(predicted)
+        # Create a default linspace to use as xdata
+        x = np.linspace(self.x_range[0],
+                        self.x_range[1],
+                        num=2000)
+        predicted = self.predict(xdata=x)
+        width = discrete_fwhm(x, predicted)
         return width
 
     def plot_fit(self, ax=None, background=None):

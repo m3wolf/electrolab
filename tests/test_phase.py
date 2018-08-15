@@ -26,23 +26,28 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardi
 
 import matplotlib.pyplot as plt
 
-from scimap import XRDScan, standards
+from scimap import XRDScan, standards, Phase, Reflection
 
 
-class NativeRefinementTest(unittest.TestCase):
 
-    @unittest.expectedFailure
-    def test_remove_peaks(self):
-        corundum = standards.Corundum()
-        # Get sample data from Mew XRD
-        scan = XRDScan(filename="test-data-xrd/corundum.brml",
-                       phase=corundum)
-        df = scan.diffractogram
-        q = df.index
-        old_I = df.counts
-        # Remove expected XRD peaks
-        new_I = corundum.remove_peaks(q, old_I)
-        # Check that the result is the same shape as the input data
-        self.assertEqual(old_I.shape, new_I.shape)
-        # Spot-check a few intensity values against previously verified results
-        assert False, "TODO: Write a test for spot-checking the removed peaks"
+class PhaseTest(unittest.TestCase):
+    class TestPhase(Phase):
+        reflection_list = [
+            Reflection('111'),
+            Reflection('130'),
+        ]
+    
+    def test_reflection_list(self):
+        """Check that reflections get reset during initalization. This is
+        necessary so that multiple phases can be manipulated and
+        refined simultaneously.
+        
+        """
+        phase0 = self.TestPhase()
+        ref0 = phase0.reflection_list[0]
+        phase1 = self.TestPhase()
+        ref1 = phase1.reflection_list[0]
+        # Change a reflection and ensure that the other one stays the same
+        ref0.intensity = 77
+        self.assertIsNot(ref0, ref1)
+        self.assertNotEqual(ref1.intensity, 77)

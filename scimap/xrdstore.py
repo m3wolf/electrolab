@@ -19,6 +19,9 @@
 
 from sympy.physics import units
 import h5py
+import numpy as np
+
+from scimap import exceptions
 
 
 class StoreDescriptor():
@@ -50,7 +53,6 @@ class StoreDescriptor():
         del store.data_group()[self.name]
 
 
-
 class XRDStore():
     """Wrapper around HDF file that stores XRD data.
     
@@ -74,6 +76,8 @@ class XRDStore():
     wavelengths = StoreDescriptor('wavelengths')
     scattering_lengths = StoreDescriptor('scattering_lengths')
     backgrounds = StoreDescriptor('backgrounds')
+    peak_broadenings = StoreDescriptor('peak_broadenings')
+
     def __init__(self, hdf_filename: str, groupname: str, mode='r'):
         self.hdf_filename = hdf_filename
         self.groupname = groupname

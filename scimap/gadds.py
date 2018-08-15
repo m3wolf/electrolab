@@ -188,7 +188,7 @@ def _context(diameter, collimator, coverage, scan_time,
     return context
 
 def write_gadds_script(qrange, sample_name, center, collimator=0.8,
-                       diameter=12.7, coverage=1, scan_time=300,
+                       diameter=12.7, coverage=1., scan_time=300,
                        tube="Cu", detector_distance=20,
                        hexadecimal=False, frame_size=1024, file=None,
                        hdf_filename=None):
@@ -196,7 +196,7 @@ def write_gadds_script(qrange, sample_name, center, collimator=0.8,
     circular area and a .h5 file to hold the resulting data. After
     acquisition, the data will need to be imported with
     `importers.import_gadds_map()`.
-
+    
     Parameters
     ----------
     qrange
@@ -213,34 +213,32 @@ def write_gadds_script(qrange, sample_name, center, collimator=0.8,
       resolution.
     diameter : float, int
       Diameter of the mapping area in mm.
-
-    - coverage : Ratio of how much of the mappable area to actually
-      use. This allows for faster "overview" scans. A value of 1
-      results in full coverage.
-
-    - scan_time : How long to collect each frame, in seconds.
-
-    - tube : String describing the anode material used in the X-ray
+    coverage : float, optional
+      Ratio of how much of the mappable area to actually use. This
+      allows for faster "overview" scans. A value of 1 results in full
+      coverage.
+    scan_time : int, optional
+      How long to collect each frame, in seconds.
+    tube : str, optional
+      Describes the anode material used in the X-ray
       tube. This determines the wavelength of X-ray radiation.
-
-    - detector_distance : Distance in cm between the sample and the detector
-
-    - hexadecimal : Individual data files include a serial number. If
-                       this argument is true these will be converted
-                       to hexadecimal, resulting in slightly shorter
-                       filenames.
-
-    - frame_size : Size in pixels of the saved GADDS detector
-      images. Choices are 512, 1024 (default) or 2048.
-
-    - file : File-like object into which to write the .slm file. If
-      omitted a new directory and .slm file will be created based on
+    detector_distance : float, optional
+      Distance in cm between the sample and the detector
+    hexadecimal : bool, optional
+      Individual data files include a serial number. If this argument
+      is true these will be converted to hexadecimal, resulting in
+      slightly shorter filenames.
+    frame_size : int, optional
+      Size in pixels of the saved GADDS detector images. Choices are
+      512, 1024 (default) or 2048.
+    file : optional
+      File-like object into which to write the .slm file. If omitted a
+      new directory and .slm file will be created based on
       `sample_name`.
-
-    - hdf_filename : String with the filename to save the HDF5
-      file. If omitted, a default will be used based on
-      `sample_name`
-
+    hdf_filename : str, optional
+      String with the filename to save the HDF5 file. If omitted, a
+      default will be used based on `sample_name`
+    
     """
     wavelength = tubes[tube].kalpha
     two_theta_range = q_to_twotheta(np.array(qrange), wavelength=wavelength)
@@ -276,17 +274,16 @@ def write_gadds_script(qrange, sample_name, center, collimator=0.8,
                         groupname=sample_name, mode="r+")
     positions = [(s['x'], s['y']) for s in context['scans']]
     xrdstore.positions = np.array(positions)
+    xrdstore.position_unit = 'mm'
     xrdstore.layout = 'hex'
     file_basenames = np.array([s['filename'] for s in context['scans']])
     xrdstore.file_basenames = np.array(file_basenames)
     tube_ = tubes[tube]
-    kalphas = (tube_.kalpha1, tube_.kalpha2)
-    kalphas = np.array([k for k in kalphas])
+    kalphas = tube_.wavelengths
     xrdstore.step_size =  context['unit_size']
-    
-    xrdstore.collimator = collimator
     xrdstore.wavelengths = kalphas
     xrdstore.group()['wavelengths'].attrs['unit'] = "Å"
+    xrdstore.collimator = collimator
     hdfgroup.file.close()
     # Print summary info
     if not prog.quiet:

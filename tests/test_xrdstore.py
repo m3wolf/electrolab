@@ -130,22 +130,17 @@ class XRDStoreTests(unittest.TestCase):
             # h5grp.create_dataset('intensities', data=np.random.rand(397, 20))
             np.testing.assert_equal(store.goodness_of_fit, h5grp['goodness_of_fit'])
             np.testing.assert_equal(store.intensities, h5grp['intensities'])
-        
-    # def test_step_size(self):
-    #     store = XRDStore(hdf_filename=self.hdf_filename,
-    #                      groupname="xrd-map-gadds")
-    #     # For now, just check that the value can be retrieved without
-    #     # throwing an error
-    #     step_size = store.step_size
     
-    # def test_step_unit(self):
-    #     store = XRDStore(hdf_filename=self.hdf_filename,
-    #                      groupname="xrd-map-gadds")
-    #     store.step_unit = 'um'
-    #     step_unit = store.step_unit
-    #     self.assertEqual(step_unit, 'um')
-    
-    # def test_scale_factor(self):
-    #     store = XRDStore(hdf_filename=self.hdf_filename,
-    #                      groupname="xrd-map-gadds")
-    #     store.scale_factor
+    def test_effective_wavelength(self):
+        # Create simulated wavelength data
+        wl = ((1.5406, 1), (1.5444, 0.5))
+        groupname = 'xrd-map-gadds'
+        with h5py.File(self.temp_hdffile) as h5file:
+            h5file.create_group(groupname)
+            h5file[groupname].create_dataset('wavelengths', data=wl)
+        # Check that the effective wavelength combines the values properly
+        store = XRDStore(hdf_filename=self.temp_hdffile,
+                         groupname="xrd-map-gadds")
+        with store:
+            np.testing.assert_almost_equal(store.effective_wavelength,
+                                    [1.54186667, 0.83333333])

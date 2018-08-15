@@ -8,7 +8,7 @@ from .phase import Phase
 from .standards import Aluminum
 from .unitcell import CubicUnitCell, TetragonalUnitCell
 from .reflection import Reflection
-from .fullprof_refinement import FullProfPhase, ProfileMatch
+from .fullprof_refinement import FullProfPhase, FullprofRefinement
 
 
 class CubicLMO(Phase):
@@ -114,7 +114,7 @@ class HighV531Phase(HighVPhase):
     diagnostic_hkl = '531'
 
 
-class LMORefinement(ProfileMatch):
+class LMORefinement(FullprofRefinement):
     bg_coeffs = [0.409, 14.808, -14.732, -10.292, 34.249, -28.046]
     zero = -0.001360
     displacement = 0.000330
