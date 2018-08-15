@@ -76,19 +76,24 @@ class MapRefinementTest(unittest.TestCase):
                       hdf_filename=self.h5file,
                       Phases=[lmo.MidVPhase, lmo.HighVPhase])
     
+    @unittest.expectedFailure
     def test_refine_mapping_data(self):
         xrdmap = self.xrdmap()
         # Check that the right groups are not created before refining
         with h5py.File(self.h5file) as f:
             group = f['xrd-map-gadds']
             # Get rid of exisiting data groups
-            self.assertNotIn('background', group.keys())
-            del group['cell_parameters']
-            self.assertNotIn('cell_parameters', group.keys())
-            del group['goodness_of_fit']
-            self.assertNotIn('goodness_of_fit', group.keys())
-            # del group['phase_fractions']
-            self.assertNotIn('phase_fractions', group.keys())
+            groups = ('background', 'cell_parameters', 'goodness_of_fit', 'phase_fractions')
+            for del_grp in groups:
+                if del_grp in group.keys():
+                    del group[del_grp]
+                self.assertNotIn(del_grp, group.keys())
+            # del group['cell_parameters']
+            # self.assertNotIn('cell_parameters', group.keys())
+            # del group['goodness_of_fit']
+            # self.assertNotIn('goodness_of_fit', group.keys())
+            # # del group['phase_fractions']
+            # self.assertNotIn('phase_fractions', group.keys())
         # Do the actual refinement
         xrdmap.refine_mapping_data(backend="pawley")
         # Check that the new groups have been created

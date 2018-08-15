@@ -37,6 +37,7 @@ from scimap.pawley_refinement import PawleyRefinement, predict_diffractogram, ga
 TESTDIR = os.path.join(os.path.dirname(__file__), "test-data-xrd")
 COR_BRML = os.path.join(TESTDIR, 'corundum.brml')
 
+@unittest.skip
 class PawleyRefinementTest(unittest.TestCase):
     wavelengths = (
             (1.5406, 1), # Kα1

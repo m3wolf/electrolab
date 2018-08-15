@@ -142,5 +142,5 @@ class XRDStoreTests(unittest.TestCase):
         store = XRDStore(hdf_filename=self.temp_hdffile,
                          groupname="xrd-map-gadds")
         with store:
-            self.assertAlmostEqual(store.effective_wavelength, 1.5418, places=3)
-
+            np.testing.assert_almost_equal(store.effective_wavelength,
+                                    [1.54186667, 0.83333333])

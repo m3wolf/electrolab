@@ -3,7 +3,6 @@ import numpy as np
 
 import pandas as pd
 
-
 from scimap.peakfitting import Peak, discrete_fwhm
 
 # flake8: noqa

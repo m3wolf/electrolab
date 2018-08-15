@@ -50,7 +50,7 @@ from scimap.importers import import_gadds_map
 from scimap.utilities import q_to_twotheta, twotheta_to_q
 from scimap.peak import XRDPeak
 from scimap.xrd_map import XRDMap
-from scimap.fullprof_refinement import FullProfPhase, ProfileMatch as FullprofProfileMatch
+from scimap.fullprof_refinement import FullProfPhase, FullprofRefinement as FullprofProfileMatch
 from scimap.native_refinement import NativeRefinement, contains_peak
 from scimap.adapters import BrukerRawFile, BrukerBrmlFile, BrukerXyeFile, BrukerPltFile
 
@@ -258,7 +258,7 @@ class SlamFileTest(unittest.TestCase):
         # Flood and spatial files to load
         self.assertEqual(context['flood_file'], '1024_020._FL')
         self.assertEqual(context['spatial_file'], '1024_020._ix')
-    
+
     def test_write_slamfile(self):
         sample_name = "xrd-map-gadds-temp"
         directory = '{}-frames'.format(sample_name)
@@ -285,8 +285,12 @@ class SlamFileTest(unittest.TestCase):
             self.assertEqual(layout, 'hex')
             self.assertIn('file_basenames', keys)
             wavelength = f[sample_name]['wavelengths']
-            self.assertEqual(wavelength[0], 1.5406)
-            self.assertEqual(wavelength[1], 1.5444)
+            print(wavelength)
+            np.testing.assert_almost_equal(wavelength,
+                                           [[1.5406, 1],
+                                            [1.5444, 0.5]])
+            # self.assertEqual(wavelength[0], 1.5406)
+            # self.assertEqual(wavelength[1], 1.5444)
             # Collimator and step_sizes
             self.assertEqual(f[sample_name]['collimator'].value, 0.8)
             self.assertEqual(f[sample_name]['collimator'].attrs['unit'], 'mm')
@@ -766,7 +770,6 @@ class ReflectionTest(unittest.TestCase):
 
 
 class PhaseTest(unittest.TestCase):
-
     def setUp(self):
         self.corundum_scan = XRDScan(filename='test-data-xrd/corundum.xye',
                                      phase=Corundum())
@@ -813,7 +816,7 @@ class ExperimentalDataTest(unittest.TestCase):
             predicted_peaks[:len(celref_peaks)],
             celref_peaks
         )
-    
+        
     def test_mean_square_error(self):
         scan = XRDScan(filename=corundum_path,
                        phase=self.phase)
@@ -824,6 +827,36 @@ class ExperimentalDataTest(unittest.TestCase):
         diff = rms_error - 0.10492
         self.assertTrue(
             diff < 0.001
+        )
+
+    @unittest.expectedFailure
+    def test_refine_corundum(self):
+        # Results take from celref using corundum standard
+        scan = XRDScan(filename=corundum_path,
+                       phase=Corundum())
+        residuals = scan.refinement.refine_unit_cells(
+            quiet=True,
+            scattering_lengths=scan.scattering_lengths,
+            intensities=scan.intensities
+        )
+        # peaks = scan.phases[0].predicted_peaks()
+        # plt.plot(scan.diffractogram.counts)
+        # for peak in peaks:
+        #     plt.axvline(peak.q, linestyle=":", alpha=0.5, color="C1")
+        # plt.show()
+        unit_cell_parameters = scan.phases[0].unit_cell.cell_parameters
+        # Cell parameters taken from 1978a sample CoA
+        self.assertAlmostEqual(
+            unit_cell_parameters.a,
+            4.758877,
+        )
+        self.assertAlmostEqual(
+            unit_cell_parameters.c,
+            12.992877
+        )
+        self.assertTrue(
+            residuals < 0.03,
+            'residuals ({}) too high'.format(residuals)
         )
 
 
@@ -916,10 +949,11 @@ class BrukerBrmlTestCase(unittest.TestCase):
     #     )
 
 
+@unittest.skip
 class FullProfProfileTest(unittest.TestCase):
     def setUp(self):
         # Base parameters determine from manual refinement
-        class FPCorundum(FullProfPhase, Corundum):
+        class FPCorundum(Corundum):
             unit_cell = HexagonalUnitCell(a=4.758637, c=12.991814)
             u = 0.00767
             v = -0.003524

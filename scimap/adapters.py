@@ -44,7 +44,7 @@ def adapter_from_filename(filename, *args, **kwargs):
     FILE_ADAPTERS = {
         '.xye': BrukerXyeFile,
         '.plt': BrukerPltFile,
-        '.dat': FullProfDataFile,
+        # '.dat': FullProfDataFile,
         '.brml': BrukerBrmlFile,
         '.gfrm': BrukerGfrmFile,
     }

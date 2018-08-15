@@ -24,12 +24,18 @@ import unittest
 import os
 import sys
 
-from scimap.gsas_refinement import GSASRefinement, import_gsas
-gsas = import_gsas(('~/build/pyGSAS/',))
+
+try:
+    from scimap.gsas_refinement import GSASRefinement, import_gsas
+    gsas = import_gsas(('~/build/pyGSAS/',))
+except ImportError:
+    has_gsas = False
+else:
+    has_gsas = True
 
 TESTDIR = os.path.dirname(__file__)
 
-
+@unittest.skipUnless(has_gsas, 'GSAS-II not found')
 class GSASTestCase(unittest.TestCase):
     gpx_root = os.path.join(TESTDIR, 'refinement-temp', 'refinement0')
     gpx_template = os.path.join(TESTDIR, 'test-data-xrd', 'corundum-template.gpx')

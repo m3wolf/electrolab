@@ -78,6 +78,7 @@ class XRDStore():
     scattering_lengths = StoreDescriptor('scattering_lengths')
     backgrounds = StoreDescriptor('backgrounds')
     peak_broadenings = StoreDescriptor('peak_broadenings')
+
     def __init__(self, hdf_filename: str, groupname: str, mode='r'):
         self.hdf_filename = hdf_filename
         self.groupname = groupname
@@ -183,18 +184,14 @@ class XRDStore():
         group['cell_parameters'].attrs['order'] = "(scan, phase, (a, b, c, α, β, γ))"
     
     @property
-    def scale_factor(self):
-        return self.group()['scale_factor']
-    
-    @scale_factor.setter
-    def scale_factor(self, value):
-        self.replace_dataset('scale_factor', data=value)
-        
-    @property
     def effective_wavelength(self):
-        wls = self.wavelengths
-        wavelength = np.sum(wls[:,0] * wls[:,1]) / np.sum(wls[:,1])
-        return wavelength
+        wavelengths = self.wavelengths
+        # Combine kα1 and kα2
+        if len(wavelengths) == 2:
+            wl = (wavelengths[0] + 0.5*wavelengths[1]) / 1.5
+        else:
+            wl = wavelengths
+        return wl
     
     @property
     def layout(self):
@@ -215,15 +212,6 @@ class XRDStore():
         raise exceptions.DeprecationError("Just subtract them in real time")
         self.replace_dataset('intensities_subtracted', data=value)
     
-    @property
-    def intensities_subtracted(self):
-        intensities_subtracted = self.group()['intensities_subtracted'].value
-        return intensities_subtracted
-        
-    @intensities_subtracted.setter
-    def intensities_subtracted(self, value):
-        self.replace_dataset('intensities_subtracted', data=value)
-        
     @property
     def collimator(self):
         collimator = self.group()['collimator'].value

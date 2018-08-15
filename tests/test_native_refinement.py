@@ -35,6 +35,7 @@ from scimap.native_refinement import NativeRefinement, contains_peak, peak_area
 TESTDIR = os.path.join(os.path.dirname(__file__), "test-data-xrd")
 COR_BRML = os.path.join(TESTDIR, 'corundum.brml')
 
+@unittest.skip
 class NativeRefinementTest(unittest.TestCase):
     @unittest.expectedFailure
     def test_remove_peaks(self):
@@ -70,6 +71,8 @@ class NativeRefinementTest(unittest.TestCase):
         # plt.plot(q, I)
         # plt.plot(q, bg)
         # plt.show()
+        
+        from scipy.signal import find_peaks
         result = find_peaks(df.counts.values)
         peaks, props = result
         # Spot-check some values on the resulting background
@@ -83,7 +86,6 @@ class NativeRefinementTest(unittest.TestCase):
         median = abs(np.median(subtracted))
         self.assertTrue(median < 5)
     
-    @unittest.expectedFailure
     def test_phase_ratios(self):
         corundum = standards.Corundum()
         # Get sample data from Mew XRD

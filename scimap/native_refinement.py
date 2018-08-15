@@ -82,7 +82,7 @@ class NativeRefinement(BaseRefinement):
             raise exceptions.RefinementError()
         return rms_error
     
-    def unit_cells(self, scattering_lengths, intensities, quiet=True):
+    def refine_unit_cells(self, scattering_lengths, intensities, quiet=True):
         """Residual least squares refinement of the unit-cell
         parameters. Returns an (p, 6) array where p is the number of
         phases and axis 1 has a value for each of the cell parameters

@@ -202,21 +202,6 @@ class Map():
         """
         raise NotImplementedError
     
-    # def save(self, filename=None):
-    #     """Take cached data and save to disk."""
-    #     # Prepare dictionary of cached data
-    #     data = {
-    #         'diameter': self.diameter,
-    #         'coverage': self.coverage,
-    #         'loci': [locus.data_dict for locus in self.loci],
-    #     }
-    #     # Compute filename and Check if file exists
-    #     if filename is None:
-    #         filename = "{sample_name}.map".format(sample_name=self.sample_name)
-    #     # Pickle data and write to file
-    #     with open(filename, 'wb') as saveFile:
-    #         pickle.dump(data, saveFile)
-    
     def plot_map_with_image(self, scan=None, alpha=None):
         mapAxes, imageAxes = dual_axes()
         self.plot_map(ax=mapAxes, highlightedScan=scan, alpha=alpha)
@@ -628,12 +613,6 @@ class XRDMap(Map):
     def context(self):
         """Convert the object to a dictionary for the templating engine."""
         raise NotImplementedError("Use gadds._context()")
-    
-    def write_script(self, file=None, quiet=False):
-        """
-        Format the sample into a slam file that GADDS can process.
-        """
-        raise NotImplementedError("Use gadds.write_gadds_script()")
     
     def diffractogram(self, index=None, weights=None, weight_range=None):
         """
