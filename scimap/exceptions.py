@@ -48,6 +48,10 @@ class RefinementError(Exception):
     """Generic error: we tried to refine something but it didn't work."""
     pass
 
+class RefinementWarning(RuntimeWarning):
+    """We tried to refine something but it didn't work."""
+    pass
+
 class PeakFitError(RefinementError):
     """Tried to fit curves to a peak but could not find a local minimum."""
     pass
