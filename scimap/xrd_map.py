@@ -825,7 +825,7 @@ class XRDMap(Map):
     def plot_fwhm(self, phase_idx=0, *args, **kwargs):
         warnings.warn(UserWarning("Use `Map.plot_map(metric='fwhm')` instead"))
     
-    def refine_mapping_data(self, backend='native'):
+    def refine_mapping_data(self, backend='native', num_bg_coeffs=3):
         """Refine the relevant XRD parameters, such as background, unit-cells,
         etc. This will save the refined data to the HDF file.
         
@@ -836,7 +836,9 @@ class XRDMap(Map):
           uses built-in numerical computations. Other methods will be
           added in the future. A user-created subclass of
           ``BaseRefinement`` can also be supplied.
-        
+        num_bg_coeffs : int, optional
+          Numbers of background coefficients used for refinement
+          
         """
         # Empty arrays to hold results
         bgs = []
@@ -869,12 +871,13 @@ class XRDMap(Map):
             scans = zip(store.scattering_lengths[:], store.intensities[:])
             total = len(store.scattering_lengths)
             for idx, (qs, Is) in enumerate(prog(scans, total=total, desc="Refining")):
-                two_theta = q_to_twotheta(qs, wavelength=store.effective_wavelength)
+                two_theta = q_to_twotheta(qs, wavelength=store.effective_wavelength[0])
                 phases = [P() for P in self.Phases]
                 bg_phases = [P() for P in self.Background_Phases]
                 file_root = self.sample_name + ('_refinements/locus_%05d_ref' % idx)
                 refinement = Refinement(phases=phases, background_phases=bg_phases,
-                                        wavelengths=wavelengths, file_root=file_root)
+                                        wavelengths=wavelengths, file_root=file_root, 
+                                        num_bg_coeffs=num_bg_coeffs)
                 try:
                     # Refine background
                     bg = refinement.background(two_theta=two_theta,
@@ -906,7 +909,7 @@ class XRDMap(Map):
                                                     intensities=Is)
                 except exceptions.RefinementError as e:
                     failed.append(idx)
-                    log.warn('Failed to refine scan {idx}: {e}')
+                    log.warn('Failed to refine scan {idx}: {e}'.format(idx=idx, e=e))
                     # Refinement was not successful, so save nan values
                     bg = np.full_like(two_theta, np.nan)
                     cell_params = tuple((np.nan,)*6 for p in phases)
@@ -921,20 +924,20 @@ class XRDMap(Map):
                 fractions.append(frac)
 
                 # Refine scale factors
-                cale = refinement.refine_scale_factor(
-                    scattering_lengths=two_theta,
-                    intensities=Is,
-                )
+                # scale = refinement.refine_scale_factor(
+                #     scattering_lengths=two_theta,
+                #     intensities=Is,
+                # )
                 scale_factors.append(scale)
                 # Fit peak widths
-                refinement.fit_peaks(scattering_lengths=qs,intensities=Is)
-                fit = refinement.predict(qs)
+                # refinement.fit_peaks(scattering_lengths=qs,intensities=Is)
+                # fit = refinement.predict(qs)
                 fits.append(fit)
-                width = refinement.refine_peak_widths(
-                    scattering_lengths=qs,
-                    intensities=fit
-                )
-                broadenings.append(width)
+                # width = refinement.refine_peak_widths(
+                #     scattering_lengths=qs,
+                #     intensities=fit
+                #  )
+                # broadenings.append(width)
     
                 #Append the fitted diffraction pattern
                 scale_factors.append(scale)
