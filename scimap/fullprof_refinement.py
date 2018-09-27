@@ -196,28 +196,28 @@ class FullprofRefinement(BaseRefinement):
     _failed_parameters = []
     # Regular expressions for reading output summary files
     score_re = re.compile(
-        '=> Scor:\s*([-0-9Ea.Nan]+)')
+        r'=> Scor:\s*([-0-9Ea.Nan]+)')
     success_re = re.compile(
-        '==> RESULTS OF REFINEMENT:')
+        r'==> RESULTS OF REFINEMENT:')
     chi_re = re.compile(
-        'Chi2:\s+([-0-9Ee.Na]+)')
+        r'Chi2:\s+([-0-9Ee.Na]+)')
     bg_re = re.compile(
-        'Background Polynomial Parameters ==>((?:\s+[-+0-9Ee.]+)+)')
+        r'Background Polynomial Parameters ==>((?:\s+[-+0-9Ee.]+)+)')
     displacement_re = re.compile(
-        'Cos\( theta\)-shift parameter :\s+([-0-9Ee.]+)')
+        r'Cos\( theta\)-shift parameter :\s+([-0-9Ee.]+)')
     scale_re = re.compile(
-        '=> overall scale factor :\s+([-0-9Ee.]+)\s+([-0-9Ee.]+)')
+        r'=> overall scale factor :\s+([-0-9Ee.]+)\s+([-0-9Ee.]+)')
     width_re = re.compile(
-        '=> Halfwidth parameters\s+:\s+((?:\s+[-0-9Ee.]+)+)')
+        r'=> Halfwidth parameters\s+:\s+((?:\s+[-0-9Ee.]+)+)')
     cell_re = re.compile(
-        '=> Cell parameters\s+:\s+((?:\s+[-0-9Ee.]+)+)')
+        r'=> Cell parameters\s+:\s+((?:\s+[-0-9Ee.]+)+)')
     # Regular expressions for reading errors from log file
     singular_matrix_re = re.compile(
-        '==> Singular matrix!!, problem with (\S+)')
+        r'==> Singular matrix!!, problem with (\S+)')
     divergence_re = re.compile(
-        '=>\s+Unrecoverable divergence!!')
+        r'=>\s+Unrecoverable divergence!!')
     negative_fwhm_re = re.compile(
-        '=> Negative GAUSSIAN and/or LORENTZIAN FWHM detected')
+        r'=> Negative GAUSSIAN and/or LORENTZIAN FWHM detected')
     
     def __init__(self, num_bg_coeffs=3, *args, **kwargs):
         self._failed_parameters = []

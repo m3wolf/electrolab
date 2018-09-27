@@ -25,14 +25,13 @@ from scimap import XRDScan
 TESTDIR = os.path.join(os.path.dirname(__file__), "test-data-xrd")
 
 class XRDScanTest(unittest.TestCase):
-
     def test_init_wavelength(self):
         scan = XRDScan()
         self.assertAlmostEqual(scan.wavelength, 1.54187, places=4)
         # Try supplying a wavelength explicitly
         scan = XRDScan(wavelength=1.90)
         self.assertEqual(scan.wavelength, 1.90)
-
+    
     def test_get_scattering_lengths(self):
         # Check for a .brml file
         scan = XRDScan(filename=os.path.join(TESTDIR, 'corundum.brml'))

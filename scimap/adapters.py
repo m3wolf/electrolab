@@ -72,13 +72,16 @@ class XRDAdapter():
         # For compatibility as a context manager
         pass
 
+    def two_theta(self):
+        raise NotImplementedError(self.__class__)
+
     @property
     def sample_name(self):
         raise NotImplementedError(self.__class__)
 
     def scattering_lengths(self):
         raise NotImplementedError(self.__class__)
-
+    
     def intensities(self):
         raise NotImplementedError(self.__class__)
 
@@ -150,7 +153,7 @@ class BrukerXyeFile(XRDAdapter):
     def _dataframe(self):
         df = pd.read_csv(self.filename,
                          names=['2theta', 'counts', 'error'],
-                         sep='\s+', index_col=0, comment="'")
+                         sep=r'\s+', index_col=0, comment="'")
         return df
 
 
@@ -186,45 +189,48 @@ class BrukerBrmlFile(XRDAdapter):
         self._zf = zipfile.ZipFile(filename)
         data_file = self._zf.open('Experiment0/RawData0.xml')
         self._dataTree = ElementTree.parse(data_file)
-
+    
     def __enter__(self):
         return self
-
+    
     def __exit__(self, type, value, traceback):
         # Close files on disk
         self._zf.close()
-
+    
     @property
     def sample_name(self):
         nameElement = self._dataTree.find('.//InfoItem[@Name="SampleName"]')
         name = nameElement.get('Value')
         return name
-
+    
+    def two_theta(self):
+        # Find all Datum entries in data tree
+        data = self._dataTree.findall('.//Datum')
+        two_theta = np.array([float(d.text.split(',')[2]) for d in data])
+        return two_theta
+    
     def scattering_lengths(self, wavelength=None):
         """Return scattering length (q) for all Datum elements in the file.
         
         The wavelength is retrieved from the file; the argument is
         included only for interface compatibility.
-
+        
         Returns
         -------
         q : np.ndarray
           The scattering lengths in reciprocal angstroms, derived from
           measured 2θ values
-
+        
         """
-        # Find all Datum entries in data tree
-        data = self._dataTree.findall('.//Datum')
-        two_theta = np.array([float(d.text.split(',')[2]) for d in data])
-        q = twotheta_to_q(two_theta=two_theta, wavelength=self.wavelength)
+        q = twotheta_to_q(two_theta=self.two_theta(), wavelength=self.wavelength)
         return q
-
+    
     def intensities(self):
         """Return photon counts for all elements in the file."""
         data = self._dataTree.findall('.//Datum')
         counts = np.array([int(d.text.split(',')[4]) for d in data])
         return counts
-
+    
     @property
     def wavelength(self):
         """Wavelength of the incoming radiation in Angstroms."""

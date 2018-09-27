@@ -66,7 +66,8 @@ gsas = import_gsas(GSAS_LOCATIONS)
 class GSASRefinement(BaseRefinement):
     _gpx = None
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, gpx_template=None, *args, **kwargs):
+        self.gpx_template = gpx_template
         super().__init__(*args, **kwargs)
    
     @property

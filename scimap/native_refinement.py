@@ -60,7 +60,7 @@ class NativeRefinement(BaseRefinement):
     
     def peak_rms_error(self, phase, unit_cell=None, peak_list=None):
         diffs = []
-        predicted_peaks = phase.predicted_peak_positions(unit_cell=unit_cell)
+        predicted_peaks = phase.predicted_peaks(unit_cell=unit_cell)
         # Only include those that are within the two_theta range
         phase_idx = self.phases.index(phase)
         if peak_list is None:

@@ -50,7 +50,6 @@ from scimap.importers import import_gadds_map
 from scimap.utilities import q_to_twotheta, twotheta_to_q
 from scimap.peak import XRDPeak
 from scimap.xrd_map import XRDMap
-from scimap.fullprof_refinement import FullProfPhase, FullprofRefinement as FullprofProfileMatch
 from scimap.native_refinement import NativeRefinement, contains_peak
 from scimap.adapters import BrukerRawFile, BrukerBrmlFile, BrukerXyeFile, BrukerPltFile
 
@@ -596,7 +595,7 @@ class UnitCellTest(unittest.TestCase):
         self.assertEqual(unitCell.a, 15)
         self.assertEqual(unitCell.b, 3)
         self.assertEqual(unitCell.alpha, 45)
-
+    
     def test_setattr(self):
         """Does the unitcell give an error when passed crappy values."""
         # Negative unit cell parameter
@@ -610,7 +609,7 @@ class UnitCellTest(unittest.TestCase):
 class CubicUnitCellTest(unittest.TestCase):
     def setUp(self):
         self.unit_cell = CubicUnitCell()
-
+    
     def test_mutators(self):
         # Due to high symmetry, a=b=c
         self.unit_cell.a = 2
@@ -621,13 +620,13 @@ class CubicUnitCellTest(unittest.TestCase):
         # and alpha=beta=gamma=90
         with self.assertRaises(exceptions.UnitCellError):
             self.unit_cell.alpha = 120
-
+    
     def test_cell_parameters(self):
         self.assertEqual(
             self.unit_cell.cell_parameters,
             (1, )
         )
-
+    
     def test_d_spacing(self):
         self.assertEqual(
             self.unit_cell.d_spacing((1, 1, 1)),
@@ -638,7 +637,7 @@ class CubicUnitCellTest(unittest.TestCase):
 class HexagonalUnitCellTest(unittest.TestCase):
     def setUp(self):
         self.unit_cell = HexagonalUnitCell()
-
+    
     def test_mutators(self):
         self.unit_cell.a = 3
         self.assertEqual(self.unit_cell.b, 3)
@@ -646,7 +645,7 @@ class HexagonalUnitCellTest(unittest.TestCase):
         # Angles are fixed
         with self.assertRaises(exceptions.UnitCellError):
             self.unit_cell.alpha = 80
-
+    
     def test_cell_parameters(self):
         self.unit_cell.a = 6.5
         self.unit_cell.c = 9
@@ -654,7 +653,7 @@ class HexagonalUnitCellTest(unittest.TestCase):
             self.unit_cell.cell_parameters,
             (6.5, 9)
         )
-
+    
     def test_d_spacing(self):
         self.unit_cell.a = 1
         self.unit_cell.c = 2
@@ -664,78 +663,7 @@ class HexagonalUnitCellTest(unittest.TestCase):
         )
 
 
-class XRDLocusTest(unittest.TestCase):
-    def setUp(self):
-        xrd_map = XRDMap(scan_time=10,
-                         hdf_filename=hdf_34IDE,
-                         sample_name=group_34IDE,
-                         qrange=(10, 20))
-        # self.scan = XRDLocus(location=Cube(1, 0, -1),
-        #                      parent_map=xrd_map,
-        #                      filebase="map-0")
-
-    # def test_xy_coords(self):
-    #     self.scan.cube_coords = Cube(1, -1, 0)
-    #     self.assertEqual(
-    #         self.scan.xy_coords(1),
-    #         (1, 0)
-    #     )
-    #     self.scan.cube_coords = Cube(1, 0, -1)
-    #     self.assertEqual(
-    #         self.scan.xy_coords(1),
-    #         (0.5, math.sqrt(3)/2)
-    #     )
-    #     self.scan.cube_coords = Cube(0, 1, -1)
-    #     self.assertEqual(
-    #         self.scan.xy_coords(1),
-    #         (-0.5, math.sqrt(3)/2)
-    #     )
-    #     self.scan.cube_coords = Cube(1, -2, 1)
-    #     self.assertEqual(
-    #         self.scan.xy_coords(1),
-    #         (1.5, -math.sqrt(3)/2)
-    #     )
-    #     self.scan.cube_coords = Cube(2, 0, -2)
-    #     self.assertEqual(
-    #         self.scan.xy_coords(1),
-    #         (1, math.sqrt(3))
-    #     )
-
-    # def test_pixel_coords(self):
-    #     self.assertEqual(
-    #         self.scan.pixel_coords(height=1000, width=1000),
-    #         {'width': 553, 'height': 408},
-    #     )
-
-    # def test_unit_size(self):
-    #     self.assertEqual(
-    #         self.scan.xy_coords(2),
-    #         (1, math.sqrt(3))
-    #     )
-
-    # def test_data_dict(self):
-    #     scan = self.scan
-    #     dataDict = scan.data_dict
-    #     self.assertEqual(
-    #         dataDict['diffractogram'],
-    #         scan.diffractogram
-    #     )
-    #     self.assertEqual(
-    #         dataDict['cube_coords'],
-    #         tuple(scan.cube_coords)
-    #     )
-    #     self.assertEqual(
-    #         dataDict['filebase'],
-    #         scan.filebase
-    #     )
-    #     self.assertEqual(
-    #         dataDict['metric'],
-    #         scan.metric
-    #     )
-
-
 class ReflectionTest(unittest.TestCase):
-    
     def test_hkl_to_tuple(self):
         newHkl = hkl_to_tuple((1, 1, 1))
         self.assertEqual(
@@ -789,7 +717,7 @@ class ExperimentalDataTest(unittest.TestCase):
     """
     def setUp(self):
         self.phase = Corundum()
-
+    
     def test_predicted_peaks(self):
         # Predicted peaks up to (116) were calculated using celref
         # with the R-3C space group
@@ -816,7 +744,7 @@ class ExperimentalDataTest(unittest.TestCase):
             predicted_peaks[:len(celref_peaks)],
             celref_peaks
         )
-        
+    
     def test_mean_square_error(self):
         scan = XRDScan(filename=corundum_path,
                        phase=self.phase)
@@ -828,7 +756,7 @@ class ExperimentalDataTest(unittest.TestCase):
         self.assertTrue(
             diff < 0.001
         )
-
+    
     @unittest.expectedFailure
     def test_refine_corundum(self):
         # Results take from celref using corundum standard
@@ -941,159 +869,6 @@ class BrukerBrmlTestCase(unittest.TestCase):
     def test_counts(self):
         counts = self.adapter.intensities()
         self.assertEqual(counts[0], 122)
-    
-    # def test_diffractogram(self):
-    #     importedDf = self.adapter.dataframe
-    #     self.assertTrue(
-    #         'counts' in importedDf.columns
-    #     )
-
-
-@unittest.skip
-class FullProfProfileTest(unittest.TestCase):
-    def setUp(self):
-        # Base parameters determine from manual refinement
-        class FPCorundum(Corundum):
-            unit_cell = HexagonalUnitCell(a=4.758637, c=12.991814)
-            u = 0.00767
-            v = -0.003524
-            w = 0.002903
-            x = 0.001124
-            eta = 0.511090
-            isotropic_temp = 33.314
-        self.scan = XRDScan('test-sample-frames/corundum.brml',
-                               phase=FPCorundum())
-        self.refinement = FullprofProfileMatch(scan=self.scan)
-        self.refinement.zero = -0.003820
-        self.refinement.displacement = 0.0012
-        self.refinement.bg_coeffs = [129.92, -105.82, 108.32, 151.85, -277.55, 91.911]
-        # self.refinement.keep_temp_files = True
-
-    def test_jinja_context(self):
-        context = self.refinement.pcrfile_context()
-        self.assertEqual(len(context['phases']), 1)
-        phase1 = context['phases'][0]
-        self.assertEqual(
-            phase1['spacegroup'],
-            'R -3 C'
-        )
-        self.assertEqual(
-            phase1['vals']['a'],
-            4.758637
-        )
-        self.assertEqual(
-            phase1['vals']['u'],
-            self.scan.phases[0].u
-        )
-        self.assertEqual(
-            context['bg_coeffs'],
-            self.refinement.bg_coeffs
-        )
-        self.assertEqual(
-            context['displacement_codeword'],
-            0
-        )
-        self.assertEqual(
-            context['phases'][0]['vals']['I_g'],
-            0
-        )
-    
-    @unittest.expectedFailure
-    def test_refine_background(self):
-        # Set bg coeffs to something wrong
-        self.refinement.bg_coeffs = [0, 0, 0, 0, 0, 0]
-        self.refinement.refine_background()
-        self.assertTrue(
-            self.refinement.is_refined['background']
-        )
-        # Based on manual refinement in fullprof (winplotr-2006)
-        self.assertTrue(
-            0 < self.refinement.chi_squared < 10,
-            'Χ² is too high: {}'.format(self.refinement.chi_squared)
-        )
-        self.assertAlmostEqual(
-            self.refinement.bg_coeffs,
-            [132.87, -35.040, -5.58, 0, 0, 0]
-        )
-
-    @unittest.expectedFailure
-    def test_refine_displacement(self):
-        # Set sample displacement to something wrong
-        self.refinement.displacement = 0
-        self.refinement.refine_displacement()
-        self.assertTrue(
-            0 < self.refinement.chi_squared < 10,
-            'Χ² is too high: {}'.format(self.refinement.chi_squared)
-        )
-        # Based on manual refinement in fullprof
-        self.assertAlmostEqual(
-            self.refinement.displacement,
-            0.0054
-        )
-    
-    @unittest.expectedFailure
-    def test_refine_unit_cell(self):
-        # Set unit cell parameters off by a little bit
-        phase = self.scan.phases[0]
-        phase.unit_cell.a = 4.75
-        phase.unit_cell.c = 12.982
-        self.refinement.refine_unit_cells()
-        self.assertTrue(self.refinement.is_refined['unit_cells'])
-        self.assertTrue(self.refinement.chi_squared < 10)
-        self.assertAlmostEqual(phase.unit_cell.a, 4.758637,
-                                      tolerance=0.001)
-        self.assertAlmostEqual(phase.unit_cell.c, 12.991814,
-                                      tolerance=0.001)
-
-
-@unittest.expectedFailure
-class FullProfLmoTest(unittest.TestCase):
-    """Check refinement using data from LiMn2O4 ("NEI")"""
-    def setUp(self):
-        # Base parameters determine from manual refinement
-        class LMOHighV(FullProfPhase, CubicLMO):
-            unit_cell = CubicUnitCell(a=8.052577)
-            isotropic_temp = 0.19019
-            u = -0.000166
-            v = 0.120548
-            w = 0.003580
-            I_g = 0.000142
-            eta = 0.206420
-            x = 0.007408
-        class LMOMidV(FullProfPhase, CubicLMO):
-            unit_cell = CubicUnitCell(a=8.122771)
-            isotropic_temp = -0.45434
-            u = 0.631556
-            v = -0.115778
-            w = 0.019247
-            I_g = -0.000539
-            eta = 0.923930
-            x = -0.006729
-        self.scan = XRDScan('test-sample-frames/lmo-two-phase.brml',
-                               phases=[LMOHighV(), LMOMidV()])
-        self.refinement = FullprofProfileMatch(scan=self.scan)
-        # Base parameters determined by manual refinement
-        self.refinement.bg_coeffs = [71.297, -50.002, 148.13, -150.13, -249.84, 297.01]
-        self.refinement.zero = 0.044580
-        self.refinement.displacement = 0.000320
-        self.refinement.transparency = -0.00810
-    
-    def test_scale_factors(self):
-        self.refinement.refine_scale_factors()
-        self.assertTrue(
-            self.refinement.is_refined['scale_factors']
-        )
-        self.assertTrue(
-            self.refinement.chi_squared < 10
-        )
-        self.assertAlmostEqual(
-            self.scan.phases[0].scale_factor,
-            37.621
-        )
-        self.assertAlmostEqual(
-            self.scan.phases[1].scale_factor,
-            40.592
-        )
 
 
 if __name__ == '__main__':

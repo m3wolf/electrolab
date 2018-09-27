@@ -62,6 +62,7 @@ class Phase():
     
     def predicted_peak_positions(self, *args, **kwargs):
         warnings.warn("Use ``predicted_peaks()`` instead", DeprecationWarning)
+        raise DeprecationWarning
         return self.predicted_peaks(*args, **kwargs)
     
     def predicted_peaks(self, unit_cell=None, scan=None):
