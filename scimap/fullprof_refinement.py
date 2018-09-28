@@ -42,9 +42,19 @@ def fp2k():
       If the Fullprof binary cannot be found.
     
     """
-    dir_ = os.environ.get('FULLPROF', os.getcwd())
-    cmd = os.path.join(dir_, 'fp2k')
-    if not os.path.exists(cmd):
+    # Create list of possible FULLPROF locations
+    dirs = (os.environ.get('FULLPROF'), os.getcwd(),
+            '~/build/fullprof/', '~/fullprof',)
+    # Check for each directory if the command is found
+    cmd = None
+    for dir_ in dirs:
+        cmd = os.path.expanduser(os.path.join(str(dir_), 'fp2k'))
+        if os.path.exists(cmd):
+            break
+        else:
+            cmd = None
+    # Raise an exception if command is not found
+    if cmd is None:
         err_msg = (
             "Could not find Fullprof binary. Make sure the $FULLPROF "
             "environemtal variable is set to the Fullprof directory.")
@@ -200,7 +210,7 @@ class FullprofRefinement(BaseRefinement):
     success_re = re.compile(
         r'==> RESULTS OF REFINEMENT:')
     chi_re = re.compile(
-        r'Chi2:\s+([-0-9Ee.Na]+)')
+        r'Chi2:\s+([-+0-9Ee.Na]+)')
     bg_re = re.compile(
         r'Background Polynomial Parameters ==>((?:\s+[-+0-9Ee.]+)+)')
     displacement_re = re.compile(
@@ -228,7 +238,7 @@ class FullprofRefinement(BaseRefinement):
     
     @property
     def all_phases(self):
-        return self.phases + self.background_phases
+        return tuple(self.phases) + tuple(self.background_phases)
    
     # @property
     # def calculated_diffractogram(self):
@@ -255,7 +265,7 @@ class FullprofRefinement(BaseRefinement):
         """Prepare a pcr file and execute the actual fullprof program."""
         # Check that the temporary refinement directory exists
         basedir = os.path.dirname(self.file_root)
-        if not os.path.exists(basedir):
+        if basedir and not os.path.exists(basedir):
             os.makedirs(basedir)
         # Make sure the context is sane
         # if context['num_params'] == 0:

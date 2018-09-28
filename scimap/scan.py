@@ -96,6 +96,11 @@ class XRDScan():
             return f.scattering_lengths(wavelength=self.wavelength)
 
     @property
+    def two_theta(self):
+        with adapter_from_filename(self.filename) as f:
+            return f.two_theta()
+
+    @property
     def intensities(self):
         with adapter_from_filename(self.filename) as f:
             return f.intensities()

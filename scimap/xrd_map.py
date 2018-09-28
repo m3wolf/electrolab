@@ -855,16 +855,16 @@ class XRDMap(Map):
             'pawley': PawleyRefinement,
             'fullprof': FullprofRefinement,
         }
-        if backend in backends.keys():
-            Refinement = backends[backend]
-        elif isinstance(backend, BaseRefinement):
+        if callable(backend):
             Refinement = backend
+        elif backend in backends.keys():
+            Refinement = backends[backend]
         else:
             # Invalid refinement backend, throw exception
-            msg = "Invalid backend {given}. Must be one of {strings} "
-            msg += "or subclass of ``BaseRefinement``."
-            msg = msg.format(given=backend, strings=backends.keys())
-            raise ValueError(msg)
+            raise exceptions.RefinementError(
+                "Invalid backend ``{given}``. Must be one of {strings} "
+                "or subclass of ``BaseRefinement``."
+                "".format(given=backend, strings=backends.keys()))
         # Open the data storage and start the refining
         with self.store(mode='r+') as store:
             wavelengths = store.wavelengths
@@ -922,7 +922,6 @@ class XRDMap(Map):
                 bgs.append(bg)
                 all_cells.append(cell_params)
                 fractions.append(frac)
-
                 # Refine scale factors
                 # scale = refinement.refine_scale_factor(
                 #     scattering_lengths=two_theta,
@@ -938,7 +937,6 @@ class XRDMap(Map):
                 #     intensities=fit
                 #  )
                 # broadenings.append(width)
-    
                 #Append the fitted diffraction pattern
                 scale_factors.append(scale)
                 broadenings.append(width)
