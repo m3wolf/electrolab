@@ -45,3 +45,6 @@ from .plots import (new_axes, big_axes, dual_axes, plot_scans, xrd_axes,
                     plot_txm_intermediates, new_image_axes)
 from .coordinates import Cube
 from .xrd_map import XRDMap, Map
+
+# Load units from unit registry
+from .units_ import units

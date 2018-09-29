@@ -35,9 +35,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import h5py
 
-from scimap import exceptions, gadds, prog
+from scimap import exceptions, gadds, prog, units
 from scimap.peakfitting import PeakFit, remove_peak_from_df, discrete_fwhm
-from scimap.default_units import angstrom
 from scimap import lmo, nca
 from scimap.nca import NCA
 from scimap.lmo import CubicLMO

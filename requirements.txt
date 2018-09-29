@@ -10,5 +10,7 @@ Pillow>=3.2
 pytz==2016.4
 tqdm>=4.7
 pytest
+pint==0.8.1
+
 # scikit-learn==0.17.1
 # git+https://git.gnome.org/browse/pygobject

@@ -26,16 +26,15 @@ done with the importers.import_gadds_map function."""
 import os
 import math
 
-from sympy.physics import units
 import numpy as np
 import jinja2
 
-from . import hdf, default_units as units
+from . import hdf
 from .coordinates import Cube
-from .utilities import prog
-from .utilities import q_to_twotheta, twotheta_to_q
+from .utilities import prog, q_to_twotheta, twotheta_to_q
 from .tube import tubes
 from .xrdstore import XRDStore
+from .units_ import units
 
 # CHANGING THESE RISKS DAMAGE TO THE INSTRUMENT!
 SOURCE_RANGE = (0, 50)

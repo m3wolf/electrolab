@@ -8,7 +8,6 @@ from matplotlib import pyplot, patches, colors, cm
 import numpy as np
 import scipy
 import pandas
-from sympy.physics import units
 
 from . import exceptions
 from .plots import new_axes, set_outside_ticks

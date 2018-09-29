@@ -26,7 +26,7 @@ import h5py
 import numpy as np
 import pandas as pd
 
-from . import exceptions, hdf, utilities, default_units as units
+from . import exceptions, hdf, utilities
 from .utilities import twotheta_to_q, q_to_twotheta
 from .adapters import BrukerPltFile
 from .xrdstore import XRDStore

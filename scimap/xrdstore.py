@@ -17,12 +17,12 @@
 # You should have received a copy of the GNU General Public License
 # along with Scimap. If not, see <http://www.gnu.org/licenses/>.
 
-from sympy.physics import units
 import h5py
 from scimap import exceptions
 import numpy as np
 
-from scimap import exceptions
+from . import exceptions
+from .units_ import units
 
 
 class StoreDescriptor():

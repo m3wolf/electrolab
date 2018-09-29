@@ -28,7 +28,7 @@ import sys
 
 from tqdm import tqdm
 import numpy as np
-from sympy.physics import units
+
 
 xycoord = namedtuple('xycoord', ('x', 'y'))
 Pixel = namedtuple('Pixel', ('vertical', 'horizontal'))
@@ -45,7 +45,7 @@ def q_to_twotheta(q, wavelength):
       Number or numpy array of scattering lengths.
     wavelength
       Wavelength of the radiation. This parameter can (and should) use
-      ``sympy.physics.units``
+      ``ureg`` for units.
     
     Returns
     -------

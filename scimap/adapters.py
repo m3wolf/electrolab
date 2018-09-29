@@ -28,7 +28,8 @@ from xml.etree import ElementTree
 import numpy as np
 import pandas as pd
 
-from . import exceptions, default_units as units
+from . import exceptions
+from .units_ import units
 from .tube import tubes
 from .utilities import twotheta_to_q, q_to_twotheta
 from .utilities import shape, Pixel
