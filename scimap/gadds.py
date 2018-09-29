@@ -245,7 +245,7 @@ def write_gadds_script(qrange, sample_name, center, collimator=0.8,
     # Import template
     env = jinja2.Environment(loader=jinja2.PackageLoader('scimap', ''))
     template = env.get_template('templates/mapping-template.slm')
-    context = _context(diameter=12.7, collimator=collimator,
+    context = _context(diameter=diameter, collimator=collimator,
                        coverage=1, scan_time=scan_time,
                        sample_name=sample_name,
                        two_theta_range=two_theta_range,

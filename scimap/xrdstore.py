@@ -75,7 +75,8 @@ class XRDStore():
     scale_factor = StoreDescriptor('scale_factor')
     fits = StoreDescriptor('fits')
     wavelengths = StoreDescriptor('wavelengths')
-    scattering_lengths = StoreDescriptor('scattering_lengths')
+    # scattering_lengths = StoreDescriptor('scattering_lengths')
+    two_thetas = StoreDescriptor('two_thetas')
     backgrounds = StoreDescriptor('backgrounds')
     peak_broadenings = StoreDescriptor('peak_broadenings')
 

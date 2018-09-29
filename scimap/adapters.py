@@ -175,12 +175,16 @@ class BrukerPltFile(XRDAdapter):
         data = self._dataframe()
         return data['counts'].values
     
-    def scattering_lengths(self, wavelength):
-        """Return scattering length (q) for all Datum elements in the file."""
+    def two_theta(self):
+        """Get diffraction angle (2θ°) for all Datum elements in the file."""
         # Find all Datum entries in data tree
         df = self._dataframe()
         two_theta = df.index
-        q = twotheta_to_q(two_theta=two_theta, wavelength=wavelength)
+        return two_theta
+    
+    def scattering_lengths(self, wavelength):
+        """Return scattering length (q) for all Datum elements in the file."""
+        q = twotheta_to_q(two_theta=self.two_theta(), wavelength=wavelength)
         return q
 
 

@@ -12,3 +12,4 @@ scikit-learn==0.17.1
 scipy>=0.17
 tqdm>=4.7
 sympy
+

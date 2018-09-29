@@ -31,6 +31,12 @@ class ReadCurrentError(Exception):
     """Cannot read a current from electrochemistry cycling file."""
     pass
 
+#####################
+# Mapping exceptions
+#####################
+class MappingFileNotFoundError(FileNotFoundError):
+    pass
+
 ##############################
 # X-Ray Diffraction exceptions
 ##############################

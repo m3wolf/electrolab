@@ -82,17 +82,21 @@ def import_gadds_map(sample_name: str=None, directory: str=None,
     pltfiles = [filestring.format(base=base.decode(), ext="plt") for base in basenames]
     jpgfiles = [os.path.join(directory, str(base) + ".jpg") for base in basenames]
     # Arrays to hold imported results
-    Is, qs = [], []
+    Is, two_thetas = [], []
     # Read plt data files
     for filename in pltfiles:
-        plt = BrukerPltFile(filename=filename)
-        Is.append(plt.intensities())
-        qs.append(plt.scattering_lengths(wavelength=wavelength[0]))
+        try:
+            plt = BrukerPltFile(filename=filename)
+            Is.append(plt.intensities())
+            two_thetas.append(plt.two_theta())
+        except FileNotFoundError:
+            raise exceptions.MappingFileNotFoundError(
+                'Cannot find file `{}`'.format(filename))
     # Save diffraction data to HDF5 file
     Is = np.array(Is)
     xrdstore.intensities = Is
-    qs = np.array(qs)
-    xrdstore.scattering_lengths = qs
+    two_thetas = np.array(two_thetas)
+    xrdstore.two_thetas = two_thetas
     xrdstore.photo_filenames = jpgfiles
     # Clean up
     xrdstore.close()
@@ -164,7 +168,7 @@ def import_aps_34IDE_map(directory: str, wavelength: int,
     xrdstore.position_unit = 'um'
     xrdstore.layout = 'rect'
     intensities = []
-    qs = []
+    two_thetas = []
     angles = []
     file_basenames = []
     chifiles = [p for p in os.listdir(directory) if os.path.splitext(p)[1] == '.chi']
@@ -203,7 +207,6 @@ def import_aps_34IDE_map(directory: str, wavelength: int,
             q = twotheta_to_q(csv.index, wavelength=wavelength_AA)
         elif 'Q (Inverse Nanometres)' in xunits:
             # Convert from inverse nanometers to inverse angstroms
-            
             if qrange is not None:
                 _qrange = tuple(_q * float(units.nm / units.angstrom) for _q in qrange)
                 csv = csv.loc[_qrange[0]:_qrange[1]]

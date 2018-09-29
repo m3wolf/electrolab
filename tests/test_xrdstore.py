@@ -121,14 +121,13 @@ class XRDStoreTests(unittest.TestCase):
         Check the descriptors with the actual HDF5 data.
         
         """
-        hdf_filename = os.path.join(TESTDIR, 'test-data-xrd/test_map_gadds.h5')
+        hdf_filename = os.path.join(TESTDIR, 'test-data-xrd/xrd-map-gadds.h5')
         h5file = h5py.File(hdf_filename, mode='r')
         store = XRDStore(hdf_filename=hdf_filename, groupname='xrd-map-gadds')
         with store, h5file:
             h5grp = h5file['xrd-map-gadds']
             np.testing.assert_equal(store.positions, h5grp['positions'])
-            # h5grp.create_dataset('intensities', data=np.random.rand(397, 20))
-            np.testing.assert_equal(store.goodness_of_fit, h5grp['goodness_of_fit'])
+            np.testing.assert_equal(store.two_thetas, h5grp['two_thetas'])
             np.testing.assert_equal(store.intensities, h5grp['intensities'])
     
     def test_effective_wavelength(self):

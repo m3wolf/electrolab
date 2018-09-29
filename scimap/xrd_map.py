@@ -868,10 +868,10 @@ class XRDMap(Map):
         # Open the data storage and start the refining
         with self.store(mode='r+') as store:
             wavelengths = store.wavelengths
-            scans = zip(store.scattering_lengths[:], store.intensities[:])
-            total = len(store.scattering_lengths)
-            for idx, (qs, Is) in enumerate(prog(scans, total=total, desc="Refining")):
-                two_theta = q_to_twotheta(qs, wavelength=store.effective_wavelength[0])
+            scans = zip(store.two_thetas[:], store.intensities[:])
+            total = len(store.two_thetas)
+            for idx, (two_theta, Is) in enumerate(prog(scans, total=total, desc="Refining")):
+                # two_theta = q_to_twotheta(qs, wavelength=store.effective_wavelength[0])
                 phases = [P() for P in self.Phases]
                 bg_phases = [P() for P in self.Background_Phases]
                 file_root = self.sample_name + ('_refinements/locus_%05d_ref' % idx)
@@ -922,21 +922,8 @@ class XRDMap(Map):
                 bgs.append(bg)
                 all_cells.append(cell_params)
                 fractions.append(frac)
-                # Refine scale factors
-                # scale = refinement.refine_scale_factor(
-                #     scattering_lengths=two_theta,
-                #     intensities=Is,
-                # )
                 scale_factors.append(scale)
-                # Fit peak widths
-                # refinement.fit_peaks(scattering_lengths=qs,intensities=Is)
-                # fit = refinement.predict(qs)
                 fits.append(fit)
-                # width = refinement.refine_peak_widths(
-                #     scattering_lengths=qs,
-                #     intensities=fit
-                #  )
-                # broadenings.append(width)
                 #Append the fitted diffraction pattern
                 scale_factors.append(scale)
                 broadenings.append(width)
