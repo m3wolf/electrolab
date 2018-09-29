@@ -1,16 +1,28 @@
-cairocffi>=0.7.2
-cffi>=1.7.0
-h5py>=2.6.0
-Jinja2>=2.8
-matplotlib>=1.5
-numpy>=1.11.1
-scipy>=0.17
-pandas>=0.18
-Pillow>=3.2
+atomicwrites==1.2.1
+attrs==18.2.0
+# cairocffi==0.9.0
+# certifi==2018.8.24
+# cffi==1.11.5
+cycler==0.10.0
+h5py==2.8.0
+Jinja2==2.10
+kiwisolver==1.0.1
+MarkupSafe==1.0
+matplotlib~=3.0
+more-itertools==4.3.0
+numpy==1.15.2
+pandas==0.23.4
+Pillow==5.2.0
+Pint==0.8.1
+pluggy==0.7.1
+py==1.6.0
+pycparser==2.19
+pyparsing==2.2.1
+pytest==3.8.1
+python-dateutil==2.7.3
 pytz==2016.4
-tqdm>=4.7
-pytest
-pint==0.8.1
-
-# scikit-learn==0.17.1
-# git+https://git.gnome.org/browse/pygobject
+scikit-image==0.14.0
+scikit-learn==0.20.0
+scipy==1.1.0
+six==1.11.0
+tqdm==4.26.0

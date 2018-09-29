@@ -291,8 +291,10 @@ class FullprofRefinement(BaseRefinement):
             self.load_results(param_name=param_name)
         except exceptions.RefinementError as e:
             # Copy log file for post-mortem
-            copy2(self.logfilename,
-                  self.file_root + f'-{param_name}-failed' + '.log')
+            new_file = '{root}-{param}-failed.log'
+            new_file = new_file.format(root=self.file_root,
+                                       param=param_name)
+            copy2(self.logfilename, new_file)
             # Save failed refinement names
             self._failed_parameters.append((param_name, e))
         else:

@@ -1,6 +1,9 @@
 SciMap: Scientific Mapping for Python
 =====================================
 
+.. image:: https://travis-ci.org/canismarko/scimap.svg?branch=master
+    :target: https://travis-ci.org/canismarko/scimap
+
 .. image::
    https://readthedocs.org/projects/scimap/badge/?version=latest
    :target: http://scimap.readthedocs.io/en/latest/?badge=latest

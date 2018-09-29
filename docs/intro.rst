@@ -1,6 +1,6 @@
 =============================
  Introduction & Installation
-============================
+=============================
 
 Motivation
 ==========
@@ -24,8 +24,8 @@ test data can be very large.
 Now you should be able to import scimap in your python interpreter.
 
 .. code:: python
-
->>> import scimap
+   
+   >>> import scimap
 
 Running Tests
 -------------

@@ -1,16 +1,21 @@
 #!/usr/bin/env python
 
-from distutils.core import setup
+import os
+from setuptools import setup
+
+def read(fname):
+    return open(os.path.join(os.path.dirname(__file__), fname)).read()
 
 setup(name="scimap",
-      version="0.1",
+      version=read('VERSION'),
       description="Tools for analyzing X-ray diffraction mapping data",
       author="Mark Wolf",
       author_email="mark.wolf.music@gmail.com",
       url="https://github.com/m3wolf/scimap",
       keywords="XANES X-ray diffraction operando",
-      # install_requires=['pytz>=2013b', 'h5py', 'pandas', 'olefile',
-      #                   'matplotlib', 'scikit-image', 'scikit-learn'],
+      install_requires=['pytz>=2013b', 'h5py', 'pandas', 'Pillow', 'numpy',
+                        'matplotlib', 'scikit-image', 'scikit-learn', 'pint',
+                        'Jinja2', 'scipy', 'tqdm'],
       packages=['scimap',],
       # package_data={
       #     'xanespy': ['qt_map_window.ui', 'qt_frame_window.ui']
