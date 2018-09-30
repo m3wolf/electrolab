@@ -200,9 +200,6 @@ class BaseRefinement():
         """
         raise NotImplementedError
     
-    def peak_breadths(self, two_theta=None, intensities=None):
-        raise NotImplementedError
-    
     def plot(self, two_theta, intensities, ax=None):
         """Plot the data to compare the observations to the fit.
         

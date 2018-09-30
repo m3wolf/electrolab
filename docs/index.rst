@@ -13,6 +13,7 @@ Welcome to scimap's documentation!
    intro
    instrument_support
    hdf_data
+   refinement
    materials
    
 

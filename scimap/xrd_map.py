@@ -828,6 +828,10 @@ class XRDMap(Map):
         """Refine the relevant XRD parameters, such as background, unit-cells,
         etc. This will save the refined data to the HDF file.
         
+        Different backends are available, namely "native", "fullprof"
+        or "pawley". Custom backends may be provided as a subclass of
+        :py:class:`scimap.base_refinement.BaseRefinement`.
+        
         Parameters
         ----------
         backend : str, Refinement
@@ -837,7 +841,7 @@ class XRDMap(Map):
           ``BaseRefinement`` can also be supplied.
         num_bg_coeffs : int, optional
           Numbers of background coefficients used for refinement
-          
+        
         """
         # Empty arrays to hold results
         bgs = []

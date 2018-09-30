@@ -35,7 +35,8 @@ else:
 
 TESTDIR = os.path.dirname(__file__)
 
-@unittest.skipUnless(has_gsas, 'GSAS-II not found')
+# @unittest.skipUnless(has_gsas, 'GSAS-II not found')
+@unittest.skip('GSAS-II refinement not ready yet.')
 class GSASTestCase(unittest.TestCase):
     gpx_root = os.path.join(TESTDIR, 'refinement-temp', 'refinement0')
     gpx_template = os.path.join(TESTDIR, 'test-data-xrd', 'corundum-template.gpx')
