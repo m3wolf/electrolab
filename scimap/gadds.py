@@ -36,6 +36,7 @@ from .tube import tubes
 from .xrdstore import XRDStore
 from .units_ import units
 
+
 # CHANGING THESE RISKS DAMAGE TO THE INSTRUMENT!
 SOURCE_RANGE = (0, 50)
 DETECTOR_RANGE = (0, 55)
@@ -186,11 +187,11 @@ def _context(diameter, collimator, coverage, scan_time,
         context['scans'].append(scan_metadata)
     return context
 
-def write_gadds_script(qrange, sample_name, center, collimator=0.8,
+def write_gadds_script(two_theta_range, sample_name, center, collimator=0.8,
                        diameter=12.7, coverage=1., scan_time=300,
                        tube="Cu", detector_distance=20,
                        hexadecimal=False, frame_size=1024, file=None,
-                       hdf_filename=None):
+                       hdf_filename=None, overwrite=False):
     """Produce a .slm file to control the difractometer for mapping a
     circular area and a .h5 file to hold the resulting data. After
     acquisition, the data will need to be imported with
@@ -198,9 +199,8 @@ def write_gadds_script(qrange, sample_name, center, collimator=0.8,
     
     Parameters
     ----------
-    qrange
-      2-tuple with the starting and ending scattering lengths in
-      similar units to the X-ray wavelength Å⁻.
+    two_theta_range
+      2-tuple with the starting and ending scattering lengths as 2θ°.
     sample_name : str
       A description of the sample, usable in filenames.
     center
@@ -237,10 +237,13 @@ def write_gadds_script(qrange, sample_name, center, collimator=0.8,
     hdf_filename : str, optional
       String with the filename to save the HDF5 file. If omitted, a
       default will be used based on `sample_name`
+    overwrite : bool, optional
+      If true, existing slam files will be overwritten silently,
+      otherwise a warning will be issued and the existing file will be
+      preserved.
     
     """
     wavelength = tubes[tube].kalpha
-    two_theta_range = q_to_twotheta(np.array(qrange), wavelength=wavelength)
     # Import template
     env = jinja2.Environment(loader=jinja2.PackageLoader('scimap', ''))
     template = env.get_template('templates/mapping-template.slm')

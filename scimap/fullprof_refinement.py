@@ -236,18 +236,9 @@ class FullprofRefinement(BaseRefinement):
         self.num_bg_coeffs = num_bg_coeffs
         super().__init__(*args, **kwargs)
     
-    @property
-    def all_phases(self):
-        return tuple(self.phases) + tuple(self.background_phases)
-   
-    # @property
-    # def calculated_diffractogram(self):
-    #     """Read a pcf file and return the refinement as a dataframe."""
-    #     # Check for cached version
-    #     df = load_refined_diffractogram(self.file_root + '.prf')
-    #     return df
-    
     def write_hkl_file(self, phase, filename):
+        # Create the directory if necessary
+        os.makedirs(os.path.dirname(filename), exist_ok=True)
         # Write separate hkl file for each phase
         hkl_string = " {h} {k} {l} {mult} {intensity}\n"
         with open(filename, 'w') as hklfile:

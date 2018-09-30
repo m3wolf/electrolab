@@ -39,8 +39,20 @@ class BaseRefinement():
           The base for any temporary files created during refinement.
         
         """
-        self.phases = phases
-        self.background_phases = background_phases
+        # Extract phases from either the scan, or explicitly given
+        if not phases and scan is not None:
+            self.phases = scan.phases
+        else:
+            self.phases = phases
+        if not background_phases and scan is not None:
+            self.background_phases = scan.background_phases
+        else:
+            self.background_phases = background_phases
+        # Check that phases given are sane
+        if len(self.all_phases) < 1:
+            raise ValueError("Both ``phases`` and ``background_phases`` "
+                             "cannot be empty")
+        # Save remaning arguments
         self.num_bg_coeffs = num_bg_coeffs
         self.scan = scan
         self.wavelengths = wavelengths
@@ -48,6 +60,10 @@ class BaseRefinement():
         # Reset all refinement status flags
         for key in self.is_refined.keys():
             self.is_refined[key] = False
+    
+    @property
+    def all_phases(self):
+        return tuple(self.phases) + tuple(self.background_phases)
     
     def predict(self, two_theta):
         """Return predicted diffraction intensities for given 2θ.

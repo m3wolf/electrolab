@@ -28,9 +28,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.signal import find_peaks
 
-from scimap import XRDScan, standards, lmo
-from scimap.unitcell import UnitCell, CubicUnitCell, HexagonalUnitCell
-from scimap.reflection import Reflection, hkl_to_tuple
+from scimap import XRDScan, standards
 from scimap.peakfitting import remove_peak_from_df
 from scimap.native_refinement import NativeRefinement, contains_peak, peak_area
 
@@ -38,34 +36,6 @@ TESTDIR = os.path.join(os.path.dirname(__file__), "test-data-xrd")
 COR_BRML = os.path.join(TESTDIR, 'corundum.brml')
 
 
-corundum_path = os.path.join(
-    os.path.dirname(__file__),
-    'test-data-xrd/corundum.brml'
-)
-
-
-# Some phase definitions for testing
-class LMOHighV(lmo.CubicLMO):
-    unit_cell = CubicUnitCell(a=8.05)
-    diagnostic_hkl = '333'
-    reflection_list = [
-        Reflection('333', (58.5, 59.3))
-    ]
-
-
-class LMOMidV(lmo.CubicLMO):
-    unit_cell = CubicUnitCell(a=8.13)
-    diagnostic_hkl = '333'
-    reflection_list = [
-        Reflection('333', (59.3, 59.9))
-    ]
-
-
-class LMOLowAngle(lmo.CubicLMO):
-    diagnostic_hkl = '311'
-
-
-@unittest.skip('Not implemented')
 class NativeRefinementTest(unittest.TestCase):
     def setUp(self):
         self.scan = XRDScan(
@@ -111,10 +81,8 @@ class NativeRefinementTest(unittest.TestCase):
     
     def test_peak_list(self):
         corundum_scan = XRDScan(corundum_path,
-                                phase=standards.Corundum())
-        refinement = NativeRefinement(scan=corundum_scan)
-        refinement.fit_peaks()
-        peak_list = refinement.peak_list
+                                phase=Corundum())
+        peak_list = corundum_scan.refinement.peak_list
         two_theta_list = [peak.center_kalpha for peak in peak_list]
         hkl_list = [peak.reflection.hkl_string for peak in peak_list]
         self.assertAlmostEqual(
@@ -134,8 +102,8 @@ class NativeRefinementTest(unittest.TestCase):
         )
 
 
-@unittest.skip('Not fixed')
-class NativeRefinementTestOld(unittest.TestCase):
+@unittest.skip
+class NativeRefinementTest(unittest.TestCase):
     @unittest.expectedFailure
     def test_remove_peaks(self):
         corundum = standards.Corundum()

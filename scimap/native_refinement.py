@@ -315,7 +315,7 @@ class NativeRefinement(BaseRefinement):
         # Sanity checks passed so return to only value
         return peaks[0]
     
-    def fit_peaks(self, scattering_lengths, intensities):
+    def fit_peaks(self, two_theta, intensities):
         """
         Use least squares refinement to fit gaussian/Cauchy/etc functions
         to the predicted reflections.

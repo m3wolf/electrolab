@@ -46,10 +46,7 @@ class XRDScan():
     wavelength : float, optional
       Radiation wavelength in angstroms. If given, this will override
       the ``tube`` argument.
-    Refinement : optional
-      A subclass of ``BaseRefinement``, it will be used for refining
-      the XRD data.
-
+    
     """
     _df = None  # Replaced by load_diffractogram() method
     diffractogram_is_loaded = False
@@ -59,7 +56,7 @@ class XRDScan():
     def __init__(self, filename='', name=None,
                  phases=[], phase=None, background_phases=[],
                  tube='Cu', wavelength=None,
-                 Refinement=NativeRefinement, two_theta_range=None):
+                 two_theta_range=None):
         self._filename = filename
         if phase is not None:
             self.phases = [phase]
@@ -67,7 +64,6 @@ class XRDScan():
             self.phases = phases
         self.background_phases = background_phases
         self.cached_data = {}
-        self.refinement = Refinement(phases=self.phases)
         self._two_theta_range = two_theta_range
         # Determine wavelength from tube type
         if wavelength is not None:

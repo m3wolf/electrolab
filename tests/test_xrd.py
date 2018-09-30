@@ -106,7 +106,7 @@ class QTwoThetaTest(unittest.TestCase):
         q = twotheta_to_q(np.radians(10), wavelength=self.wavelength,
                           degrees=False)
         self.assertEqual(q, 0.71035890811831559)
-
+    
     def test_q_to_twotheta(self):
         # Regular float number
         twotheta = q_to_twotheta(0.71, wavelength=self.wavelength)
@@ -128,7 +128,7 @@ class PeakTest(unittest.TestCase):
             splitParams,
             [(1, 2, 3), (4, 5, 6)]
         )
-
+    
     def gaussian_curve(self, x=None, height=1, center=0, fwhm=1):
         if x is None:
             x = np.linspace(-5, 5, num=500)
@@ -137,7 +137,7 @@ class PeakTest(unittest.TestCase):
         c = fwhm / (2*math.sqrt(2*math.log(2)))
         y = a * np.exp(-(x-b)**2/(2*c**2))
         return x, y
-
+    
     def test_discrete_fwhm(self):
         """This test checks that the full-width half-max is properly
         approximated."""
@@ -147,7 +147,7 @@ class PeakTest(unittest.TestCase):
         # Calculate FWHM
         fwhm = discrete_fwhm(x, y)
         self.assertAlmostEqual(fwhm, expected_fwhm, places=1)
-
+    
     @unittest.expectedFailure
     def test_initial_parameters(self):
         # Does the class guess reasonable starting values for peak fitting
@@ -166,7 +166,7 @@ class PeakTest(unittest.TestCase):
         self.assertAlmostEqual(p2.height, 213.302, tolerance=tolerance)
         self.assertAlmostEqual(p2.center, 35.222, tolerance=tolerance)
         self.assertAlmostEqual(p2.width, 0.02604, tolerance=tolerance)
-
+    
     @unittest.expectedFailure
     def test_initial_pseudovoigt(self):
         # Does the class guess reasonable starting values for peak fitting
@@ -184,7 +184,7 @@ class PeakTest(unittest.TestCase):
         self.assertAlmostEqual(p1.width_c, 0.02604, tolerance=tolerance)
         self.assertAlmostEqual(p2.width_g, 0.02604, tolerance=tolerance)
         self.assertAlmostEqual(p2.width_c, 0.02604, tolerance=tolerance)
-
+    
     @unittest.expectedFailure
     def test_peak_fit(self):
         """This particular peak was not fit properly. Let's see why."""
@@ -282,74 +282,6 @@ class LMOSolidSolutionTest(unittest.TestCase):
         )
 
 
-@unittest.expectedFailure
-class NativeRefinementTest(unittest.TestCase):
-    def setUp(self):
-        self.scan = XRDScan(
-            os.path.join(TESTDIR, 'lmo-two-phase.brml'),
-            phases=[LMOHighV(), LMOMidV()], Refinement=NativeRefinement
-        )
-        self.refinement = self.scan.refinement
-        # For measuring FWHM
-        self.onephase_scan = XRDScan(
-            'test-sample-frames/LMO-sample-data.plt',
-            phases=[LMOLowAngle()]
-        )
-    
-    def test_peak_area(self):
-        reflection = LMOMidV().diagnostic_reflection
-        self.assertAlmostEqual(
-            self.refinement.net_area(reflection.qrange),
-            205
-        )
-    
-    # @unittest.expectedFailure
-    def test_peak_fwhm(self):
-        """Method for computing full-width at half max of a peak."""
-        result = self.onephase_scan.refinement.fwhm()
-        # Plotting for diagnostics
-        ax = self.onephase_scan.plot_diffractogram()
-        ax.set_xlim(35.3, 37); ax.set_ylim(0, 15)
-        ax.grid(True, which='both')
-        ax.figure.savefig('refinement.png', dpi=200)
-        # This is the real answer:
-        # self.assertAlmostEqual(
-        #     result,
-        #     0.233 # Measured with a ruler
-        # )
-        # Ignoring kα1/kα2 overlap, you get this:
-        # self.assertAlmostEqual(
-        #     result,
-        #     0.275 # Measured with a ruler
-        # )
-        self.assertAlmostEqual(
-            result,
-            0.1702
-        )
-    
-    def test_peak_list(self):
-        corundum_scan = XRDScan(corundum_path,
-                                phase=Corundum())
-        peak_list = corundum_scan.refinement.peak_list
-        two_theta_list = [peak.center_kalpha for peak in peak_list]
-        hkl_list = [peak.reflection.hkl_string for peak in peak_list]
-        self.assertAlmostEqual(
-            two_theta_list,
-            [25.599913304005099,
-             35.178250906935716,
-             37.790149818489454,
-             41.709732482339412,
-             43.388610036562113,
-             52.594640340604649,
-             57.54659705350258],
-            tolerance=0.001
-        )
-        self.assertEqual(
-            hkl_list,
-            [reflection.hkl_string for reflection in Corundum.reflection_list]
-        )
-
-
 class Refinement34IDETest(unittest.TestCase):
     """Tests that check for proper functioning of refinement with sample
     data from APS 34-ID-C beamline."""
@@ -371,7 +303,7 @@ class XRDScanTest(unittest.TestCase):
     def setUp(self):
         self.xrd_scan = XRDScan(filename=corundum_path,
                                 phase=Corundum)
-
+    
     def test_remove_peak_from_df(self):
         xrd_scan = XRDScan(filename=corundum_path)
         peakRange = (2, 3)
@@ -390,7 +322,7 @@ class XRDScanTest(unittest.TestCase):
             len(intensities),
             'x and y are not the same length ({} vs {})'.format(len(newq), len(intensities)),
         )
-
+    
     def test_contains_peak(self):
         """Method for determining if a given two_theta
         range is within the limits of the index."""
@@ -565,6 +497,7 @@ class ExperimentalDataTest(unittest.TestCase):
             celref_peaks
         )
     
+    @unittest.skip('No refinement available')
     def test_mean_square_error(self):
         scan = XRDScan(filename=corundum_path,
                        phase=self.phase)

@@ -135,12 +135,6 @@ class Map():
         else:
             _cmap = pyplot.get_cmap(cmap)
         return _cmap
-
-    def prepare_mapping_data(self):
-        """
-        Perform initial calculations on mapping data and save results to file.
-        """
-        self.composite_image()
     
     def calculate_metrics(self):
         """Force recalculation of all metrics in the map."""
@@ -1024,7 +1018,7 @@ class XRDMap(Map):
         dots_per_mm = regression(self.camera_zoom)
         return dots_per_mm
     
-    def prepare_mapping_data(self):
+    def prepare_mapping_data(self, *args, **kwargs):
         raise exceptions.DeprecationError("Use `Map.refine_mapping_data() instead`")
     
     def refine_scans(self):

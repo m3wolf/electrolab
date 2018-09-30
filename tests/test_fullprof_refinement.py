@@ -125,6 +125,7 @@ class FullProfProfileTest(unittest.TestCase):
         )
 
 
+@unittest.expectedFailure
 class FullProfLmoTest(unittest.TestCase):
     """Check refinement using data from LiMn2O4 ("NEI")"""
     def setUp(self):
@@ -148,7 +149,7 @@ class FullProfLmoTest(unittest.TestCase):
             eta = 0.923930
             x = -0.006729
         self.scan = XRDScan('test-sample-frames/lmo-two-phase.brml',
-                               phases=[LMOHighV(), LMOMidV()])
+                            phases=[LMOHighV(), LMOMidV()])
         self.refinement = FullprofRefinement(scan=self.scan)
         # Base parameters determined by manual refinement
         self.refinement.bg_coeffs = [71.297, -50.002, 148.13, -150.13, -249.84, 297.01]
@@ -156,7 +157,6 @@ class FullProfLmoTest(unittest.TestCase):
         self.refinement.displacement = 0.000320
         self.refinement.transparency = -0.00810
     
-    @unittest.expectedFailure
     def test_scale_factors(self):
         self.refinement.refine_scale_factors()
         self.assertTrue(

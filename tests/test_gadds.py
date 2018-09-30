@@ -24,6 +24,7 @@ import unittest
 import os
 import shutil
 import math
+import warnings
 
 import h5py
 import numpy as np
@@ -44,7 +45,7 @@ class GaddsTest(unittest.TestCase):
     
     def setUp(self):
         # Write the script to ensure HDF5 file exists
-        gadds.write_gadds_script(qrange=(1, 2),
+        gadds.write_gadds_script(two_theta_range=(55, 75),
                                  sample_name=self.hdf_groupname,
                                  diameter=1.2,
                                  center=(0, 0), hdf_filename=self.hdf_filename,
@@ -187,7 +188,7 @@ class SlamFileTest(unittest.TestCase):
             'Directory {} already exists, cannot test'.format(directory)
         )
         # Write the slamfile
-        gadds.write_gadds_script(qrange=(1, 2),
+        gadds.write_gadds_script(two_theta_range=(55, 70),
                                  sample_name=sample_name,
                                  center=(0, 0), hdf_filename=hdf_filename)
         # Test if the correct things were created
@@ -213,3 +214,10 @@ class SlamFileTest(unittest.TestCase):
             self.assertEqual(f[sample_name]['collimator'].value, 0.8)
             self.assertEqual(f[sample_name]['collimator'].attrs['unit'], 'mm')
             self.assertEqual(f[sample_name]['step_size'].value, math.sqrt(3) * 0.8 / 2)
+        # Check that writing a second slam file does not overwrite the original data
+        with warnings.catch_warnings() as w:
+            gadds.write_gadds_script(two_theta_range=(55, 70),
+                                     sample_name=sample_name,
+                                     center=(0, 0), hdf_filename=hdf_filename,
+                                     overwrite=False)
+            print(w)
