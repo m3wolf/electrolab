@@ -44,6 +44,7 @@ def adapter_from_filename(filename, *args, **kwargs):
     """
     FILE_ADAPTERS = {
         '.xye': BrukerXyeFile,
+        '.xy': BrukerXyeFile,
         '.plt': BrukerPltFile,
         # '.dat': FullProfDataFile,
         '.brml': BrukerBrmlFile,
@@ -93,7 +94,7 @@ class XRDAdapter():
 
 class BrukerXyeFile(XRDAdapter):
     """File adapter for Bruker's .xye format.
-
+    
     Arguments
     ---------
     - wavelength : X-ray wavelength, in angstroms if no units are
@@ -104,29 +105,36 @@ class BrukerXyeFile(XRDAdapter):
     def __init__(self, filename, wavelength=None):
         self._wavelength = wavelength
         self.filename = filename
-
+    
     def __enter__(self):
         return self
-
+    
     def __exit__(self, type, value, traceback):
         # For compatibility with more complex file types
         pass
-
+    
     @property
     def sample_name(self):
         return self.filename
-
+    
+    def two_theta(self):
+        """Get diffraction angle (2θ°) for all Datum elements in the file."""
+        # Find all Datum entries in data tree
+        two_theta = np.array(self._dataframe.index)
+        return two_theta
+    
     def scattering_lengths(self, wavelength=None):
+        """Return scattering length (q) for all Datum elements in the file."""
         if wavelength is None:
             wavelength = self.wavelength
-        twotheta = np.array(self._dataframe.index)
+        twotheta = self.two_theta()
         q = twotheta_to_q(twotheta, wavelength=wavelength)
         return q
-
+    
     def intensities(self):
         df = self._dataframe
         return df['counts'].values
-
+    
     @property
     def wavelength(self):
         # self._wavelength is set if it was passed to constructor
@@ -149,7 +157,7 @@ class BrukerXyeFile(XRDAdapter):
                 raise exceptions.DataFormatError(msg)
                 
         return wl
-
+    
     @property
     def _dataframe(self):
         df = pd.read_csv(self.filename,

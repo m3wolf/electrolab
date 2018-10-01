@@ -10,7 +10,7 @@ from .filters import fourier_transform
 from .tube import tubes
 from .native_refinement import NativeRefinement
 from .adapters import adapter_from_filename
-from .utilities import q_to_twotheta
+from .utilities import q_to_twotheta, twotheta_to_q
 
 
 def align_scans(scan_list, peak):
@@ -167,26 +167,37 @@ class XRDScan():
                            wavelength=None, *args, **kwargs):
         """Plot the XRD diffractogram for this scan. Generates a new set of
         axes unless supplied by the `ax` keyword.
-
+        
         Arguments
         ---------
-        - ax : A matplotlib axes that will receive the plotted data
-
-        - marker : A string for how to plot each datum. Similar spec
-        to matplotlib.
-
-        - linestyle : A matplotlib linestyle spec for how to connect the dots.
-
-        - use_twotheta : If truthy, the plot will convert scattering
-          lengths to 2θ before plotting. If used, the `wavelength`
-          argument must also be given.
-
-        - wavelength : Wavelength of light to be used for converstion
-          to two_theta. If wavelength is `None` (default), the scan
+        ax : optional
+          A matplotlib axes that will receive the plotted data
+        marker : str, optional
+          A string for how to plot each datum. Similar spec to
+          matplotlib.
+        linestyle : str optional
+          A matplotlib linestyle spec for how to connect the dots.
+        use_twotheta : bool, optional
+          If truthy, the plot will convert scattering lengths to 2θ
+          before plotting. If used, the `wavelength` argument must
+          also be given.
+        wavelength : float, optional
+          Wavelength of light to be used for converstion to
+          two_theta. If wavelength is `None` (default), the scan
           wavelength will be used.
-
+        
+        Returns
+        =======
+        ax : matplotlib.Axes
+          The plotting axes that received the plot.
+        ax, ax2 : matplotlib.Axes
+          The plotting axes that received the secondary tick marks on
+          top.
+        
         """
         q = self.scattering_lengths
+        q_label = r'q /$A^{-}$'
+        two_theta_label = r'$2\theta$'
         # Set default radiation wavelength
         if wavelength is None:
             wavelength = self.wavelength
@@ -200,16 +211,29 @@ class XRDScan():
             ax = plots.xrd_axes()
         ax.set_xlim(left=x.min(), right=x.max())
         ax.plot(x, y, marker=marker, linestyle=linestyle, *args, **kwargs)
-
+        # Plot ticks on the secondary axis
+        ax2 = ax.twiny()
+        xticks = ax.get_xticks()
+        ax2.set_xticks(xticks)
+        ax2.set_xlim(ax.get_xlim())
+        if use_twotheta:
+            xticks2 = twotheta_to_q(xticks, wavelength=wavelength)
+            xticks2 = [round(t, 2) for t in xticks2]
+        else:
+            xticks2 = q_to_twotheta(xticks, wavelength=wavelength)
+            xticks2 = ['{:.1f}°'.format(t) for t in xticks2]
+        ax2.set_xticklabels(xticks2)            
         # Set plot annotations
         if use_twotheta:
             ax.xaxis.set_major_formatter(plots.DegreeFormatter())
-            ax.set_xlabel(r'$2\theta$')
+            ax.set_xlabel(two_theta_label)
+            ax2.set_xlabel(q_label)
         else:
-            ax.set_xlabel(r'q /$A^{-}$')
+            ax.set_xlabel(q_label)
+            ax2.set_xlabel(two_theta_label)
         ax.set_ylabel('Counts')
-        ax.set_title(self.axes_title())
-        return ax
+        # ax.set_title(self.axes_title())
+        return ax, ax2
 
     def plot_diffractogram_2d(self, ax=None, mask="auto"):
         if ax is None:
