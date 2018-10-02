@@ -108,10 +108,9 @@ class XRDScan():
         """
         data = {
             'counts': self.intensities,
-            # 'subtracted': self.intensities - self.background(),
         }
-        q = self.scattering_lengths
-        df = pd.DataFrame(index=q, data=data)
+        x = self.two_theta
+        df = pd.DataFrame(index=x, data=data)
         return df
 
     # @diffractogram.setter

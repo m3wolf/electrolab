@@ -20,9 +20,12 @@
 import unittest
 import os
 
+import numpy as np
+
 from scimap import XRDScan
 
 TESTDIR = os.path.join(os.path.dirname(__file__), "test-data-xrd")
+COR_BRML = os.path.join(TESTDIR, 'corundum.brml')
 
 class XRDScanTest(unittest.TestCase):
     def test_init_wavelength(self):
@@ -40,3 +43,9 @@ class XRDScanTest(unittest.TestCase):
         # Check for a .plt file
         scan = XRDScan(filename=os.path.join(TESTDIR, 'LMO-sample-data.plt'))
         q = scan.scattering_lengths
+    
+    def test_diffractogram(self):
+        scan = XRDScan(filename=COR_BRML)
+        df = scan.diffractogram
+        # Check that the diffractogram loads 2θ and intensities
+        np.testing.assert_equal(df.index, scan.two_theta)

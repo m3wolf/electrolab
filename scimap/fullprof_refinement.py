@@ -235,6 +235,10 @@ class FullprofRefinement(BaseRefinement):
             raise ValueError('Value of num_bg_coeffs must be between 0 and 6.')
         self.num_bg_coeffs = num_bg_coeffs
         super().__init__(*args, **kwargs)
+        # Check that phases given are sane
+        if len(self.all_phases) < 1:
+            raise ValueError("Both ``phases`` and ``background_phases`` "
+                             "cannot be empty")
     
     def write_hkl_file(self, phase, filename):
         # Create the directory if necessary

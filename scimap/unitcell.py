@@ -66,6 +66,15 @@ class UnitCell():
         parameters = CellParameters(**paramArgs)
         return parameters
 
+    @property
+    def all_parameters(self):
+        """Named tuple of all cell parameters."""
+        params = ('a', 'b', 'c', 'alpha', 'beta', 'gamma')
+        CellParameters = namedtuple('CellParameters', params)
+        paramArgs = {param: getattr(self, param) for param in params}
+        parameters = CellParameters(**paramArgs)
+        return parameters
+
     def set_cell_parameters_from_list(self, parameters_list):
         """
         Accept a list of parameters and assumes they are in the order of

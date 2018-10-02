@@ -48,10 +48,6 @@ class BaseRefinement():
             self.background_phases = scan.background_phases
         else:
             self.background_phases = background_phases
-        # Check that phases given are sane
-        if len(self.all_phases) < 1:
-            raise ValueError("Both ``phases`` and ``background_phases`` "
-                             "cannot be empty")
         # Save remaning arguments
         self.num_bg_coeffs = num_bg_coeffs
         self.scan = scan
