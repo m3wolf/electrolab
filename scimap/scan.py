@@ -192,7 +192,7 @@ class XRDScan():
         """
         q = self.scattering_lengths
         q_label = r'q /$A^{-}$'
-        two_theta_label = r'$2\theta$'
+        two_theta_label = r'$2\theta\ (\lambda={:.4f}\AA)$'
         # Set default radiation wavelength
         if wavelength is None:
             wavelength = self.wavelength
@@ -207,29 +207,20 @@ class XRDScan():
         ax.set_xlim(left=x.min(), right=x.max())
         ax.plot(x, y, marker=marker, linestyle=linestyle, *args, **kwargs)
         # Plot ticks on the secondary axis
-        ax2 = ax.twiny()
-        xticks = ax.get_xticks()
-        ax2.set_xticks(xticks)
-        ax2.set_xlim(ax.get_xlim())
-        if use_twotheta:
-            xticks2 = twotheta_to_q(xticks, wavelength=wavelength)
-            xticks2 = [round(t, 2) for t in xticks2]
-        else:
-            xticks2 = q_to_twotheta(xticks, wavelength=wavelength)
-            xticks2 = ['{:.1f}°'.format(t) for t in xticks2]
-        ax2.set_xticklabels(xticks2)            
+        ax2 = plots.add_twinx(ax=ax, wavelength=wavelength, use_twotheta=not use_twotheta)
         # Set plot annotations
         if use_twotheta:
             ax.xaxis.set_major_formatter(plots.DegreeFormatter())
-            ax.set_xlabel(two_theta_label)
-            ax2.set_xlabel(q_label)
+            if wavelength is not None:
+                xlabel = two_theta_label.format(wavelength)
+            else:
+                xlabel = two_theta_label.format('??')
         else:
-            ax.set_xlabel(q_label)
-            ax2.set_xlabel(two_theta_label)
+            xlabel = q_label
+        ax.set_xlabel(xlabel)
         ax.set_ylabel('Counts')
-        # ax.set_title(self.axes_title())
         return ax, ax2
-
+    
     def plot_diffractogram_2d(self, ax=None, mask="auto"):
         if ax is None:
             ax = plots.new_image_axes()

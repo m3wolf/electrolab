@@ -23,7 +23,7 @@ import numpy as np
 from matplotlib import pyplot, cm
 from matplotlib.ticker import ScalarFormatter
 
-from .utilities import q_to_twotheta
+from .utilities import q_to_twotheta, twotheta_to_q
 
 
 class ElectronVoltFormatter(ScalarFormatter):
@@ -263,3 +263,50 @@ def plot_txm_intermediates(images):
         ax1.imshow(images[key], cmap='gray')
         ax1.set_title(key)
         ax2.hist(images[key].flat, bins=100)
+
+
+def add_twinx(ax, wavelength: float, use_twotheta: bool=True):
+    """Add a set of tick marks to the top of axes with complementary values.
+    
+    If ``use_twotheta`` is True, then the primary x-axis is assumed to
+    be in q (scattering length), and 2θ will be plotted on the
+    twin-x. Otherwise, the primary axis is assumed to be in 2θ and
+    then q will be plotted on the twin-x.
+    
+    Parameters
+    ==========
+    ax
+      A matplotlib axes to receive the plotting.
+    wavelength
+      Wavelength of X-ray used for conversion from q to 2θ, in Å.
+    use_twotheta
+      Whether to use 2θ or q, as described above.
+    
+    Returns
+    =======
+    ax2
+      The twinx matplotlib.Axes object with the second set of ticks.
+    
+    """
+    q_label = r'q /$A^{-}$'
+    two_theta_label = r'$2\theta\ (\lambda={:.4f}\AA)$'
+    # Create a new twinx axes to receive new ticks
+    ax2 = ax.twiny()
+    # Determine new tick labels
+    xticks = ax.get_xticks()
+    if use_twotheta:
+        xticks2 = q_to_twotheta(xticks, wavelength=wavelength)
+        xticks2 = ['{:.1f}°'.format(t) for t in xticks2]
+        if wavelength is not None:
+            xlabel = two_theta_label.format(wavelength)
+        else:
+            xlabel = two_theta_label.format('??')
+    else:
+        xticks2 = twotheta_to_q(xticks, wavelength=wavelength)
+        xticks2 = [round(t, 2) for t in xticks2]
+        xlabel = q_label
+    # Set the new tick labels
+    ax2.set_xlabel(xlabel)
+    ax2.set_xticklabels(xticks2)
+    ax2.set_xlim(ax.get_xlim())
+    return ax2
