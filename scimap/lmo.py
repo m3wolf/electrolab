@@ -3,10 +3,13 @@
 LiMn_2O_4"""
 
 import numpy as np
+import warnings
 from numpy.polynomial.chebyshev import Chebyshev
 from matplotlib.colors import Normalize
 from scipy.optimize import curve_fit, minimize
+from scipy.signal import savgol_filter
 
+from . import exceptions
 from .xrd_map import XRDMap
 from .phase import Phase
 from .standards import Aluminum
@@ -120,30 +123,22 @@ class HighV531Phase(HighVPhase):
     diagnostic_hkl = '531'
 
 
-class LMORefinement(FullprofRefinement):
-    bg_coeffs = [0.409, 14.808, -14.732, -10.292, 34.249, -28.046]
-    zero = -0.001360
-    displacement = 0.000330
-    transparency = -0.008100
-
-
-# Define a new class for mapping the two-phase plateau
-class LMOPlateauMap(XRDMap):
-    scan_time = 300
-    two_theta_range = (55, 70)
-    phases = [HighVPhase, MidVPhase]
-    background_phases = [Aluminum]
-    phase_ratio_normalizer = Normalize(0, 0.7, clip=True)
-    reliability_normalizer = Normalize(0.7, 2, clip=True)
-
-
 class TwoPhaseRefinement(BaseRefinement):
-    peak_ranges = [
-        (58.0, 60.5),
-        (64.0, 66.3),
-        (67.3, 69.6),
-    ]
-    approx_peak_positions = [58.9, 59.65, 64.75, 65.5, 68.1, 68.8]
+    peak_ranges = (
+        (58.0, 59.),
+        (59., 60.5),
+        (64.0, 65.14),
+        (65.14, 66.3),
+        (67.3, 68.6),
+        (68.6, 69.6),
+    )
+    approx_peak_positions = (58.9, 59.65, 64.75, 65.5, 68.1, 68.8)
+    peak_width = 0.2
+    
+    def smooth_data(self, intensities):
+        smoothed = savgol_filter(intensities, window_length=101, polyorder=3)
+        return smoothed
+    
     def remove_peaks(self, two_theta, intensities):
         """Remove peaks from the dataset, leaving only the background.
         
@@ -168,11 +163,12 @@ class TwoPhaseRefinement(BaseRefinement):
         return red_two_theta, red_intensities
     
     def background(self, two_theta, intensities):
-        spline = Chebyshev(coef=np.ones((20,)))
+        n_deg = 5
+        spline = Chebyshev(coef=np.ones((5,)))
         red_two_theta, red_intensities = self.remove_peaks(
-            two_theta, intensities)
+            two_theta, self.smooth_data(intensities))
         # Fit the background using the reduced dataset
-        spline = spline.fit(red_two_theta, red_intensities, 10)
+        spline = spline.fit(red_two_theta, red_intensities, n_deg)
         # Return the predicted background
         background = np.array(spline(two_theta))
         return background
@@ -190,22 +186,39 @@ class TwoPhaseRefinement(BaseRefinement):
     def fit_peaks(self, two_theta, intensities):
         bg = self.background(two_theta, intensities)
         subtracted = intensities - bg
+        smoothed = self.smooth_data(subtracted)
         # Find starting parameters for peak centers and heights
-        approx_centers = self.approx_peak_positions
-        approx_heights = [0] * len(approx_centers)
-        approx_widths = [0.25] * len(approx_centers)
+        approx_centers = list(self.approx_peak_positions)
+        approx_heights = [0,] * len(approx_centers)
+        approx_widths = [0.25,] * len(approx_centers)
         for i in range(len(approx_centers)):
             center = approx_centers[i]
-            is_peak = np.logical_and(two_theta > center-0.3, two_theta < center+0.3)
-            real_center = two_theta[is_peak][np.argmax(subtracted[is_peak])]
+            peak_range = (center - self.peak_width / 2, center + self.peak_width / 2)
+            is_peak = np.logical_and(two_theta > peak_range[0], two_theta < peak_range[1])
+            real_center = two_theta[is_peak][np.argmax(smoothed[is_peak])]
             approx_centers[i] = real_center
-            height = np.max(subtracted[is_peak])
+            height = np.max(smoothed[is_peak])
             approx_heights[i] = height
+        # Make sure we haven't guessed the same peak twice
+        if len(set(approx_centers)) != len(approx_centers):
+            approx_centers = self.approx_peak_positions
         # Construct the initial guess (p0)
         p0 = np.array(list(zip(approx_centers, approx_heights, approx_widths)))
         p0 = p0.ravel()
+        p0[p0<0] = 0 # Set minimum to zero
+        # Calculate reasonable bounds for peak positions and widths
+        bound0 = np.array([(r[0], 0, 0) for r in self.peak_ranges]).ravel()
+        bound1 = np.array([(r[1], np.inf, np.inf) for r in self.peak_ranges]).ravel()
+        bounds = (bound0, bound1)
         # Do the fitting
-        popt, pcov = curve_fit(self.peaks, two_theta, subtracted, p0=p0)
+        try:
+            popt, pcov = curve_fit(self.peaks, two_theta, smoothed, p0=p0, bounds=bounds)
+        except RuntimeError as e:
+            warnings.warn("Could not fit peaks for '{}'"
+                          "".format(self.file_root),
+                          exceptions.RefinementWarning)
+            popt = p0
+            # raise exceptions.PeakFitError(e) from e
         popt = popt.reshape(-1, 3)
         return popt
     
@@ -230,7 +243,7 @@ class TwoPhaseRefinement(BaseRefinement):
         """
         # Calculate peak areas
         peaks = self.fit_peaks(two_theta, intensities)
-        areas = [(p[1] * p[2] / 0.3989) for p in peaks]
+        areas = tuple((p[1] * p[2] / 0.3989) for p in peaks)
         return areas
     
     def peak_heights(self, two_theta, intensities):
@@ -320,6 +333,7 @@ class TwoPhaseRefinement(BaseRefinement):
         rms_error = np.sqrt(np.mean(np.power(intensities - predicted, 2)))
         rms_signal = np.sqrt(np.mean(np.power(intensities - np.min(intensities), 2)))
         goodness = 1 - (rms_error / rms_signal)
+        # goodness = 1 / rms_error
         return goodness
     
     def cell_params(self, two_theta, intensities):
@@ -394,6 +408,8 @@ class TwoPhaseRefinement(BaseRefinement):
         """
         areas = self.peak_areas(two_theta, intensities)
         area = np.sum(areas)
+        heights = self.peak_heights(two_theta, intensities)
+        height = np.sum(heights)
         return area
     
     def broadenings(self, two_theta=None, intensities=None):
@@ -421,11 +437,16 @@ class TwoPhaseRefinement(BaseRefinement):
 
 
 class SolidSolutionRefinement(TwoPhaseRefinement):
-    approx_peak_positions = [58.8, 64.5, 67.9]
+    approx_peak_positions = (58.8, 64.5, 67.9)
+    peak_ranges = (
+        (58.0, 60.5),
+        (64.0, 66.3),
+        (67.3, 69.6),
+    )
     
     def phase_fractions(self, two_theta, intensities):
         """This is a 1-phase system, so the phase ratio is always 1."""
-        return [1.]
+        return (1.,)
     
     def cell_params(self, two_theta, intensities):
         """Retrieve the predicted cell parameters.
@@ -447,9 +468,9 @@ class SolidSolutionRefinement(TwoPhaseRefinement):
         """
         # Get list of reflection positions
         peaks = self.fit_peaks(two_theta, intensities)[:,0]
-        cell_params = [
+        cell_params = (
             self._refine_unit_cell(peaks, (4.2, 4.2, 4.2, 90, 90, 120)),
-        ]
+        )
         return cell_params
     
     def broadenings(self, two_theta=None, intensities=None):
@@ -472,5 +493,5 @@ class SolidSolutionRefinement(TwoPhaseRefinement):
         # Calculate broadenings for each peak
         breadths = self.peak_breadths(two_theta, intensities)
         # Reduce all peaks to two phases
-        broadenings = [np.mean(breadths)]
+        broadenings = (np.mean(breadths),)
         return broadenings

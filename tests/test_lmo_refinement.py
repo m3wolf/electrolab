@@ -69,13 +69,13 @@ class LMOTwoPhaseMapTest(unittest.TestCase):
         # Check that the residuals of the fit are low
         predicted = self.refinement.predict(TTs, Is)
         rms_error = np.sqrt(np.mean((Is-predicted)**2))
-        self.assertLess(rms_error, 0.52)
+        self.assertLess(rms_error, 0.55)
     
     def test_phase_fractions(self):
         TTs = self.scan.two_theta
         Is = self.scan.intensities
         fractions = self.refinement.phase_fractions(TTs, Is)
-        np.testing.assert_almost_equal(fractions, [0.55209216, 0.44790784])
+        np.testing.assert_almost_equal(fractions, [0.555, 0.445], decimal=3)
     
     def test_goodness_of_fit(self):
         TTs = self.scan.two_theta
@@ -90,19 +90,12 @@ class LMOTwoPhaseMapTest(unittest.TestCase):
         expected = [(8.146, 8.146, 8.146, 90, 90, 90),
                     (8.065, 8.065, 8.065, 90, 90, 90)]
         np.testing.assert_almost_equal(cell_params, expected, decimal=3)
-        # positions = [[58.91169860, 64.73565054, 68.09570727],
-        #              [59.56763241, 65.47212347, 68.88107684]]
-        # import matplotlib.pyplot as plt
-        # plt.plot(TTs, Is, marker='+', linestyle=':')
-        # plt.plot(TTs, self.refinement.predict(TTs, Is))
-        # [plt.axvline(p) for pos in positions for p in pos]
-        # plt.show()
     
     def test_scale_factor(self):
         TTs = self.scan.two_theta
         Is = self.scan.intensities
         scale_factor = self.refinement.scale_factor(TTs, Is)
-        self.assertAlmostEqual(scale_factor, 48.552, places=3)
+        self.assertAlmostEqual(scale_factor, 47.7, places=1)
     
     def test_broadenings(self):
         TTs = self.scan.two_theta
@@ -110,7 +103,36 @@ class LMOTwoPhaseMapTest(unittest.TestCase):
         broadenings = self.refinement.broadenings(TTs, Is)
         self.assertEqual(len(broadenings), 2)
         np.testing.assert_almost_equal(
-            broadenings, [1.1778, 1.248], decimal=3)
+            broadenings, [1.1778, 1.248], decimal=2)
+    
+    def test_smooth_data(self):
+        TTs = self.scan.two_theta
+        Is = self.scan.intensities
+        smoothed = self.refinement.smooth_data(Is)
+        self.assertEqual(Is.shape, smoothed.shape)
+    
+    def test_bad_refinement(self):
+        """This .plt file did not refine originally, so let's fix it."""
+        plt_file = os.path.join(TESTDIR, '1C_charged_plateau-map-129.plt')
+        scan = XRDScan(plt_file)
+        TTs = scan.two_theta
+        Is = scan.intensities
+        predicted = self.refinement.predict(TTs, Is)
+        bg = self.refinement.background(TTs, Is)
+        fractions = self.refinement.phase_fractions(TTs, Is)
+        unit_cells = self.refinement.cell_params(TTs, Is)
+        np.testing.assert_almost_equal(fractions, [0.897, 0.103], decimal=3)
+    
+    def test_bad_phase_fraction(self):
+        """This .plt gaves a wrong value when refining phase fraction."""
+        plt_file = os.path.join(TESTDIR, '1C_charged_plateau-map-13c.plt')
+        scan = XRDScan(plt_file)
+        TTs = scan.two_theta
+        Is = scan.intensities
+        predicted = self.refinement.predict(TTs, Is)
+        bg = self.refinement.background(TTs, Is)
+        fractions = self.refinement.phase_fractions(TTs, Is)
+        np.testing.assert_almost_equal(fractions, [0.87, 0.13], decimal=2)
 
 
 class LMOSolutionMapTest(unittest.TestCase):
@@ -151,13 +173,13 @@ class LMOSolutionMapTest(unittest.TestCase):
         # Check that the residuals of the fit are low
         predicted = self.refinement.predict(TTs, Is)
         rms_error = np.sqrt(np.mean((Is-predicted)**2))
-        self.assertLess(rms_error, 0.62)
+        self.assertLess(rms_error, 0.64)
     
     def test_goodness_of_fit(self):
         TTs = self.scan.two_theta
         Is = self.scan.intensities
         goodness = self.refinement.goodness_of_fit(TTs, Is)
-        self.assertGreater(goodness, 0.85)
+        self.assertGreater(goodness, 0.84)
     
     def test_cell_params(self):
         TTs = self.scan.two_theta
@@ -165,18 +187,14 @@ class LMOSolutionMapTest(unittest.TestCase):
         cell_params = self.refinement.cell_params(TTs, Is)
         expected = [(8.168, 8.168, 8.168, 90, 90, 90)]
         np.testing.assert_almost_equal(cell_params, expected, decimal=3)
-        # positions = [58.73984289, 64.54279615, 67.89012129]
-        # import matplotlib.pyplot as plt
-        # plt.plot(TTs, Is, marker='+', linestyle=':')
-        # plt.plot(TTs, self.refinement.predict(TTs, Is))
-        # [plt.axvline(p) for p in positions]
-        # plt.show()
     
     def test_scale_factor(self):
         TTs = self.scan.two_theta
         Is = self.scan.intensities
         scale_factor = self.refinement.scale_factor(TTs, Is)
-        self.assertAlmostEqual(scale_factor, 40.963, places=3)
+        predicted = self.refinement.predict(TTs, Is)
+        smoothed = self.refinement.smooth_data(Is)
+        self.assertAlmostEqual(scale_factor, 42.2, places=1)
     
     def test_broadenings(self):
         TTs = self.scan.two_theta
@@ -184,4 +202,4 @@ class LMOSolutionMapTest(unittest.TestCase):
         broadenings = self.refinement.broadenings(TTs, Is)
         self.assertEqual(len(broadenings), 1)
         np.testing.assert_almost_equal(
-            broadenings, [1.044], decimal=3)
+            broadenings, [1.100], decimal=3)

@@ -61,7 +61,7 @@ class BaseRefinement():
     def all_phases(self):
         return tuple(self.phases) + tuple(self.background_phases)
     
-    def predict(self, two_theta):
+    def predict(self, two_theta, intensities=None):
         """Return predicted diffraction intensities for given 2θ.
         
         Parameters
@@ -233,15 +233,16 @@ class BaseRefinement():
         if ax is None:
             ax = plots.new_axes()
             ax.xaxis.set_major_formatter(plots.DegreeFormatter())
-        ax.plot(two_theta, intensities, linestyle="None", marker='+')
+        ax.plot(two_theta, intensities, linestyle="None", marker='.', color="C0", zorder=1)
         # Plot the predicted pattern after refinement
-        new_two_theta = np.linspace(np.min(two_theta), np.max(two_theta),
-                                    num=10 * len(two_theta))
-        background = self.background(new_two_theta)
-        ax.plot(new_two_theta, background)
-        predicted = self.predict(two_theta=new_two_theta)
-        ax.plot(new_two_theta, predicted, linestyle=':')
+        # new_two_theta = np.linspace(np.min(two_theta), np.max(two_theta),
+        #                             num=10 * len(two_theta))
+        new_two_theta = two_theta
+        background = self.background(new_two_theta, intensities)
+        ax.plot(new_two_theta, background, color="C3", zorder=2)
+        predicted = self.predict(two_theta=new_two_theta, intensities=intensities)
+        ax.plot(new_two_theta, predicted, linestyle="-", color="C1", zorder=3)
         # Not plot the difference between the observed and actual
-        diff = (intensities - self.predict(two_theta)) - np.max(intensities) / 20
-        ax.plot(two_theta, diff, color="teal")
+        diff = (intensities - predicted) - np.max(intensities) / 20
+        ax.plot(two_theta, diff, color="C9", zorder=4)
         ax.legend(['Actual', 'Background', 'Fit', 'Difference'])

@@ -189,7 +189,7 @@ class BrukerPltFile(XRDAdapter):
         # Find all Datum entries in data tree
         df = self._dataframe()
         two_theta = df.index
-        return two_theta
+        return np.array(two_theta)
     
     def scattering_lengths(self, wavelength):
         """Return scattering length (q) for all Datum elements in the file."""

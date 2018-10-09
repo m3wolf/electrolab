@@ -204,7 +204,6 @@ class SlamFileTest(unittest.TestCase):
             self.assertEqual(layout, 'hex')
             self.assertIn('file_basenames', keys)
             wavelength = f[sample_name]['wavelengths']
-            print(wavelength)
             np.testing.assert_almost_equal(wavelength,
                                            [[1.5406, 1],
                                             [1.5444, 0.5]])
@@ -220,4 +219,3 @@ class SlamFileTest(unittest.TestCase):
                                      sample_name=sample_name,
                                      center=(0, 0), hdf_filename=hdf_filename,
                                      overwrite=False)
-            print(w)

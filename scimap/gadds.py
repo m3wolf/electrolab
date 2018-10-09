@@ -255,8 +255,8 @@ def write_gadds_script(two_theta_range, sample_name, center, collimator=0.8,
                        center=center, hexadecimal=hexadecimal,
                        frame_size=frame_size)
     # Create file and directory if necessary
+    directory = '{}-frames'.format(sample_name)
     if file is None:
-        directory = '{}-frames'.format(sample_name)
         if not os.path.exists(directory):
             os.makedirs(directory)
         filename = '{dir}/{samplename}.slm'.format(

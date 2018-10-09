@@ -161,7 +161,8 @@ class XRDStore():
     
     @file_basenames.setter
     def file_basenames(self, value):
-        value = value.astype("S10")
+        max_len = max([len(v) for v in value])
+        value = value.astype("S{}".format(max_len))
         self.replace_dataset('file_basenames', data=value)
     
     @property

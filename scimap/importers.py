@@ -80,7 +80,7 @@ def import_gadds_map(sample_name: str=None, directory: str=None,
     basenames = xrdstore.file_basenames
     filestring = os.path.join(directory, "{base}.{ext}")
     pltfiles = [filestring.format(base=base.decode(), ext="plt") for base in basenames]
-    jpgfiles = [os.path.join(directory, str(base) + ".jpg") for base in basenames]
+    jpgfiles = [(str(base) + ".jpg") for base in basenames]
     # Arrays to hold imported results
     Is, two_thetas = [], []
     # Read plt data files

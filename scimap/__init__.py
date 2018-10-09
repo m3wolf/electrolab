@@ -32,7 +32,6 @@ from .peakfitting import Peak, remove_peak_from_df
 from . import standards, lmo, nca, gadds, fullprof_refinement, filters
 from .peakfitting import Peak
 from .unitcell import CubicUnitCell, HexagonalUnitCell, TetragonalUnitCell
-from .lmo import LMOPlateauMap
 from .reflection import Reflection
 from .tube import tubes
 from .phase import Phase

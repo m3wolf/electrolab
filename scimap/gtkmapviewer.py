@@ -142,11 +142,11 @@ class GtkMapViewer():
             self.reset_alpha_range()
         else:
             self.alpha_range = alpha_range
-
         # Prepare mapping figures
         fig = figure.Figure(figsize=(13.8, 10))
         self.fig = fig
-        fig.figurePatch.set_facecolor('white')
+        # fig.figurePatch.set_facecolor('white')
+        fig.patch.set_facecolor('white')
         sw = self.builder.get_object('MapPanel')
         # Prepare plotting area
         canvas = FigureCanvas(self.fig)
@@ -260,15 +260,10 @@ class GtkMapViewer():
             # self.mapAxes.draw_artist(self.map_hexagon)
         # Force a redraw of the canvas since Gtk won't do it
         self.fig.canvas.draw()
-
+    
     def plot_locus_detail(self, locus):
         self.parent_map.plot_diffractogram(ax=self.locusAxes, index=locus)
-        # Return some random data
-        # twoTheta = numpy.linspace(10, 80, num=700)
-        # counts = numpy.random.rand(len(twoTheta))
-        # self.locusAxes.plot(twoTheta, counts)
-        # return self.locusAxes
-
+    
     def on_key_press(self, widget, event, user_data=None):
         oldCoords = np.array(self.parent_map.xy_by_locus(self.current_locus))
         # oldCoords = self.current_locus.cube_coords

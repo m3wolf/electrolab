@@ -4,13 +4,14 @@ import warnings
 import logging
 log = logging.getLogger(__name__)
 
-from matplotlib import pyplot, patches, colors, cm 
+from matplotlib import pyplot, patches, colors, cm
 import numpy as np
 import scipy
 import pandas
 
 from . import exceptions
-from .plots import new_axes, set_outside_ticks
+from .units_ import units
+from .plots import new_axes, set_outside_ticks, dual_axes
 from .xrdstore import XRDStore
 from .base_refinement import BaseRefinement
 from .fullprof_refinement import FullprofRefinement
@@ -105,28 +106,28 @@ class Map():
     def path(self, *args, **kwargs):
         """Generator gives coordinates for a spiral path around the sample."""
         raise NotImplementedError("Use gadds._path() instead")
-
+    
     def directory(self):
         raise NotImplementedError("Just don't use it.")
-
+    
     def get_number_of_frames(self):
         warnings.warn(DeprecationWarning("Use gadds.number_of_frames()"))
-
+    
     def get_theta2_start(self):
         warnings.warn(DeprecationWarning("Use gadds._detector_start()"))
-
+    
     def get_theta1(self):
         warnings.warn(DeprecationWarning("Use gadds._source_angle()"))
-
+    
     def get_cmap(self, cmap=None):
         """Return a function that converts values in range 0 to 1 to colors.
-
+        
         Parameters
         ----------
         cmap : str, optional
           The name of the colormap to be passed to pyplot.get_cmap. If
           omitted, self.cmap_name will be used.
-
+        
         """
         # Matplotlib built-in colormaps (viridis et al have been
         # merged in now)
@@ -214,10 +215,56 @@ class Map():
             scan.plot_diffractogram(ax=diffractogramAxes)
         return (mapAxes, diffractogramAxes)
     
-    def plot_map_with_histogram(self):
-        mapAxes, histogramAxes = dual_axes()
-        self.plot_map(ax=mapAxes)
-        self.plot_histogram(ax=histogramAxes)
+    def plot_map_with_histogram(self, metric='position', axs=None,
+                                phase_idx=0, metric_range=None, highlighted_locus=None,
+                                alpha=None, alpha_range=None, cmap="viridis"):
+        """Generate a 2D map and a histogram of the electrode surface.
+        
+        A `metric` can and should be given to indicate which quantity
+        should be mapped, otherwise the map just shows distance from
+        the origin for testing purposes. Color and alpha are
+        determined by the Map.metric() method (see its docstring for
+        valid choices).
+        
+        Arguments
+        ---------
+        axs : 2-tuple, optional
+          A 2-tuple of matplotlib Axes object onto which the map and
+          histogram will be drawn. If omitted, a new Axes object will
+          be created. A new colorbar will only be added if this
+          argument is None.
+        phase_idx : int, optional
+          Controls which phase will be used for generating the metric
+          (eg. cell parameter). Not relevant for all metrics.
+        metric : str, optional
+          Name of the quantity to be used for determining color.
+        metric_range : 2-tuple, optional
+          Specifies the bounds for mapping. Anything outside these
+          bounds will be clipped to the max or min. If omitted, the
+          2nd and 98th percentile will be used.
+        hightlight_locus : int, optional
+          Index of an XRD scan that will receive a red circle.
+        alpha : str, optional
+          Name of the quantity to be used to determine the opacity of
+          each cell. If None, all cells will be opaque.
+        alpha_range : 2-tuple, optional
+          2-tuple with the values for full transparency and full
+          opacity. Anything outside these bounds will be clipped.
+        
+        """
+        # Prepare the axes
+        if axs is None:
+            mapAxes, histogramAxes = dual_axes()
+        else:
+            mapAxes, histogramAxes = axs
+        # Prepare plotting arguments
+        # Do the plotting
+        self.plot_map(ax=mapAxes, phase_idx=phase_idx, metric=metric,
+                      metric_range=metric_range, alpha=alpha,
+                      alpha_range=alpha_range)
+        self.plot_histogram(ax=histogramAxes, phase_idx=phase_idx,
+                            metric=metric, metric_range=metric_range,
+                            weight=alpha, weight_range=alpha_range)
         return (mapAxes, histogramAxes)
     
     def plot_locus(self, loc, ax, shape, size, color, alpha: float=1):
@@ -258,13 +305,15 @@ class Map():
         ax.add_patch(patch)
     
     def plot_map(self, metric='position', ax=None, phase_idx=0,
-                 metric_range=(None, None), highlighted_locus=None,
+                 metric_range=None, highlighted_locus=None,
                  alpha=None, alpha_range=None, cmap="viridis"):
-        """Generate a two-dimensional map of the electrode surface. A `metric`
-        can and should be given to indicate which quantity should be
-        mapped, otherwise the map just shows distance from the origin
-        for testing purposes. Color and alpha are determined by the
-        Map.metric() method (see its docstring for valid choices).
+        """Generate a two-dimensional map of the electrode surface.
+        
+        A `metric` can and should be given to indicate which quantity
+        should be mapped, otherwise the map just shows distance from
+        the origin for testing purposes. Color and alpha are
+        determined by the Map.metric() method (see its docstring for
+        valid choices).
         
         Arguments
         ---------
@@ -279,8 +328,8 @@ class Map():
           Name of the quantity to be used for determining color.
         metric_range : 2-tuple, optional
           Specifies the bounds for mapping. Anything outside these
-          bounds will be clipped to the max or min. If either value is
-          None, that bound will be set to the range of metric values.
+          bounds will be clipped to the max or min. If omitted, the
+          2nd and 98th percentile will be used.
         hightlight_locus : int, optional
           Index of an XRD scan that will receive a red circle.
         alpha : str, optional
@@ -289,7 +338,7 @@ class Map():
         alpha_range : 2-tuple, optional
           2-tuple with the values for full transparency and full
           opacity. Anything outside these bounds will be clipped.
-        
+
         """
         cmap_ = self.get_cmap(cmap)
         # Plot loci
@@ -308,6 +357,10 @@ class Map():
         ax.set_xlabel('mm')
         ax.set_ylabel('mm')
         metrics = self.metric(phase_idx=phase_idx, param=metric)
+        # Set default mapping range if not given
+        if metric_range is None:
+            metric_range = (np.percentile(metrics, 2),
+                            np.percentile(metrics, 98))
         # Normalize the metrics
         metric_normalizer = colors.Normalize(*metric_range)
         # metric_normalizer = normalizer(data=metrics, norm_range=metric_range)
@@ -482,32 +535,41 @@ class Map():
     
     def plot_histogram(self, metric: str, phase_idx: int=0, ax=None,
                        bins: int=0, weight: str=None,
-                       metric_range=(None, None), weight_range=(None, None)):
+                       metric_range=None, weight_range=(None, None)):
         """Plot a histogram showing the distribution of the given metric.
         
         Arguments
         ---------
-        - metric : String describing which metric to plot. See
-          self.metric() for valid choices.
-        
-        - phase_idx : Which phase to use for retrieving the
-          metric. Only applicable to things like unit-cell parameters.
-        
-        - ax : Matplotlib axes on which to plot.
-        
-        - bins : Number of bins in which to distribute the metric
+        metric :
+          String describing which metric to plot. See self.metric()
+          for valid choices.
+        phase_idx : optional
+          Which phase to use for retrieving the metric. Only
+          applicable to things like unit-cell parameters.
+        ax : optional
+          Matplotlib axes on which to plot.
+        bins : optional
+          Number of bins in which to distribute the metric
           values. If zero, the number of bins will be determined
           automatically from the number of loci.
-        
-        - weight : String describing which metric to use for weighting
+        metric_range : 2-tuple, optional
+          Will be used to normalize the range of values for the given
+          metric. If omitted, the 2nd and 98th percentile will be
+          used.
+        weight : String describing which metric to use for weighting
           each value. See self.metric() for valid choices. If None,
           all weights will be equal.
+        weight_range : 2-tuple
+          Will be used to normalize the values between 1 and 0. If
+          not given, then the full range of values will be used.
         
-        - weight_range : Will be used to normalize the values between
-          1 and 0. If not given, then the full range of values will be
-          used.
         """
-        metrics = self.metric(metric)
+        metrics = self.metric(metric, phase_idx=phase_idx)
+        # Set default mapping range if not given
+        if metric_range is None:
+            metric_range = (np.percentile(metrics, 2),
+                            np.percentile(metrics, 98))
+        # Normalize the data to between 0 and 1
         metricnorm = colors.Normalize(*metric_range)
         metricnorm.autoscale_None(metrics)
         np.clip(metrics, metricnorm.vmin, metricnorm.vmax, out=metrics)
@@ -516,7 +578,7 @@ class Map():
             bins = int(metrics.shape[0] / 3)
         # Get values for weighting the frequencies
         if weight is not None:
-            weights = self.metric(param=weight)
+            weights = self.metric(param=weight, phase_idx=phase_idx)
         else:
             weights = np.ones_like(metrics)
             weight_range = (0, 1)
@@ -673,7 +735,7 @@ class XRDMap(Map):
          # Retrieve the actual data
         with self.store() as store:
             intensities = get_values(store.intensities, index=index)
-            qs = get_values(store.scattering_lengths, index=index)
+            xs = get_values(store.two_thetas, index=index)
             try:
                 bg = get_values(store.backgrounds, index=index)
             except KeyError:
@@ -695,12 +757,12 @@ class XRDMap(Map):
         residuals = observations - predictions
         # Plot data
         if subtracted is False:
-            ax.plot(qs, observations, marker="+", linestyle="None")
-            ax.plot(qs, predictions)
-            ax.plot(qs, bg, color="red")
-            ax.plot(qs, residuals, color="cyan")
+            ax.plot(xs, observations, marker="+", linestyle="None")
+            ax.plot(xs, predictions)
+            ax.plot(xs, bg, color="red")
+            ax.plot(xs, residuals, color="cyan")
             # Annotate axes
-            ax.set_xlabel(r'Scattering Length (q) $/\AA^{-1}$')
+            ax.set_xlabel(r'2θ°')
             ax.set_ylabel('Intensity a.u.')
         else:
             ax.plot(qs, observations, marker="+", linestyle="None")
@@ -736,7 +798,7 @@ class XRDMap(Map):
         #for phase in self.Background_Phases:
             #draw_peaks(ax=ax, phase=phase, color='grey')
         # Set axes limits
-        ax.set_xlim(qs.min(), qs.max())
+        ax.set_xlim(xs.min(), xs.max())
         return ax
     
     def highlight_beam(self, ax, locus: int):
@@ -818,7 +880,7 @@ class XRDMap(Map):
     def plot_fwhm(self, phase_idx=0, *args, **kwargs):
         warnings.warn(UserWarning("Use `Map.plot_map(metric='fwhm')` instead"))
     
-    def refine_mapping_data(self, backend='native', num_bg_coeffs=3):
+    def refine_mapping_data(self, backend='native', num_bg_coeffs=3, debug_mode: bool=False):
         """Refine the relevant XRD parameters, such as background, unit-cells,
         etc. This will save the refined data to the HDF file.
         
@@ -835,6 +897,9 @@ class XRDMap(Map):
           ``BaseRefinement`` can also be supplied.
         num_bg_coeffs : int, optional
           Numbers of background coefficients used for refinement
+        debug_mode
+          If truthy, failed refinements will provide additional
+          information about what went wrong.
         
         """
         # Empty arrays to hold results
@@ -900,32 +965,53 @@ class XRDMap(Map):
                         intensities=Is,
                     )
                     # Append the fitted diffraction pattern
-                    fit = refinement.predict(two_theta)
+                    fit = refinement.predict(two_theta=two_theta, intensities=Is)
                      #Save a confidence value for the fit
                     gd = refinement.goodness_of_fit(two_theta=two_theta,
                                                     intensities=Is)
                 except exceptions.RefinementError as e:
-                    failed.append(idx)
-                    log.warn('Failed to refine scan {idx}: {e}'.format(idx=idx, e=e))
-                    # Refinement was not successful, so save nan values
-                    bg = np.full_like(two_theta, np.nan)
-                    cell_params = tuple((np.nan,)*6 for p in phases)
-                    frac = tuple(np.nan for p in phases)
-                    scale = np.nan
-                    width = tuple(np.nan for p in phases)
-                    fit = np.full_like(two_theta, np.nan)
-                    gd = np.nan
-                # Added refined values to cumulative arrays
+                    # Try plotting the failed refinement
+                    if debug_mode:
+                        pyplot.figure()
+                        pyplot.plot(two_theta, Is)
+                        pyplot.title(store.file_basenames[idx])
+                        pyplot.show()
+                        raise
+                    else:
+                        failed.append(idx)
+                        log.warn('Failed to refine scan {idx}: {e}'.format(idx=idx, e=e))
+                        # Refinement was not successful, so save nan values
+                        bg = np.full_like(two_theta, np.nan)
+                        cell_params = tuple((np.nan,)*6 for p in phases)
+                        frac = tuple(np.nan for p in phases)
+                        scale = np.nan
+                        width = tuple(np.nan for p in phases)
+                        fit = np.full_like(two_theta, np.nan)
+                        gd = np.nan
+                # Added refined values and fitted patterns to cumulative arrays
                 bgs.append(bg)
                 all_cells.append(cell_params)
                 fractions.append(frac)
                 scale_factors.append(scale)
-                fits.append(fit)
-                #Append the fitted diffraction pattern
-                scale_factors.append(scale)
                 broadenings.append(width)
-                fits.append(fit)
                 goodness.append(gd)
+                fits.append(fit)
+            # Check that the right number of data were generated
+            data_names = [
+                ('background', bgs),
+                ('cell parameters', all_cells),
+                ('fitted patterns', fits),
+                ('phase fractions', fractions),
+                ('peak broadenings', broadenings),
+                ('goodness of fit', goodness),
+                ('scale factors', scale_factors),
+            ]
+            for name, lst in data_names:
+                if len(lst) != total:
+                    raise exceptions.RefinementError(
+                        "Incorrect number of refinements for "
+                        "[{}]. Expected {}, got {}"
+                        "".format(name, total, len(lst)))
             # Store refined data for later
             store.backgrounds = np.array(bgs)
             store.cell_parameters = np.array(all_cells)
@@ -976,9 +1062,9 @@ class XRDMap(Map):
                 metric = store.cell_parameters[:,phase_idx,param_idx]
         elif param == 'integral':
             with self.store() as store:
-                q = store.scattering_lengths
+                xs = store.two_thetas
                 I = store.intensities.value - store.backgrounds.value
-                metric = scipy.integrate.trapz(y=I, x=q, axis=1)
+                metric = scipy.integrate.trapz(y=I, x=xs, axis=1)
         elif param == "position":
             with self.store() as store:
                 locs = store.positions
@@ -998,7 +1084,8 @@ class XRDMap(Map):
             with self.store() as store:
                 metric = np.ones(shape=store.scattering_lengths.shape[0])
         else:
-            raise ValueError("Unknown param: {}".format(param))
+            raise ValueError("Unknown param: {}. Options are: {}"
+                             "".format(param, self.valid_metrics()))
         # Filter by requested locus
         if locus is not None:
             metric = metric[locus:locus+1]
