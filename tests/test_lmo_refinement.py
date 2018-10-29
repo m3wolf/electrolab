@@ -173,7 +173,7 @@ class LMOSolutionMapTest(unittest.TestCase):
         # Check that the residuals of the fit are low
         predicted = self.refinement.predict(TTs, Is)
         rms_error = np.sqrt(np.mean((Is-predicted)**2))
-        self.assertLess(rms_error, 0.64)
+        self.assertLess(rms_error, 0.65)
     
     def test_goodness_of_fit(self):
         TTs = self.scan.two_theta
@@ -202,4 +202,17 @@ class LMOSolutionMapTest(unittest.TestCase):
         broadenings = self.refinement.broadenings(TTs, Is)
         self.assertEqual(len(broadenings), 1)
         np.testing.assert_almost_equal(
-            broadenings, [1.100], decimal=3)
+            broadenings, [1.110], decimal=3)
+
+    def test_bad_refinement(self):
+        # This specific plot did not fit well
+        plt_file = os.path.join(TESTDIR, 'charged_2C_to47V_quarterlithium-map-c0.plt')
+        print(plt_file)
+        scan = XRDScan(plt_file)
+        TTs = scan.two_theta
+        Is = scan.intensities
+        smoothed = self.refinement.smooth_data(Is)
+        plt.plot(TTs, Is)
+        plt.plot(TTs, self.refinement.predict(TTs, Is))
+        plt.plot(TTs, smoothed)
+        plt.show()

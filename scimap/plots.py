@@ -19,11 +19,61 @@
 
 """Helper functions for setting up and displaying plots using matplotlib."""
 
+from contextlib import contextmanager
+from typing import List, NoReturn
+
 import numpy as np
-from matplotlib import pyplot, cm
+from matplotlib import pyplot, cm, rcParams, rc_context, style
 from matplotlib.ticker import ScalarFormatter
 
 from .utilities import q_to_twotheta, twotheta_to_q
+
+
+@contextmanager
+def latexify(styles: List[str]=[], preamble: List[str]=[]):
+    """Set some custom options for saving matplotlib graphics in PGF
+    format.
+    
+    Use this as a context manager, along with additional matplotlib styles:
+    
+    .. code:: python
+        
+        with xp.latexify(['beamer']):
+            plt.plot(...)
+            
+    
+    This will let you add in LaTeX tools and mpl styles together. By
+    default, ``siunitx`` and ``mhchem`` packages are
+    included. Additional ``\\usepackage`` statements can be included
+    using the ``preamble`` parameter.
+    
+    Parameters
+    ==========
+    styles : optional
+      Additional matplotlib styles in load in the context.
+    preamble : optional
+      Additional lines to add to the LaTeX preamble.
+    
+    """
+    # Set default LaTeX PGF style
+    pgf_with_latex = {                      # setup matplotlib to use latex for output# {{{
+        "pgf.texsystem": "xelatex",        # change this if using xetex or lautex
+        # "font.family": "serif",
+        "font.serif": [],                   # blank entries should cause plots 
+        "font.sans-serif": [],              # to inherit fonts from the document
+        "font.monospace": [],
+        "pgf.preamble": [
+            r"\usepackage[utf8x]{inputenc}",    # use utf8 fonts 
+            r"\usepackage[T1]{fontenc}",        # plots will be generated
+            r"\usepackage{fontspec}",
+            r"\usepackage[detect-all,locale=DE,per-mode=reciprocal]{siunitx}",
+            r"\usepackage[version=4]{mhchem}",
+        ] + preamble,
+    }
+    # Enter the context library
+    with rc_context(rc=pgf_with_latex):
+        style.use(styles)
+        yield
 
 
 class ElectronVoltFormatter(ScalarFormatter):
@@ -42,31 +92,32 @@ class DegreeFormatter(ScalarFormatter):
         return formatted_value
 
 
-def draw_colorbar(ax, cmap, norm, energies, orientation="vertical",
+def draw_colorbar(ax, cmap, norm, ticks=None, orientation="vertical",
                   *args, **kwargs):  # pragma: no cover
     """Draw a colorbar on the side of a mapping axes to show the range of
     colors used. Returns the newly created colorbar object.
     Arguments
     ---------
-    - ax : Matplotlib axes object against which to plot.
-    - cmap : String or mpl Colormap instance indicating which colormap
-      to use.
-    - norm : mpl Normalize object that describes the range of values to
+    ax : 
+      Matplotlib axes object against which to plot.
+    cmap : str
+      String or mpl Colormap instance indicating which colormap to
       use.
-    - energies : Iterable of values to put as the tick marks on the
-      colorbar.
+    norm :
+      mpl Normalize object that describes the range of values to use.
+    ticks : optional
+      Iterable of values to put as the tick marks on the colorbar.
+    
     """
     mappable = cm.ScalarMappable(norm=norm, cmap=cmap)
     mappable.set_array(np.arange(0, 3))
     # Add the colorbar to the axes
     cbar = pyplot.colorbar(mappable,
                            ax=ax,
-                           ticks=energies,
+                           ticks=ticks,
                            spacing="proportional",
                            orientation=orientation,
                            *args, **kwargs)
-    # Annotate the colorbar
-    cbar.ax.set_title('eV')
     # Make sure the ticks don't use scientific notation
     cbar.formatter.set_useOffset(False)
     cbar.update_ticks()
@@ -80,10 +131,10 @@ def draw_histogram_colorbar(ax, *args, **kwargs):  # pragma: no cover
     ax.tick_params(
         axis='x',          # changes apply to the x-axis
         which='both',      # both major and minor ticks are affected
-        bottom='off',      # ticks along the bottom edge are off
-        top='off',         # ticks along the top edge are off
-        labelbottom='off',
-        labeltop='off')
+        bottom=False,      # ticks along the bottom edge are off
+        top=False,         # ticks along the top edge are off
+        labelbottom=False,
+        labeltop=False)
     ax.spines['bottom'].set_visible(False)
     cbar.ax.set_xlabel(ax.get_xlabel())
     ax.xaxis.set_visible(False)
@@ -94,9 +145,9 @@ def draw_histogram_colorbar(ax, *args, **kwargs):  # pragma: no cover
     cbar.ax.tick_params(
         axis='x',
         which='both',
-        bottom='on',
-        top='on',
-        labelbottom="on",
+        bottom=True,
+        top=True,
+        labelbottom=True,
     )
     return cbar
 

@@ -261,10 +261,11 @@ class Map():
         # Do the plotting
         self.plot_map(ax=mapAxes, phase_idx=phase_idx, metric=metric,
                       metric_range=metric_range, alpha=alpha,
-                      alpha_range=alpha_range)
+                      alpha_range=alpha_range, cmap=cmap)
         self.plot_histogram(ax=histogramAxes, phase_idx=phase_idx,
                             metric=metric, metric_range=metric_range,
-                            weight=alpha, weight_range=alpha_range)
+                            weight=alpha, weight_range=alpha_range,
+                            cmap=cmap)
         return (mapAxes, histogramAxes)
     
     def plot_locus(self, loc, ax, shape, size, color, alpha: float=1):
@@ -338,14 +339,15 @@ class Map():
         alpha_range : 2-tuple, optional
           2-tuple with the values for full transparency and full
           opacity. Anything outside these bounds will be clipped.
-
+        
         """
         cmap_ = self.get_cmap(cmap)
         # Plot loci
-        add_colorbar = True
+        add_colorbar = False
         if ax is None:
             # New axes unless one was already created
             ax = new_axes()
+            add_colorbar = True
         xs, ys = np.swapaxes(self.loci, 0, 1)
         with self.store() as store:
             step_size = float(store.step_size / store.position_unit)
@@ -535,7 +537,7 @@ class Map():
     
     def plot_histogram(self, metric: str, phase_idx: int=0, ax=None,
                        bins: int=0, weight: str=None,
-                       metric_range=None, weight_range=(None, None)):
+                       metric_range=None, weight_range=(None, None), cmap=None):
         """Plot a histogram showing the distribution of the given metric.
         
         Arguments
@@ -562,7 +564,8 @@ class Map():
         weight_range : 2-tuple
           Will be used to normalize the values between 1 and 0. If
           not given, then the full range of values will be used.
-        
+        cmap : str, optional
+          Matplotlib colormap to use for color coding the histogram.
         """
         metrics = self.metric(metric, phase_idx=phase_idx)
         # Set default mapping range if not given
@@ -596,8 +599,8 @@ class Map():
         # Set the colors based on the metric normalizer
         for patch in patches:
             x_position = patch.get_x()
-            cmap = self.get_cmap()
-            color = cmap(metricnorm(x_position))
+            cmap_ = self.get_cmap(cmap)
+            color = cmap_(metricnorm(x_position))
             patch.set_color(color)
         ax.set_xlim(metricnorm.vmin, metricnorm.vmax)
         ax.set_xlabel(metric)

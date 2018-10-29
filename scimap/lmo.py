@@ -202,6 +202,9 @@ class TwoPhaseRefinement(BaseRefinement):
         # Make sure we haven't guessed the same peak twice
         if len(set(approx_centers)) != len(approx_centers):
             approx_centers = self.approx_peak_positions
+        if 'locus_00192_ref' in self.file_root or 'temp_refinement' in self.file_root:
+            print(approx_centers)
+        # assert False
         # Construct the initial guess (p0)
         p0 = np.array(list(zip(approx_centers, approx_heights, approx_widths)))
         p0 = p0.ravel()
@@ -437,11 +440,11 @@ class TwoPhaseRefinement(BaseRefinement):
 
 
 class SolidSolutionRefinement(TwoPhaseRefinement):
-    approx_peak_positions = (58.8, 64.5, 67.9)
+    approx_peak_positions = (58.0, 64.5, 67.5)
     peak_ranges = (
-        (58.0, 60.5),
-        (64.0, 66.3),
-        (67.3, 69.6),
+        (57.0, 60.5),
+        (62.5, 65.0),
+        (66.0, 69.0),
     )
     
     def phase_fractions(self, two_theta, intensities):
