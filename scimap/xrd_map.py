@@ -119,14 +119,20 @@ class Map():
     def get_theta1(self):
         warnings.warn(DeprecationWarning("Use gadds._source_angle()"))
     
-    def get_cmap(self, cmap=None):
+    def get_cmap(self, cmap=None, metric=None):
         """Return a function that converts values in range 0 to 1 to colors.
+        
+        If a cmap is not explicitely given, a default will be used
+        based on the metric given based on the dictionary
+        ``self.default_cmaps``.
         
         Parameters
         ----------
         cmap : str, optional
           The name of the colormap to be passed to pyplot.get_cmap. If
           omitted, self.cmap_name will be used.
+        metric : str, optional
+          A metric name to be used for looking up a default colormap.
         
         """
         # Matplotlib built-in colormaps (viridis et al have been
@@ -339,6 +345,9 @@ class Map():
         alpha_range : 2-tuple, optional
           2-tuple with the values for full transparency and full
           opacity. Anything outside these bounds will be clipped.
+        cmap : str, optional
+          Matplotlib colormap string for converting numeric values
+          into colors.
         
         """
         cmap_ = self.get_cmap(cmap)
@@ -565,7 +574,9 @@ class Map():
           Will be used to normalize the values between 1 and 0. If
           not given, then the full range of values will be used.
         cmap : str, optional
-          Matplotlib colormap to use for color coding the histogram.
+          Matplotlib colormap string for converting numeric values
+          into colors.
+        
         """
         metrics = self.metric(metric, phase_idx=phase_idx)
         # Set default mapping range if not given
