@@ -199,7 +199,11 @@ class BrukerPltFile(XRDAdapter):
 
 class BrukerBrmlFile(XRDAdapter):
     def __init__(self, filename):
-        self._zf = zipfile.ZipFile(filename)
+        try:
+            self._zf = zipfile.ZipFile(filename)
+        except zipfile.BadZipFile as e:
+            raise exceptions.FileFormatError('File {} is not a valid BRML zip file.'
+                                             ''.format(filename)) from e
         data_file = self._zf.open('Experiment0/RawData0.xml')
         self._dataTree = ElementTree.parse(data_file)
     
