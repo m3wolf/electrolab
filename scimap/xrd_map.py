@@ -4,7 +4,7 @@ import warnings
 import logging
 log = logging.getLogger(__name__)
 
-from matplotlib import pyplot, patches, colors, cm
+from matplotlib import pyplot, patches, colors, cm, rcParams
 import numpy as np
 import scipy
 import pandas
@@ -130,17 +130,28 @@ class Map():
         ----------
         cmap : str, optional
           The name of the colormap to be passed to pyplot.get_cmap. If
-          omitted, self.cmap_name will be used.
+          omitted, a default will be chosen based on ``metric``.
         metric : str, optional
           A metric name to be used for looking up a default colormap.
         
         """
+        default_cmaps = {
+            'a': 'viridis',
+            'b': 'viridis',
+            'c': 'viridis',
+            'alpha': 'viridis',
+            'beta': 'viridis',
+            'gamma': 'viridis',
+            'phase_fraction': 'plasma',
+            'broadenings': 'magma',
+        }
         # Matplotlib built-in colormaps (viridis et al have been
         # merged in now)
         if cmap is None:
-            _cmap = pyplot.get_cmap(self.cmap_name)
+            _cmap = default_cmaps.get(metric, 'viridis')
         else:
-            _cmap = pyplot.get_cmap(cmap)
+            _cmap = cmap
+        _cmap = pyplot.get_cmap(_cmap)
         return _cmap
     
     def calculate_metrics(self):
@@ -223,7 +234,7 @@ class Map():
     
     def plot_map_with_histogram(self, metric='position', axs=None,
                                 phase_idx=0, metric_range=None, highlighted_locus=None,
-                                alpha=None, alpha_range=None, cmap="viridis"):
+                                alpha=None, alpha_range=None, cmap=None):
         """Generate a 2D map and a histogram of the electrode surface.
         
         A `metric` can and should be given to indicate which quantity
@@ -313,7 +324,7 @@ class Map():
     
     def plot_map(self, metric='position', ax=None, phase_idx=0,
                  metric_range=None, highlighted_locus=None,
-                 alpha=None, alpha_range=None, cmap="viridis"):
+                 alpha=None, alpha_range=None, cmap=None):
         """Generate a two-dimensional map of the electrode surface.
         
         A `metric` can and should be given to indicate which quantity
@@ -350,7 +361,7 @@ class Map():
           into colors.
         
         """
-        cmap_ = self.get_cmap(cmap)
+        cmap_ = self.get_cmap(cmap, metric=metric)
         # Plot loci
         add_colorbar = False
         if ax is None:
@@ -445,6 +456,53 @@ class Map():
         viewer.show()
         # Close the current blank plot
         pyplot.close()
+    
+    def plot_scatter(self, metric0: str, metric1: str,
+                     weight: str=None, weight_range=(None, None),
+                     ax=None, **kwargs):
+        """Plot two metrics against each other.
+        
+        Parameters
+        ==========
+        metric0 
+          Metric to plot along the x-axis.
+        metric1
+          Metric to plot along the y-axis.
+        weight
+          Metric to use for the sizes of points.
+        weight_range : 2-tuple
+          (min, max) range for sizes of scatter points.
+        ax
+          Matplotlib Axes for receiving the plot.
+        **kwargs
+          Passed on to matplotlib.scatter
+        
+        Return
+        ------
+        artist
+          The scatter plot artist.
+        """
+        # Get a new axes if necessary
+        if ax is None:
+            ax = new_axes()
+        # Retrieve the data
+        x = self.metric(metric0)
+        y = self.metric(metric1)
+        s = self.metric(weight)
+        # Normalize the particle sizes
+        weight_range = (
+            weight_range[0] if weight_range[0] is not None else np.min(s),
+            weight_range[1] if weight_range[1] is not None else np.max(s),
+        )
+        s_norm = colors.Normalize(weight_range[0], weight_range[1])
+        s = s_norm(s)
+        s *= rcParams['lines.markersize']**2
+        # Plot the scatter
+        artist = ax.scatter(x, y, s=s, **kwargs)
+        # Decorate the axes
+        ax.set_xlabel(metric0)
+        ax.set_ylabel(metric1)
+        return artist
     
     def draw_edge(self, ax, color):
         """
@@ -610,7 +668,7 @@ class Map():
         # Set the colors based on the metric normalizer
         for patch in patches:
             x_position = patch.get_x()
-            cmap_ = self.get_cmap(cmap)
+            cmap_ = self.get_cmap(cmap, metric=metric)
             color = cmap_(metricnorm(x_position))
             patch.set_color(color)
         ax.set_xlim(metricnorm.vmin, metricnorm.vmax)

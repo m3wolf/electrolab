@@ -127,7 +127,7 @@ def draw_colorbar(ax, cmap, norm, ticks=None, orientation="vertical",
 def draw_histogram_colorbar(ax, *args, **kwargs):  # pragma: no cover
     """Similar to `draw_colorbar()` with some special formatting options
     to put it along the X-axis of the axes."""
-    cbar = draw_colorbar(ax=ax, pad=0, orientation="horizontal", energies=None, *args, **kwargs)
+    cbar = draw_colorbar(ax=ax, pad=0, orientation="horizontal", ticks=None, *args, **kwargs)
     ax.tick_params(
         axis='x',          # changes apply to the x-axis
         which='both',      # both major and minor ticks are affected
@@ -260,8 +260,8 @@ def plot_scans(scan_list, step_size=0, ax=None, names=[],
     lines = []
     for idx, scan in enumerate(scan_list):
         df = scan.diffractogram.copy()
-        if use_twotheta:
-            x = q_to_twotheta(np.array(df.index), wavelength=wavelength)
+        if not use_twotheta:
+            x = twotheta_to_q(np.array(df.index), wavelength=wavelength)
         else:
             x = df.index
         # Prepare the y data
@@ -288,8 +288,8 @@ def plot_scans(scan_list, step_size=0, ax=None, names=[],
     # Set axes limits
     xMax = max([scan.diffractogram.index.max() for scan in scan_list])
     xMin = min([scan.diffractogram.index.min() for scan in scan_list])
-    if use_twotheta:
-        xMax, xMin = q_to_twotheta(np.array((xMax, xMin)), wavelength=wavelength)
+    if not use_twotheta:
+        xMax, xMin = twotheta_to_q(np.array((xMax, xMin)), wavelength=wavelength)
     ax.set_xlim(left=xMin, right=xMax)
     # Decorate
     if use_twotheta:
