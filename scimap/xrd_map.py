@@ -3,6 +3,7 @@
 import warnings
 import logging
 log = logging.getLogger(__name__)
+import re
 
 from matplotlib import pyplot, patches, colors, cm, rcParams
 import numpy as np
@@ -135,6 +136,9 @@ class Map():
           A metric name to be used for looking up a default colormap.
         
         """
+        match = self.metric_re.match(metric)
+        if match:
+            metric = match.group('param')
         default_cmaps = {
             'a': 'viridis',
             'b': 'viridis',
@@ -233,7 +237,7 @@ class Map():
         return (mapAxes, diffractogramAxes)
     
     def plot_map_with_histogram(self, metric='position', axs=None,
-                                phase_idx=0, metric_range=None, highlighted_locus=None,
+                                metric_range=None, highlighted_locus=None,
                                 alpha=None, alpha_range=None, cmap=None):
         """Generate a 2D map and a histogram of the electrode surface.
         
@@ -250,9 +254,6 @@ class Map():
           histogram will be drawn. If omitted, a new Axes object will
           be created. A new colorbar will only be added if this
           argument is None.
-        phase_idx : int, optional
-          Controls which phase will be used for generating the metric
-          (eg. cell parameter). Not relevant for all metrics.
         metric : str, optional
           Name of the quantity to be used for determining color.
         metric_range : 2-tuple, optional
@@ -276,10 +277,10 @@ class Map():
             mapAxes, histogramAxes = axs
         # Prepare plotting arguments
         # Do the plotting
-        self.plot_map(ax=mapAxes, phase_idx=phase_idx, metric=metric,
+        self.plot_map(ax=mapAxes, metric=metric,
                       metric_range=metric_range, alpha=alpha,
                       alpha_range=alpha_range, cmap=cmap)
-        self.plot_histogram(ax=histogramAxes, phase_idx=phase_idx,
+        self.plot_histogram(ax=histogramAxes,
                             metric=metric, metric_range=metric_range,
                             weight=alpha, weight_range=alpha_range,
                             cmap=cmap)
@@ -378,7 +379,7 @@ class Map():
         # ax.set_ylim([-xy_lim, xy_lim])
         ax.set_xlabel('mm')
         ax.set_ylabel('mm')
-        metrics = self.metric(phase_idx=phase_idx, param=metric)
+        metrics = self.metric(param=metric)
         # Set default mapping range if not given
         if metric_range is None:
             metric_range = (np.percentile(metrics, 2),
@@ -392,7 +393,7 @@ class Map():
             alphas = np.ones_like(metrics)
             alpha_normalizer = colors.Normalize(0, 1, clip=True)
         else:
-            alphas = self.metric(phase_idx=phase_idx, param=alpha)
+            alphas = self.metric(param=alpha)
             if alpha_range is None:
                 alpha_normalizer = colors.Normalize(min(alphas),max(alphas), clip=True)
             else:
@@ -558,7 +559,7 @@ class Map():
             weight_range[0] if weight_range[0] is not None else np.min(s),
             weight_range[1] if weight_range[1] is not None else np.max(s),
         )
-        s_norm = colors.Normalize(weight_range[0], weight_range[1])
+        s_norm = colors.Normalize(weight_range[0], weight_range[1], clip=True)
         s = s_norm(s)
         s *= rcParams['lines.markersize']**2
         # Plot the scatter
@@ -666,9 +667,9 @@ class Map():
         self.draw_edge(ax, color='red')
         return ax
     
-    def plot_histogram(self, metric: str, phase_idx: int=0, ax=None,
-                       bins: int=0, weight: str=None,
-                       metric_range=None, weight_range=(None, None), cmap=None):
+    def plot_histogram(self, metric: str, ax=None, bins: int=0,
+                       weight: str=None, metric_range=None,
+                       weight_range=(None, None), cmap=None):
         """Plot a histogram showing the distribution of the given metric.
         
         Arguments
@@ -676,9 +677,6 @@ class Map():
         metric :
           String describing which metric to plot. See self.metric()
           for valid choices.
-        phase_idx : optional
-          Which phase to use for retrieving the metric. Only
-          applicable to things like unit-cell parameters.
         ax : optional
           Matplotlib axes on which to plot.
         bins : optional
@@ -700,7 +698,7 @@ class Map():
           into colors.
         
         """
-        metrics = self.metric(metric, phase_idx=phase_idx)
+        metrics = self.metric(metric)
         # Set default mapping range if not given
         if metric_range is None:
             metric_range = (np.percentile(metrics, 2),
@@ -714,7 +712,7 @@ class Map():
             bins = int(metrics.shape[0] / 3)
         # Get values for weighting the frequencies
         if weight is not None:
-            weights = self.metric(param=weight, phase_idx=phase_idx)
+            weights = self.metric(param=weight)
         else:
             weights = np.ones_like(metrics)
             weight_range = (0, 1)
@@ -736,7 +734,7 @@ class Map():
             color = cmap_(metricnorm(x_position))
             patch.set_color(color)
         ax.set_xlim(metricnorm.vmin, metricnorm.vmax)
-        ax.set_xlabel(metric)
+        ax.set_xlabel(metric.replace('_', ' '))
         ax.set_ylabel('Occurrences')
         set_outside_ticks(ax=ax)
         return ax
@@ -769,6 +767,7 @@ class XRDMap(Map):
     scan_time = 300  # In seconds
     Phases = []
     Background_Phases = []
+    metric_re = re.compile('(?P<param>[-_a-zA-Z]+)_(?P<phase>-?\d+)')
     
     def __init__(self, *args, collimator=0.5, qrange=None,
                  scan_time=None, detector_distance=20,
@@ -1184,9 +1183,16 @@ class XRDMap(Map):
                  'peak_broadening', 'scale_factor', 'None']
         return valid
     
-    def metric(self, param, phase_idx=0, locus=None):
-        """Calculate a mapping value as the parameter (eg. unit-cell a) for
-        given phase index `phaseidx`. Valid parameters:
+    def metric(self, param: str, phase_idx: int=None, locus: int=None):
+        """Retrieve a calculated value for each mapping locus.
+        
+        The phase can be specified in one of two ways. Either 1)
+        explicitely by using the ``phase_idx`` parameter or 2) within
+        the parameter string like "phase_fraction_1". The explicit
+        option takes precedence. If neither is specified, then the
+        first phase will be used by default.
+        
+        **Valid Parameters:**
         - Unit cell parameters: 'a', 'b', 'c', 'alpha', 'beta', 'gamma'
         - 'integral' to indicate total integrated signal after bg subtraction
         - 'goodness_of_fit' to use the quality of fit determined during refinement
@@ -1194,12 +1200,35 @@ class XRDMap(Map):
         - 'phase_fraction' to give the fraction of the given ``phase_idx``
         - 'None' or None to give an array of 1's
         
+        Parameters
+        ==========
+        param
+          Name of the parameter to be retrieved, as described above.
+        phase_idx : optional
+          Which crystallographic phase to use, default is 0. See above
+          for more detailed behavior.
+        locus : optional
+          Index of mapping locus (position) to retrieve. Result will
+          still be an array, but with only one value.
+        
         Returns
         -------
-        A numpy array with the requested metrics. If `locus` is None,
-        this array will contain all loci, otherwise it will be only
-        the requested locus.
+        metric
+          A numpy array with the requested metrics. If `locus` is
+          None, this array will contain all loci, otherwise it will be
+          only the requested locus.
+        
         """
+        # Extract the phase_idx if necessary
+        phase_match = self.metric_re.match(param)
+        if phase_idx is not None and phase_match:
+            raise AttributeError("Don't provide phase index as both ``param='%s'``"
+                                 "and ``phase_idx=%d``." % (param, phase_idx))
+        elif phase_match:
+            param = phase_match.group('param')
+            phase_idx = int(phase_match.group('phase'))
+        else:
+            phase_idx = 0
         # Check for unit-cell parameters
         UNIT_CELL_PARAMS = ['a', 'b', 'c', 'alpha', 'beta', 'gamma']
         if param in UNIT_CELL_PARAMS:

@@ -293,12 +293,14 @@ def plot_scans(scan_list, step_size=0, ax=None, names=[],
             color = None
         # Plot the data
         zorder = len(scan_list) - idx
-        lines.append(ax.plot(x, y, color=color, zorder=zorder, *args, **kwargs)[0])
+        lines.append(ax.plot(x, y, color=color, zorder=zorder,
+                             *args, **kwargs)[0])
         # Try and determine a name for this scan
         try:
             scannames.append(names[idx])
         except IndexError:
-            scannames.append(getattr(scan, 'name', "Pattern {}".format(idx)))
+            next_name = "Pattern %d" % idx if scan.name is None else scan.name
+            scannames.append(next_name.replace('_', ' '))
     ax.legend(reversed(lines), reversed(scannames))
     # Set axes limits
     xMax = max([scan.diffractogram.index.max() for scan in scan_list])

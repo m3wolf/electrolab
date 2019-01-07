@@ -210,6 +210,10 @@ class LMOSolutionMapTest(unittest.TestCase):
         TTs = scan.two_theta
         Is = scan.intensities
         smoothed = self.refinement.smooth_data(Is)
+        # plt.plot(TTs, Is)
+        # plt.plot(TTs, self.refinement.predict(TTs, Is))
+        # plt.plot(TTs, smoothed)
+        # plt.show()
 
 
 class LMOQuarterLithiumTest(unittest.TestCase):

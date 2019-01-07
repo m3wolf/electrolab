@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from functools import lru_cache
+import os
 
 import pandas as pd
 from matplotlib import pyplot
@@ -57,6 +58,8 @@ class XRDScan():
                  phases=[], phase=None, background_phases=[],
                  tube='Cu', wavelength=None,
                  two_theta_range=None):
+        if name is None:
+            name, ext = os.path.splitext(filename)
         self._filename = filename
         if phase is not None:
             self.phases = [phase]
