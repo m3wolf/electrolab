@@ -7,7 +7,7 @@ log = logging.getLogger(__name__)
 from matplotlib import pyplot, patches, colors, cm, rcParams
 import numpy as np
 import scipy
-import pandas
+import pandas as pd
 
 from . import exceptions
 from .units_ import units
@@ -421,7 +421,7 @@ class Map():
         # self.draw_edge(ax, color='red')
         # Add colorbar to the side of the axes
         if add_colorbar:
-            mappable = cm.ScalarMappable(norm=metric_normalizer, cmap=cmap)
+            mappable = cm.ScalarMappable(norm=metric_normalizer, cmap=cmap_)
             mappable.set_array(np.arange(metric_normalizer.vmin,
                                          metric_normalizer.vmax))
             cb = pyplot.colorbar(mappable, ax=ax)
@@ -457,9 +457,69 @@ class Map():
         # Close the current blank plot
         pyplot.close()
     
+    def plot_distance_image(self, center=(0, 0), ax=None, *args, **kwargs):
+        """Plot an image with spectra sorted by distance from center.
+        
+        Parameters
+        ----------
+        center : 2-tuple, optional
+          (x, y) coordinates used to calculate the center of the
+          image. Units should match those used for plotting maps.
+        ax : matplotlib.Axes
+          Axes to receive the plot.
+        *args, **kwargs :
+          Passed on to the ``ax.imshow()`` method.
+        
+        Returns
+        -------
+        im : 
+          Matplotlib artist that created the image.
+        """
+        if ax is None:
+            ax = pyplot.gca()
+        # Prepare list of distances for each locus
+        loci = np.array(self.loci)
+        r = np.sqrt((loci[:,0]-center[0])**2 + (loci[:,1]-center[1])**2)
+        r = np.round(r, decimals=3)
+        df = pd.DataFrame(data=r)
+        df.groupby(0)
+        # Find the mean pattern for each distance
+        all_Is = []
+        all_ds = []
+        with self.store() as store:
+            for d, df_ in df.groupby(0):
+                TTs = np.mean(store.two_thetas[df_.index], axis=0)
+                Is = np.mean(store.intensities[df_.index], axis=0)
+                all_Is.append(Is)
+                all_ds.append(d)
+            two_theta_range = (np.min(store.two_thetas), np.max(store.two_thetas))
+            wavelength = store.effective_wavelength
+            # Plot the image with all the distance plots
+        all_Is = np.array(all_Is)
+        all_ds = np.array(all_ds)
+        q_range = twotheta_to_q(two_theta_range, wavelength=wavelength)
+        # Translate the image to true x,y coordinates via interpolation
+        all_ys = all_ds / np.max(all_ds) * (all_Is.shape[0]-1)
+        xx, yy = np.meshgrid(np.arange(all_Is.shape[1]), all_ys)
+        grid_x, grid_y = np.meshgrid(np.arange(all_Is.shape[1]), np.arange(all_Is.shape[0]))
+        points = np.stack([xx, yy], axis=2).reshape((-1, 2))
+        new_Is = all_Is
+        new_Is = scipy.interpolate.griddata(points, all_Is.flatten(), (grid_x, grid_y))
+        # Plot single spectrum closest to a point, for debugging
+        # close_idx = np.argmin((all_ds - 1)**2)
+        # im = ax.plot(np.linspace(*q_range, num=all_Is.shape[1]), all_Is[close_idx])
+        # Plot the actual image
+        extent = (*q_range, np.min(r), np.max(r))
+        im = ax.imshow(new_Is, aspect='auto', origin='bottom',
+                       extent=extent, interpolation='bicubic', *args, **kwargs)
+        # Format the axes
+        ax.set_xlabel(r'Scattering Length')
+        ax.set_ylabel('Distance /mm')
+        return im
+    
     def plot_scatter(self, metric0: str, metric1: str,
                      weight: str=None, weight_range=(None, None),
-                     ax=None, **kwargs):
+                     ax=None, phase_idx=0, **kwargs):
         """Plot two metrics against each other.
         
         Parameters
@@ -474,6 +534,9 @@ class Map():
           (min, max) range for sizes of scatter points.
         ax
           Matplotlib Axes for receiving the plot.
+        phase_idx : int
+          Index of the crystallographic phase to use. Passed on to
+          ``self.metric()``
         **kwargs
           Passed on to matplotlib.scatter
         
@@ -481,14 +544,15 @@ class Map():
         ------
         artist
           The scatter plot artist.
+        
         """
         # Get a new axes if necessary
         if ax is None:
             ax = new_axes()
         # Retrieve the data
-        x = self.metric(metric0)
-        y = self.metric(metric1)
-        s = self.metric(weight)
+        x = self.metric(metric0, phase_idx=phase_idx)
+        y = self.metric(metric1, phase_idx=phase_idx)
+        s = self.metric(weight, phase_idx=phase_idx)
         # Normalize the particle sizes
         weight_range = (
             weight_range[0] if weight_range[0] is not None else np.min(s),
@@ -741,9 +805,9 @@ class XRDMap(Map):
         """Convert the object to a dictionary for the templating engine."""
         raise NotImplementedError("Use gadds._context()")
     
-    def diffractogram(self, index=None, weights=None, weight_range=None):
-        """
-        Calculate the bulk diffractogram by averaging each scan weighted
+    def diffractogram(self, index=None, weights=None,
+                      weight_range=None, as_twotheta=False, dataset_name='intensities'):
+        """Calculate the bulk diffractogram by averaging each scan weighted
         by reliability.
         
 	Parameters
@@ -757,16 +821,22 @@ class XRDMap(Map):
         weight_range : tuple, optional
           Set the limits of weights such that (min, max).
           If None, weights would be applied without normalization.
+        as_twotheta : bool, optional
+          If truthy, return the diffractogram with 2θ°. Otherwise, use
+          scattering lengths.
+        dataset_name : str, optional
+          The name of the TXMStore dataset to use for the y-values.
         
         Returns
         =======
         A pandas series of intensity vs scattering length
+
         """
         with self.store() as store:
             if index is None:
                 # First get data from disk
-                Is = store.intensities
-                Qs = np.mean(store.scattering_lengths, axis=0)
+                Is = getattr(store, dataset_name)
+                twotheta = np.mean(store.two_thetas, axis=0)
                 # Prepare the matrix of the weights for each scan
                 if weights is None:
                     Ws = np.ones(shape=(Is.shape[0],))
@@ -781,9 +851,14 @@ class XRDMap(Map):
                 Ws = np.expand_dims(norm(Ws), axis=-1)
                 Is = np.sum(Ws*Is, axis=0)/np.sum(Ws, axis=0)
             else:
-                Is = store.intensities[index]
-                Qs = store.scattering_lengths[index]
-            series = pandas.Series(Is, index=Qs)
+                Is = getattr(store, dataset_name)[index]
+                twotheta = store.two_thetas[index]
+            # Convert to scattering lengths unless 2θ is requested
+            if as_twotheta:
+                x = twotheta
+            else:
+                x = twotheta_to_q(twotheta, wavelength=store.effective_wavelength)
+            series = pd.Series(Is, index=x)
         return series
     
     def plot_diffractogram(self, ax=None, index=None, subtracted=False, **kwargs):
@@ -1005,7 +1080,6 @@ class XRDMap(Map):
             scans = zip(store.two_thetas[:], store.intensities[:])
             total = len(store.two_thetas)
             for idx, (two_theta, Is) in enumerate(prog(scans, total=total, desc="Refining")):
-                # two_theta = q_to_twotheta(qs, wavelength=store.effective_wavelength[0])
                 phases = [P() for P in self.Phases]
                 bg_phases = [P() for P in self.Background_Phases]
                 file_root = self.sample_name + ('_refinements/locus_%05d_ref' % idx)

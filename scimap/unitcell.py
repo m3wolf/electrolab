@@ -103,14 +103,14 @@ class UnitCell():
                                  cls=obj.__class__.__name__,
                                  value=value)
                 raise UnitCellError(msg)
-
+    
     class ConstrainedLength():
         """
         Unit-cell angle that is tied to another length in the cell. Eg. a=b
         """
         def __get__(self, obj, objtype):
             return obj.constrained_length
-
+        
         def __set__(self, obj, value):
             obj.constrained_length = value
 
@@ -125,7 +125,7 @@ class CubicUnitCell(UnitCell):
     alpha = UnitCell.FixedAngle(90, name="α")
     beta = UnitCell.FixedAngle(90, name="β")
     gamma = UnitCell.FixedAngle(90, name="γ")
-
+    
     def d_spacing(self, hkl):
         """Determine d-space for the given hkl plane."""
         h, k, l = hkl_to_tuple(hkl)
@@ -142,7 +142,7 @@ class HexagonalUnitCell(UnitCell):
     alpha = UnitCell.FixedAngle(angle=90, name="α")
     beta = UnitCell.FixedAngle(angle=90, name="β")
     gamma = UnitCell.FixedAngle(angle=120, name="γ")
-
+    
     def d_spacing(self, hkl):
         """Determine d-space for the given hkl plane."""
         h, k, l = hkl_to_tuple(hkl)

@@ -23,7 +23,7 @@ from contextlib import contextmanager
 from typing import List, NoReturn
 
 import numpy as np
-from matplotlib import pyplot, cm, rcParams, rc_context, style
+from matplotlib import pyplot, cm, rcParams, rc_context, style, transforms, colorbar
 from matplotlib.ticker import ScalarFormatter
 
 from .utilities import q_to_twotheta, twotheta_to_q
@@ -127,7 +127,9 @@ def draw_colorbar(ax, cmap, norm, ticks=None, orientation="vertical",
 def draw_histogram_colorbar(ax, *args, **kwargs):  # pragma: no cover
     """Similar to `draw_colorbar()` with some special formatting options
     to put it along the X-axis of the axes."""
-    cbar = draw_colorbar(ax=ax, pad=0, orientation="horizontal", ticks=None, *args, **kwargs)
+    edge_width = rcParams['patch.linewidth'] / 72.27
+    bottom = rcParams['figure.subplot.bottom'] + edge_width
+    cbar = draw_colorbar(ax=ax, orientation="horizontal", ticks=None, panchor=False, *args, **kwargs)
     ax.tick_params(
         axis='x',          # changes apply to the x-axis
         which='both',      # both major and minor ticks are affected
@@ -135,18 +137,31 @@ def draw_histogram_colorbar(ax, *args, **kwargs):  # pragma: no cover
         top=False,         # ticks along the top edge are off
         labelbottom=False,
         labeltop=False)
+    cax = cbar.ax
+    cax.set_xlabel(ax.get_xlabel())
     ax.spines['bottom'].set_visible(False)
-    cbar.ax.set_xlabel(ax.get_xlabel())
     ax.xaxis.set_visible(False)
-    cbar.ax.set_title("")
+    # Adjust colorbar position to be right on top of the target Axes
+    # ax_bounds = ax.get_position(original=False).bounds
+    # cax_bounds = cax.get_position(original=False).bounds
+    # new_cax_bounds = (ax_bounds[0], ax_bounds[1]-cax_bounds[3], ax_bounds[2], cax_bounds[3])
+    # new_cax_bbox = transforms.Bbox.from_bounds(*new_cax_bounds)
+    # cax.set_position(new_cax_bbox, which='active')
+    # print(ax.get_position(False))
+    # print(new_cax_bbox)
+    # Decorate the colorbar
+    cax.set_title("")
     cbar.outline.set_visible(False)
+    cbar.outline.set_linestyle('--')
     gray = (0.1, 0.1, 0.1)
-    cbar.ax.axhline(cbar.ax.get_ylim()[1], linewidth=2, linestyle=":", color=gray)
+    # cbar.ax.axhline(cbar.ax.get_ylim()[1], linewidth=2, linestyle=":", color=gray)
+    # cbar.ax.spines['top'].set_linestyle(':')
+    # cbar.ax.spines['bottom'].set_visible(False)
     cbar.ax.tick_params(
         axis='x',
         which='both',
         bottom=True,
-        top=True,
+        top=False,
         labelbottom=True,
     )
     return cbar

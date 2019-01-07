@@ -139,7 +139,7 @@ class XRDStore():
     
     @property
     def position_unit(self):
-        unit = self.group()['positions'].attrs['unit']
+        unit = self.group()['positions'].attrs.get('unit', 'mm')
         unit = getattr(units, unit)
         return unit
     
@@ -177,7 +177,7 @@ class XRDStore():
     
     @property
     def cell_parameters(self):
-        return self.group()['cell_parameters'].value
+        return self.group()['cell_parameters']
     
     @cell_parameters.setter
     def cell_parameters(self, value):
@@ -188,12 +188,13 @@ class XRDStore():
     @property
     def effective_wavelength(self):
         wavelengths = self.wavelengths
+        total, weight = 0, 0
         # Combine kα1 and kα2
-        if len(wavelengths) == 2:
-            wl = (wavelengths[0] + 0.5*wavelengths[1]) / 1.5
-        else:
-            wl = wavelengths
-        return wl
+        for wl, wght in wavelengths:
+            total += wl * wght
+            weight += wght
+        wavelength = total / weight
+        return wavelength
     
     @property
     def layout(self):

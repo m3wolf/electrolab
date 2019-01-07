@@ -6,6 +6,7 @@ import numpy as np
 import warnings
 from numpy.polynomial.chebyshev import Chebyshev
 from matplotlib.colors import Normalize
+import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit, minimize
 from scipy.signal import savgol_filter
 
@@ -155,7 +156,7 @@ class TwoPhaseRefinement(BaseRefinement):
         for peak in self.peak_ranges:
             is_peak = np.logical_or(
                 is_peak,
-                np.logical_and(two_theta>peak[0], two_theta<peak[1])
+                np.logical_and(two_theta>=peak[0], two_theta<=peak[1])
             )
         # Remove peaks from the data
         red_two_theta = two_theta[~is_peak]
@@ -202,8 +203,6 @@ class TwoPhaseRefinement(BaseRefinement):
         # Make sure we haven't guessed the same peak twice
         if len(set(approx_centers)) != len(approx_centers):
             approx_centers = self.approx_peak_positions
-        if 'locus_00192_ref' in self.file_root or 'temp_refinement' in self.file_root:
-            print(approx_centers)
         # assert False
         # Construct the initial guess (p0)
         p0 = np.array(list(zip(approx_centers, approx_heights, approx_widths)))
@@ -498,3 +497,18 @@ class SolidSolutionRefinement(TwoPhaseRefinement):
         # Reduce all peaks to two phases
         broadenings = (np.mean(breadths),)
         return broadenings
+
+
+class LmoFullRefinement(TwoPhaseRefinement):
+    peak_ranges = (
+        (57.5, 59.),
+        (59., 60.5),
+        (63.3, 65.14),
+        (65.14, 66.3),
+        (66.6, 68.6),
+        (68.6, 69.6),
+    )
+    peak_width = 0.4
+    # approx_peak_positions = (58.25, 59.65, 64.00, 65.50, 67.25, 68.80)
+    # approx_peak_positions = (58.90, 59.65, 64.75, 65.50, 68.10, 68.80)
+    approx_peak_positions = (58.58, 59.65, 64.38, 65.50, 67.68, 68.80)

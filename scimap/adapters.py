@@ -200,7 +200,7 @@ class BrukerPltFile(XRDAdapter):
 class BrukerBrmlFile(XRDAdapter):
     def __init__(self, filename):
         try:
-            self._zf = zipfile.ZipFile(filename)
+            self._zf = zipfile.ZipFile(filename, mode='r')
         except zipfile.BadZipFile as e:
             raise exceptions.FileFormatError('File {} is not a valid BRML zip file.'
                                              ''.format(filename)) from e
