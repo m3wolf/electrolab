@@ -46,5 +46,8 @@ from .plots import (new_axes, big_axes, dual_axes, plot_scans, xrd_axes,
 from .coordinates import Cube
 from .xrd_map import XRDMap, Map
 
+from . import optics
+from .optics import parse_chemical_formula, molar_mass, mass_attenuation_coefficient
+
 # Load units from unit registry
 from .units_ import units

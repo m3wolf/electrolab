@@ -149,3 +149,10 @@ class DatasetExistsError(RuntimeError):
 
 class NoParticleError(Exception):
     pass
+
+class ChemicalFormulaError(ValueError):
+    """The given chemical formula cannot be properly understood or
+    parsed.
+    
+    """
+    pass
