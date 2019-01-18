@@ -47,7 +47,7 @@ from .coordinates import Cube
 from .xrd_map import XRDMap, Map
 
 from . import optics
-from .optics import parse_chemical_formula, molar_mass, mass_attenuation_coefficient
+from .optics import parse_chemical_formula, molar_mass, mass_attenuation_coefficient, transmission
 
 # Load units from unit registry
 from .units_ import units

@@ -23,6 +23,8 @@ materials.
 import re
 from functools import reduce
 
+import numpy as np
+
 from . import exceptions
 
 
@@ -130,6 +132,30 @@ def photoabsorption_cross_section(element: str, xray_energy: float) -> float:
     
     """
     return _abs_cross_sections[element][xray_energy]
+
+
+def transmission(distance: float, linear_attenuation: float) -> float:
+    """Calculate the X-ray transmission for the given properties.
+    
+    The linear attenuation coefficient can be calculated from the
+    mass_attenuation_coefficient function, by multiplying its result
+    by the material's density.
+    
+    Parameters
+    ==========
+    distance
+      Penetration distance through the material, in cm.
+    linear_attenuation
+      Linear attenuation coefficient, in cm⁻¹
+    
+    Returns
+    -------
+    transmission
+      The transmission ration, I/I0.
+    
+    """
+    T = np.exp(-linear_attenuation * distance)
+    return T
 
 
 # This is a kludge until full data files can be retrieved from NIST

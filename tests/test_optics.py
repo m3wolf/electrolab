@@ -49,3 +49,21 @@ class PhotoabsorptionCrossSectionTestCase(TestCase):
         """Check the value reported at http://henke.lbl.gov/cgi-bin/pert_cgi.pl"""
         sigma = optics.photoabsorption_cross_section('Ni', self.Cu_kalpha)
         self.assertEqual(sigma, 46.69)
+
+
+class TransmissionTest(TestCase):
+
+    def test_nickel(self):
+        """Test against real data, from
+        http://henke.lbl.gov/optical_constants/filter2.html
+        
+        """
+        real_transmission = 0.99171
+        eV = 8047.8
+        density = 8.902
+        thickness_um = 0.2 # in microns
+        thickness_cm = thickness_um * 1e-6 / 1e-2
+        # Calculate the predicted transmission
+        linear_coeff = density * optics.mass_attenuation_coefficient('Ni', eV)
+        transmission = optics.transmission(distance=thickness_cm, linear_attenuation=linear_coeff)
+        self.assertAlmostEqual(transmission, real_transmission, places=4)
