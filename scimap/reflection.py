@@ -29,7 +29,7 @@ def hkl_to_tuple(hkl_input):
         hklTuple = HKL(*hkl)
     else:
         # The index probably contains separators
-        regex = '(\d+)[, ](\d+)[, ](\d+)'
+        regex = r'(\d+)[, ](\d+)[, ](\d+)'
         result = re.match(regex, hkl_input)
         if not result:
             msg = 'Malformed hkl value "{}".'.format(hkl_input)

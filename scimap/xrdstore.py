@@ -157,7 +157,7 @@ class XRDStore():
     
     @property
     def file_basenames(self):
-        return self.group()['file_basenames'].value
+        return self.group()['file_basenames'][()]
     
     @file_basenames.setter
     def file_basenames(self, value):

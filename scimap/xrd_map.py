@@ -767,7 +767,7 @@ class XRDMap(Map):
     scan_time = 300  # In seconds
     Phases = []
     Background_Phases = []
-    metric_re = re.compile('(?P<param>[-_a-zA-Z]+)_(?P<phase>-?\d+)')
+    metric_re = re.compile(r'(?P<param>[-_a-zA-Z]+)_(?P<phase>-?\d+)')
     
     def __init__(self, *args, collimator=0.5, qrange=None,
                  scan_time=None, detector_distance=20,

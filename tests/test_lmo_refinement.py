@@ -233,8 +233,8 @@ class LMOQuarterLithiumTest(unittest.TestCase):
     discharged_file2 = os.path.join(TESTDIR, 'LMO-quarterlithium-discharged-2.plt')
     discharged_file3 = os.path.join(TESTDIR, 'LMO-quarterlithium-discharged-3.plt')
     def setUp(self):
-        wavelengths = tubes['Cu'].wavelengths
-        self.refinement = lmo.LmoFullRefinement(wavelengths=wavelengths)
+        self.wavelengths = tubes['Cu'].wavelengths
+        self.refinement = lmo.LmoFullRefinement(wavelengths=self.wavelengths)
     
     def test_background_charged(self):
         scan = XRDScan(self.charged_file)
@@ -260,10 +260,11 @@ class LMOQuarterLithiumTest(unittest.TestCase):
     
     def test_overall_fit_discharged2(self):
         scan = XRDScan(self.discharged_file2)
+        refinement = lmo.LmoFullRefinement(wavelengths=self.wavelengths)
         TTs = scan.two_theta
         Is = scan.intensities
         # Check that the residuals of the fit are low
-        predicted = self.refinement.predict(TTs, Is)
+        predicted = refinement.predict(TTs, Is)
         rms_error = np.sqrt(np.mean((Is-predicted)**2))
         self.assertLess(rms_error, 0.65)
     

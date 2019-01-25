@@ -188,7 +188,7 @@ def import_aps_34IDE_map(directory: str, wavelength: int,
             num_points = int(lines[3].strip())
         # Load diffraction pattern
         csv = pd.read_table(path,
-                          sep='\s+',
+                          sep=r'\s+',
                           header=0,
                           index_col=0,
                           names=[xunits, yunits],

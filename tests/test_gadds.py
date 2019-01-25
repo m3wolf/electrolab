@@ -210,9 +210,9 @@ class SlamFileTest(unittest.TestCase):
             # self.assertEqual(wavelength[0], 1.5406)
             # self.assertEqual(wavelength[1], 1.5444)
             # Collimator and step_sizes
-            self.assertEqual(f[sample_name]['collimator'].value, 0.8)
+            self.assertEqual(f[sample_name]['collimator'][()], 0.8)
             self.assertEqual(f[sample_name]['collimator'].attrs['unit'], 'mm')
-            self.assertEqual(f[sample_name]['step_size'].value, math.sqrt(3) * 0.8 / 2)
+            self.assertEqual(f[sample_name]['step_size'][()], math.sqrt(3) * 0.8 / 2)
         # Check that writing a second slam file does not overwrite the original data
         with warnings.catch_warnings() as w:
             gadds.write_gadds_script(two_theta_range=(55, 70),

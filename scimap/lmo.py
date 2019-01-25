@@ -191,7 +191,7 @@ class TwoPhaseRefinement(BaseRefinement):
         # Find starting parameters for peak centers and heights
         approx_centers = list(self.approx_peak_positions)
         approx_heights = [0,] * len(approx_centers)
-        approx_widths = [0.25,] * len(approx_centers)
+        approx_widths = [0.35,] * len(approx_centers)
         for i in range(len(approx_centers)):
             center = approx_centers[i]
             peak_range = (center - self.peak_width / 2, center + self.peak_width / 2)

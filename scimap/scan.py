@@ -257,7 +257,7 @@ class XRDScan():
                 marker='.', linestyle='None')
         ax.set_xscale('log')
         ax.set_ylabel('Amplitude')
-        ax.set_xlabel('$Frequency\ /deg^{-1}$')
+        ax.set_xlabel(r'$Frequency\ /deg^{-1}$')
         ax.set_title('Fourier Transform of {}'.format(self.axes_title()))
         ax.set_xlim(right=fData.index.max())
         return ax
