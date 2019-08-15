@@ -55,6 +55,14 @@ def latexify(styles: List[str]=[], preamble: List[str]=[]):
       Additional lines to add to the LaTeX preamble.
     
     """
+    # Default Tex Preamble
+    preamble_ = [
+        r"\usepackage[utf8x]{inputenc}",    # use utf8 fonts 
+        r"\usepackage[T1]{fontenc}",        # plots will be generated
+        r"\usepackage{fontspec}",
+        r"\usepackage[detect-all,locale=DE,per-mode=reciprocal]{siunitx}",
+        r"\usepackage[version=4]{mhchem}",
+    ] + preamble
     # Set default LaTeX PGF style
     pgf_with_latex = {                      # setup matplotlib to use latex for output# {{{
         "pgf.texsystem": "xelatex",        # change this if using xetex or lautex
@@ -62,13 +70,8 @@ def latexify(styles: List[str]=[], preamble: List[str]=[]):
         "font.serif": [],                   # blank entries should cause plots 
         "font.sans-serif": [],              # to inherit fonts from the document
         "font.monospace": [],
-        "pgf.preamble": [
-            r"\usepackage[utf8x]{inputenc}",    # use utf8 fonts 
-            r"\usepackage[T1]{fontenc}",        # plots will be generated
-            r"\usepackage{fontspec}",
-            r"\usepackage[detect-all,locale=DE,per-mode=reciprocal]{siunitx}",
-            r"\usepackage[version=4]{mhchem}",
-        ] + preamble,
+        "pgf.preamble": preamble_,
+        "text.latex.preamble": preamble_,
     }
     # Enter the context library
     with rc_context(rc=pgf_with_latex):
