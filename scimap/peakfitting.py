@@ -483,8 +483,11 @@ class Peak():
         return width
 
     def plot_fit(self, ax=None, background=None):
-        predicted = self.predict()
+        x = np.linspace(self.x_range[0],
+                        self.x_range[1],
+                        num=1000)
+        predicted = self.predict(xdata=x)
         if ax is None:
             ax = plots.new_axes()
-        ax.plot(predicted.index, predicted.values, label="overall fit")
+        ax.plot(x, predicted, label="overall fit")
         return ax
