@@ -63,10 +63,11 @@ def latexify(styles: List[str]=[], preamble: List[str]=[]):
         r"\usepackage[detect-all,locale=DE,per-mode=reciprocal]{siunitx}",
         r"\usepackage[version=4]{mhchem}",
     ] + preamble
+    preamble = "\n".join(preamble)
     # Set default LaTeX PGF style
     pgf_with_latex = {                      # setup matplotlib to use latex for output# {{{
-        "pgf.texsystem": "xelatex",        # change this if using xetex or lautex
-        # "font.family": "serif",
+        "pgf.texsystem": "lualatex",        # change this if using xetex or lautex
+        "font.family": "serif",
         "font.serif": [],                   # blank entries should cause plots 
         "font.sans-serif": [],              # to inherit fonts from the document
         "font.monospace": [],

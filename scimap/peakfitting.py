@@ -50,15 +50,24 @@ def gaussian_fwhm(width_parameter):
     return 2.35482 * width_parameter
 
 
+def gaussian_area(height, width):
+    return height * math.sqrt(2*math.pi*width**2)
+
+
 def cauchy_fwhm(width_parameter):
     """Calculates full-width half max based on width parameter."""
     return 2 * width_parameter
+
+
+def cauchy_area(height, width):
+    return height * width * math.pi
 
 
 def discrete_fwhm(x, y):
     """Compute numerically the full-width half-max of peak described by x
     and y data.
     """
+    y = y - np.min(y)
     maxheight = y.max()
     # Split the dataset into an upper half and a lower half
     maxidx = y.argmax()
@@ -91,35 +100,41 @@ def discrete_fwhm(x, y):
 class PeakFit():
     Parameters = namedtuple('Parameters', ('height', 'center', 'width'))
     height = 450
-    center = 35.15
+    center = float("nan")
     width = 0.02
-
+    
     def __repr__(self):
         return "<{cls}: {center}>".format(cls=self.__class__.__name__,
                                           center=round(self.center, 3))
-
+    
     @property
     def parameters(self):
         return self.Parameters(self.height, self.center, self.width)
-
+    
     @parameters.setter
     def parameters(self, value):
         params = self.Parameters(*value)
         self.height = params.height
         self.center = params.center
         self.width = params.width
-
+    
+    def area(self):
+        raise NotImplementedError()
+    
     def evaluate(self, x):
         """Evaluate this fitted subpeak at given x values."""
         return self.kernel(x, **self.parameters._asdict())
-
+    
+    def __call__(self, x):
+        return self.evaluate(x)
+    
     def penalty(self, params):
         """Rules for contraining the fitting algorithm. 0 means no penalty."""
         penalty = 0
         # Penalize negative peak heights
-        if params.height < 0:
+        if getattr(params, 'height', 0) < 0:
                 penalty += BASE_PENALTY
-        if params.width < 0:
+        if getattr(params, 'width', 0) < 0:
                 penalty += BASE_PENALTY
         return penalty
 
@@ -129,6 +144,7 @@ class PeakFit():
         may be involved. If `height` is None (default) it is estimated
         from the maximum value in the data.
         """
+        y = y - np.min(y)
         # Convert FWHM to stdDev (taken from wolfram alpha page for Gaussian)
         stdDev = discrete_fwhm(x, y) / 2.3548
         # Decide which value to use for the peak height
@@ -136,9 +152,10 @@ class PeakFit():
             new_height = y.max()
         else:
             new_height = height
+        new_center = x[center]
         # Prepare tuples of parameters
         p1 = self.Parameters(height=new_height,
-                             center=center,
+                             center=new_center,
                              width=stdDev)
         return p1
 
@@ -146,6 +163,34 @@ class PeakFit():
 class EstimatedFit(PeakFit):
     """Fallback fit using just estimated intial parameters."""
     pass
+
+
+class VerticalOffsetFit(PeakFit):
+    """Apply a vertical offset to the overall fit."""
+    vertical_offset = 0
+    Parameters = namedtuple('VerticalOffsetParameters', ('vertical_offset',))
+    @staticmethod
+    def kernel(x, vertical_offset):
+        return np.full_like(x, fill_value=vertical_offset)
+
+    def area(self):
+        return 0
+    
+    @property
+    def parameters(self):
+        return self.Parameters(vertical_offset=self.vertical_offset)
+    
+    @parameters.setter
+    def parameters(self, value):
+        params = self.Parameters(*value)
+        self.vertical_offset = params.vertical_offset
+    
+    def initial_parameters(self, x, y, center=0, height=None):
+        return self.Parameters(vertical_offset=np.min(y))
+
+    def __repr__(self):
+        return "<{cls}: {offset}>".format(cls=self.__class__.__name__,
+                                          offset=round(self.vertical_offset, 3))
 
 
 class GaussianFit(PeakFit):
@@ -157,6 +202,10 @@ class GaussianFit(PeakFit):
         """
         y = height * np.exp(-np.square(x - center) / 2 / np.square(width))
         return y
+    
+    def area(self):
+        """Area under the curve."""
+        return gaussian_area(height=self.height, width=self.width)
 
 
 class CauchyFit(PeakFit):
@@ -172,6 +221,9 @@ class CauchyFit(PeakFit):
             (np.square(width) + np.square(x - center))
         )
         return y
+    
+    def area(self):
+        return cauchy_area(height=self.height, width=self.width)
 
 
 class PearsonVIIFit(PeakFit):
@@ -191,15 +243,15 @@ class PseudoVoigtFit(PeakFit):
                                                       'center',
                                                       'width_g', 'width_c',
                                                       'eta'))
-
+    
     @property
     def height(self):
         return self.height_g + self.height_c
-
+    
     @property
     def width(self):
         return self.width_g + self.width_c
-
+    
     def fwhm(self):
         # Gaussian component
         fwhm = self.eta * gaussian_fwhm(self.width_g)
@@ -207,6 +259,13 @@ class PseudoVoigtFit(PeakFit):
         fwhm += (1 - self.eta) * cauchy_fwhm(self.width_c)
         return fwhm
 
+    def area(self):
+        # Gaussian component
+        area = self.eta * gaussian_area(height=self.height_g, width=self.width_g)
+        # Cauchy component
+        area += (1-self.eta) * cauchy_area(height=self.height_c, width=self.width_c)
+        return area
+    
     @property
     def parameters(self):
         return self.Parameters(height_g=self.height_g,
@@ -277,7 +336,6 @@ class Peak():
     A single peak in data. The actual peak types (Gaussian, Cauchy,
     etc.) are described in PeakFit objects.
     """
-    vertical_offset = 0
     fit_list = []
     fit_classes = {
         'gaussian': GaussianFit,
@@ -286,7 +344,7 @@ class Peak():
         'pseudo-voigt': PseudoVoigtFit,
         'estimated': EstimatedFit,
     }
-
+    
     def __init__(self, num_peaks=1, method='gaussian'):
         """Arguments
         ---------
@@ -294,37 +352,44 @@ class Peak():
         """
         self.num_peaks = num_peaks
         self.FitClass = self.fit_classes[method.lower()]
-
+    
     def __repr__(self):
         name = "<{cls}: {center}>".format(
             cls=self.__class__.__name__,
             center=self.center()
         )
         return name
-
+    
     def split_parameters(self, params):
         """
         Take a full list of parameters and divide it into groups for each
-        subpeak.
+        subpeak. Last group contains overall fit parameters (e.g. vertical offset)
         """
-        chunkSize = int(len(params) / self.num_peaks)
+        # chunkSize = int(len(params) / (self.num_peaks))
+        # groups = []
+        # for i in range(0, len(params), chunkSize):
+        #     end = i + chunkSize
+        #     groups.append(params[i:end])
         groups = []
-        for i in range(0, len(params), chunkSize):
-            end = i + chunkSize
-            groups.append(params[i:end])
+        start = 0
+        for fit in self.fit_list:
+            n_params = len(fit.Parameters._fields)
+            end = start + n_params
+            groups.append(params[start:end])
+            start += n_params
         return groups
-
+    
     def guess_parameters(self, x, y):
         """Use the data to guess appropriate starting parameters before
         fitting can take place. Returns a list the same length as the
         number of sub-peaks. Each entry is a tuple of sub-peak
         parameters.
-
+        
         Arguments
         ---------
         - xs (array-like) : Independent data to use for guessing
           peak properties.
-
+        
         - ys (array-like) : Dependent data to use for guess peak
           properties.
         """
@@ -333,24 +398,23 @@ class Peak():
         max_idx = y.argmax()
         # peak_max = x[max_idx]
         # Guess values for width (based on fitting method)
-        for i in range(0, self.num_peaks):
-            sub_params = self.FitClass().initial_parameters(x=x, y=y,
-                                                            center=max_idx)
-            guess.append(sub_params)
+        for fit in self.fit_list:
+            sub_params = fit.initial_parameters(x=x, y=y, center=max_idx)
+            guess.extend(sub_params)
         return guess
-
+    
     def fit(self, x, y):
         """Least squares refinement of a function to the data.
-
+        
         Arguments
         ---------
         - x : Iterable of x values to fit against
-
+        
         - y : Iterable of y values to fit against
-
+        
         - num_peaks (int) : How many overlapping peaks should be
           used. Eg. X-ray data often has kα1 and kα2 peaks (default 1)
-
+        
         - method (str) : Selects which peak shape to use. Valid choices are:
             - 'Gaussian'
             - 'Cauchy'
@@ -367,6 +431,7 @@ class Peak():
         FitClass = self.FitClass
         for i in range(0, self.num_peaks):
             self.fit_list.append(FitClass())
+        self.fit_list.append(VerticalOffsetFit())
         # Define objective function
         def objective(x, *params):
             # Unpack the parameters
@@ -381,7 +446,7 @@ class Peak():
             penalty = 0
             # Calculate dual peak penalties
             paramlist = self.split_parameters(obj_params)
-            paramlist = [FitClass.Parameters(*p) for p in paramlist]
+            paramlist = [fit.Parameters(*params) for fit, params in zip(self.fit_list[0:1], paramlist)]
             for fit, paramTuple in zip(self.fit_list, paramlist):
                 # Calculate single peak penalties
                 penalty += fit.penalty(paramTuple)
@@ -409,10 +474,10 @@ class Peak():
                 fit.parameters = paramsList[idx]
         # Save goodness-of-fit
         # self._goodness = self.goodness(data)
-
+    
     def predict(self, xdata=None):
         """Get a dataframe of the predicted peak fits.
-
+        
         Arguments
         ---------
         xdata (numpy array) : An array of x values to use as the index
@@ -431,11 +496,11 @@ class Peak():
         for fit in self.fit_list:
             y += fit.evaluate(x)
         return y
-
+    
     def residuals(self, observations):
         """Calculate the differences at each point between the fit and the
         provided data.
-
+        
         Arguments
         ---------
         observations (pandas series): The original data against which
@@ -444,12 +509,12 @@ class Peak():
         predicted = self.predict(xdata=observations.index)
         residuals = observations - predicted
         return residuals
-
+    
     def goodness(self, observations=None):
         """Calculate the goodness of fit. Returns the sum of squared residuals
         divided by degrees of freedom. Lower numbers describe better
         fit.
-
+        
         Arguments
         ---------
         observations (pandas series): The original data against which
@@ -466,7 +531,7 @@ class Peak():
         return goodness
 
     def center(self):
-        centers = [f.center for f in self.fit_list]
+        centers = [f.center for f in self.fit_list if not math.isnan(f.center)]
         mean_center = sum(centers) / self.num_peaks
         return mean_center
 
@@ -481,7 +546,10 @@ class Peak():
         predicted = self.predict(xdata=x)
         width = discrete_fwhm(x, predicted)
         return width
-
+    
+    def area(self):
+        return sum([f.area() for f in self.fit_list])
+    
     def plot_fit(self, ax=None, background=None):
         x = np.linspace(self.x_range[0],
                         self.x_range[1],
